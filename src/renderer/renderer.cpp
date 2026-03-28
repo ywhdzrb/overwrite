@@ -33,7 +33,7 @@ void Renderer::initWindow() {
     glfwInit();
     
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-    glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
+    glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);  // 暂时禁用窗口大小调整
     
     window = glfwCreateWindow(windowWidth, windowHeight, windowTitle.c_str(), nullptr, nullptr);
     
@@ -42,7 +42,8 @@ void Renderer::initWindow() {
     }
     
     glfwSetWindowUserPointer(window, this);
-    glfwSetFramebufferSizeCallback(window, framebufferResizeCallback);
+    // 暂时不设置帧缓冲区大小回调
+    // glfwSetFramebufferSizeCallback(window, framebufferResizeCallback);
 }
 
 void Renderer::initVulkan() {
@@ -84,10 +85,7 @@ void Renderer::initVulkan() {
     syncObjects = std::make_shared<VulkanSync>(vulkanDevice);
     syncObjects->create(MAX_FRAMES_IN_FLIGHT);
     
-    // 预先记录命令缓冲
-    for (size_t i = 0; i < commandBuffers->getCommandBuffers().size(); i++) {
-        commandBuffers->record(i, framebuffers->getFramebuffers()[i], swapchain->getExtent());
-    }
+    // 不预先记录命令缓冲，每次drawFrame时动态记录
 }
 
 void Renderer::mainLoop() {
