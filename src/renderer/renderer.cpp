@@ -94,14 +94,14 @@ void Renderer::initVulkan() {
     floorRenderer = std::make_unique<FloorRenderer>(vulkanDevice);
     floorRenderer->create();
     
-    // 捕获鼠标
-    input->setCursorCaptured(true);
-    
     // 初始化时间
     lastTime = std::chrono::high_resolution_clock::now();
 }
 
 void Renderer::mainLoop() {
+    // 第一帧后捕获鼠标，确保窗口已经显示
+    bool firstFrame = true;
+    
     while (!glfwWindowShouldClose(window)) {
         // 计算delta time
         auto currentTime = std::chrono::high_resolution_clock::now();
@@ -114,6 +114,12 @@ void Renderer::mainLoop() {
         }
         
         glfwPollEvents();
+        
+        // 第一帧后捕获鼠标
+        if (firstFrame) {
+            input->setCursorCaptured(true);
+            firstFrame = false;
+        }
         
         // 更新输入
         input->update();
