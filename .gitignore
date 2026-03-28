@@ -49,7 +49,3 @@ assets/cache/
 # Temporary files
 *.tmp
 *.temp
-
-# Core dumps
-core
-core.*
