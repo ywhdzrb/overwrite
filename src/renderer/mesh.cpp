@@ -3,6 +3,7 @@
 #include "mesh.h"
 #include "vulkan_device.h"
 #include <stdexcept>
+#include <cstring>
 
 namespace vgame {
 

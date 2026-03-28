@@ -16,9 +16,37 @@ struct Vertex {
     glm::vec3 color;
     glm::vec2 texCoord;
 
+    bool operator==(const Vertex& other) const {
+        return pos == other.pos && color == other.color && texCoord == other.texCoord;
+    }
+
     static VkVertexInputBindingDescription getBindingDescription();
     static std::array<VkVertexInputAttributeDescription, 3> getAttributeDescriptions();
 };
+
+} // namespace vgame
+
+// Vertex结构体的hash函数，放在std命名空间
+namespace std {
+    template<>
+    struct hash<vgame::Vertex> {
+        size_t operator()(vgame::Vertex const& vertex) const {
+            size_t h = 0;
+            // 简单的hash算法
+            h ^= std::hash<float>()(vertex.pos.x) + 0x9e3779b9 + (h << 6) + (h >> 2);
+            h ^= std::hash<float>()(vertex.pos.y) + 0x9e3779b9 + (h << 6) + (h >> 2);
+            h ^= std::hash<float>()(vertex.pos.z) + 0x9e3779b9 + (h << 6) + (h >> 2);
+            h ^= std::hash<float>()(vertex.color.x) + 0x9e3779b9 + (h << 6) + (h >> 2);
+            h ^= std::hash<float>()(vertex.color.y) + 0x9e3779b9 + (h << 6) + (h >> 2);
+            h ^= std::hash<float>()(vertex.color.z) + 0x9e3779b9 + (h << 6) + (h >> 2);
+            h ^= std::hash<float>()(vertex.texCoord.x) + 0x9e3779b9 + (h << 6) + (h >> 2);
+            h ^= std::hash<float>()(vertex.texCoord.y) + 0x9e3779b9 + (h << 6) + (h >> 2);
+            return h;
+        }
+    };
+}
+
+namespace vgame {
 
 class Model {
 public:

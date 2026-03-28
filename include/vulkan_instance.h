@@ -2,6 +2,7 @@
 #define VULKAN_INSTANCE_H
 
 #include <vulkan/vulkan.h>
+#include <GLFW/glfw3.h>
 #include <vector>
 #include <string>
 #include <optional>

@@ -66,7 +66,12 @@ target_link_libraries(${PROJECT_NAME}
 )
 
 # 着色器编译规则
-function(compile_shader shader_file)
+set(SHADER_SOURCES
+    shaders/shader.vert
+    shaders/shader.frag
+)
+
+foreach(shader_file ${SHADER_SOURCES})
     get_filename_component(shader_name ${shader_file} NAME_WE)
     get_filename_component(shader_ext ${shader_file} EXT)
     
@@ -78,7 +83,7 @@ function(compile_shader shader_file)
         message(FATAL_ERROR "Unknown shader extension: ${shader_ext}")
     endif()
     
-    set(output_file "${CMAKE_CURRENT_SOURCE_DIR}/shaders/${shader_name}.spv")
+    set(output_file "${CMAKE_CURRENT_SOURCE_DIR}/shaders/${shader_name}${shader_ext}.spv")
     
     add_custom_command(
         OUTPUT ${output_file}
@@ -88,13 +93,6 @@ function(compile_shader shader_file)
     )
     
     list(APPEND SHADER_OUTPUTS ${output_file})
-endfunction()
-
-# 编译着色器
-file(GLOB SHADER_FILES "${CMAKE_CURRENT_SOURCE_DIR}/shaders/*.vert" "${CMAKE_CURRENT_SOURCE_DIR}/shaders/*.frag")
-foreach(shader ${SHADER_FILES})
-    get_filename_component(shader_name ${shader} NAME)
-    compile_shader(${shader_name})
 endforeach()
 
 # 将着色器添加到依赖

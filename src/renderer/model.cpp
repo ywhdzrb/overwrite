@@ -9,6 +9,8 @@
 
 namespace vgame {
 
+using namespace std;
+
 // 获取顶点绑定描述
 // 定义顶点数据的输入布局
 VkVertexInputBindingDescription Vertex::getBindingDescription() {
