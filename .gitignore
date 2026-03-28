@@ -49,3 +49,6 @@ assets/cache/
 # Temporary files
 *.tmp
 *.temp
+
+# ImGui config
+imgui.ini
