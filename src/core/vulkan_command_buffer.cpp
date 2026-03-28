@@ -65,6 +65,7 @@ void VulkanCommandBuffer::record(size_t imageIndex, VkFramebuffer framebuffer, V
     
     vkCmdBeginRenderPass(commandBuffers[imageIndex], &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
     
+    // 绑定图形管线
     vkCmdBindPipeline(commandBuffers[imageIndex], VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
     
     VkViewport viewport{};
@@ -80,24 +81,6 @@ void VulkanCommandBuffer::record(size_t imageIndex, VkFramebuffer framebuffer, V
     scissor.offset = {0, 0};
     scissor.extent = swapchainExtent;
     vkCmdSetScissor(commandBuffers[imageIndex], 0, 1, &scissor);
-    
-    // 设置push constants（变换矩阵）
-    struct PushConstants {
-        glm::mat4 model;
-        glm::mat4 view;
-        glm::mat4 proj;
-    };
-    
-    PushConstants pushConstants{};
-    pushConstants.model = glm::mat4(1.0f);
-    pushConstants.view = viewMatrix;
-    pushConstants.proj = projectionMatrix;
-    
-    vkCmdPushConstants(commandBuffers[imageIndex], pipelineLayout,
-                      VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(PushConstants), &pushConstants);
-    
-    // 绘制三角形（3个顶点）
-    vkCmdDraw(commandBuffers[imageIndex], 3, 1, 0, 0);
     
     vkCmdEndRenderPass(commandBuffers[imageIndex]);
     

@@ -18,8 +18,10 @@
 #include "vulkan_sync.h"
 #include "camera.h"
 #include "input.h"
+#include "imgui_manager.h"
 #include "physics.h"
 #include "floor_renderer.h"
+#include "cube_renderer.h"
 
 namespace vgame {
 
@@ -64,9 +66,14 @@ private:
     std::unique_ptr<Input> input;
     std::unique_ptr<Physics> physics;
     std::unique_ptr<FloorRenderer> floorRenderer;
+    std::unique_ptr<CubeRenderer> cubeRenderer;
+    std::unique_ptr<ImGuiManager> imguiManager;
 
     // 时间管理
     std::chrono::high_resolution_clock::time_point lastTime;
+    
+    // FPS 管理
+    float currentFPS = 0.0f;
 
     uint32_t currentFrame = 0;
     bool framebufferResized = false;

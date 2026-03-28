@@ -42,6 +42,11 @@ public:
     VkQueue getGraphicsQueue() const { return graphicsQueue; }
     VkQueue getPresentQueue() const { return presentQueue; }
     VkCommandPool getCommandPool() const { return commandPool; }
+    VkImage getDepthImage() const { return depthImage; }
+    VkImageView getDepthImageView() const { return depthImageView; }
+
+    void createDepthResources(VkExtent2D extent);
+    void cleanupDepthResources();
 
 private:
     void createCommandPool();
@@ -52,6 +57,11 @@ private:
     VkQueue graphicsQueue;
     VkQueue presentQueue;
     VkCommandPool commandPool;
+    
+    // 深度缓冲资源
+    VkImage depthImage = VK_NULL_HANDLE;
+    VkDeviceMemory depthImageMemory = VK_NULL_HANDLE;
+    VkImageView depthImageView = VK_NULL_HANDLE;
 };
 
 } // namespace vgame

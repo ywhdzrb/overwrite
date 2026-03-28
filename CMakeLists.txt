@@ -31,6 +31,19 @@ find_package(glm REQUIRED)
 # 使用本地 git submodule 的 tinyobjloader
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/external/tinyobjloader)
 
+# ImGui
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/external/imgui)
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/external/imgui/backends)
+
+set(IMGUI_SOURCES
+    external/imgui/imgui.cpp
+    external/imgui/imgui_draw.cpp
+    external/imgui/imgui_widgets.cpp
+    external/imgui/imgui_tables.cpp
+    external/imgui/backends/imgui_impl_vulkan.cpp
+    external/imgui/backends/imgui_impl_glfw.cpp
+)
+
 # 包含目录
 include_directories(
     ${CMAKE_CURRENT_SOURCE_DIR}/include
@@ -55,9 +68,14 @@ set(SOURCES
     src/renderer/model.cpp
     src/renderer/mesh.cpp
     src/renderer/floor_renderer.cpp
+    src/renderer/cube_renderer.cpp
+    src/renderer/imgui_manager.cpp
     src/utils/shader_compiler.cpp
     src/utils/logger.cpp
 )
+
+# 添加 ImGui 源文件
+list(APPEND SOURCES ${IMGUI_SOURCES})
 
 # 创建可执行文件
 add_executable(${PROJECT_NAME} ${SOURCES})

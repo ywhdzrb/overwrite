@@ -1,11 +1,13 @@
 // 渲染器实现
 // 负责管理整个渲染流程，包括窗口创建、Vulkan初始化和渲染循环
+#include "imgui.h"
 #include "renderer.h"
 #include <iostream>
 #include <stdexcept>
 #include <set>
 #include <algorithm>
 #include <limits>
+#include <thread>
 
 namespace vgame {
 
@@ -71,6 +73,9 @@ void Renderer::initVulkan() {
     );
     graphicsPipeline->create();
     
+    // 创建深度资源
+    vulkanDevice->createDepthResources(swapchain->getExtent());
+    
     framebuffers = std::make_shared<VulkanFramebuffer>(vulkanDevice, renderPass->getRenderPass());
     framebuffers->create(swapchain->getImageViews(), swapchain->getExtent());
     
@@ -93,18 +98,38 @@ void Renderer::initVulkan() {
     physics = std::make_unique<Physics>();
     floorRenderer = std::make_unique<FloorRenderer>(vulkanDevice);
     floorRenderer->create();
+    cubeRenderer = std::make_unique<CubeRenderer>(vulkanDevice);
+    cubeRenderer->create();
+    
+    // 初始化 ImGui
+    imguiManager = std::make_unique<ImGuiManager>(vulkanDevice, swapchain, renderPass, window);
+    imguiManager->init();
+    
+    // 设置立方体位置
+    cubeRenderer->setPosition(glm::vec3(0.0f, 0.5f, -2.0f));
     
     // 初始化时间
     lastTime = std::chrono::high_resolution_clock::now();
 }
 
 void Renderer::mainLoop() {
+    auto lastTime = std::chrono::high_resolution_clock::now();
+    
     // 第一帧后捕获鼠标，确保窗口已经显示
     bool firstFrame = true;
     
+    // FPS 计数
+    int frameCount = 0;
+    float fpsTimer = 0.0f;
+    const float targetFPS = 60.0f;
+    const float targetFrameTime = 1.0f / targetFPS;  // 60FPS = 16.67ms
+    
     while (!glfwWindowShouldClose(window)) {
+        // 记录帧开始时间
+        auto frameStartTime = std::chrono::high_resolution_clock::now();
+        
         // 计算delta time
-        auto currentTime = std::chrono::high_resolution_clock::now();
+        auto currentTime = frameStartTime;
         float deltaTime = std::chrono::duration<float>(currentTime - lastTime).count();
         lastTime = currentTime;
         
@@ -113,12 +138,25 @@ void Renderer::mainLoop() {
             deltaTime = 0.1f;
         }
         
+        // FPS 计算
+        frameCount++;
+        fpsTimer += deltaTime;
+        if (fpsTimer >= 1.0f) {  // 每秒更新一次
+            currentFPS = frameCount / fpsTimer;
+            std::cout << "[Renderer] FPS: " << static_cast<int>(currentFPS) << std::endl;
+            
+            frameCount = 0;
+            fpsTimer = 0.0f;
+        }
+        
         glfwPollEvents();
         
         // 第一帧后捕获鼠标
         if (firstFrame) {
             input->setCursorCaptured(true);
             firstFrame = false;
+            glfwPollEvents();
+            std::cout << "[Renderer] 鼠标已捕获" << std::endl;
         }
         
         // 更新输入
@@ -126,13 +164,38 @@ void Renderer::mainLoop() {
         
         // 处理鼠标移动
         double mouseX, mouseY;
-        input->getMouseDelta(mouseX, mouseY);
-        camera->processMouseMovement(static_cast<float>(mouseX), static_cast<float>(mouseY));
+        input->getRawMouseMovement(mouseX, mouseY);
         
+        if (mouseX != 0.0 || mouseY != 0.0) {
+            camera->processMouseMovement(static_cast<float>(mouseX), static_cast<float>(mouseY));
+        }
+        
+        
+        // 更新 ImGui
+        imguiManager->newFrame();
+        
+        // 显示 FPS 窗口
+        ImGui::Begin("FPS", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings);
+        ImGui::Text("FPS: %.1f", currentFPS);
+        ImGui::SetWindowPos(ImVec2(10, 10), ImGuiCond_FirstUseEver);
+        ImGui::End();
         // 更新游戏逻辑
         updateGameLogic(deltaTime);
         
         drawFrame();
+        
+        // 在帧结束时重置"刚刚按下"标志
+        input->resetJustPressedFlags();
+        
+        // 帧率限制：计算这一帧用了多少时间，如果少于目标时间则睡眠剩余时间
+        auto frameEndTime = std::chrono::high_resolution_clock::now();
+        float frameTime = std::chrono::duration<float>(frameEndTime - frameStartTime).count();
+        
+        if (frameTime < targetFrameTime) {
+            float sleepTime = targetFrameTime - frameTime;
+            // 转换为微秒
+            std::this_thread::sleep_for(std::chrono::microseconds(static_cast<long long>(sleepTime * 1000000)));
+        }
     }
     
     vkDeviceWaitIdle(vulkanDevice->getDevice());
@@ -143,12 +206,15 @@ void Renderer::updateGameLogic(float deltaTime) {
     float speed = input->isSprintPressed() ? 10.0f : 5.0f;
     camera->setMovementSpeed(speed);
     
+    // 使用 Input 类检测空格键
+    bool jumpInput = input->isJumpJustPressed();
+    
     camera->update(deltaTime,
                   input->isForwardPressed(),
                   input->isBackPressed(),
                   input->isLeftPressed(),
                   input->isRightPressed(),
-                  input->isJumpPressed());
+                  jumpInput);
     
     // 更新物理
     physics->update(deltaTime);
@@ -177,8 +243,68 @@ void Renderer::drawFrame() {
     vkResetFences(vulkanDevice->getDevice(), 1, &syncObjects->getInFlightFences()[currentFrame]);
     
     vkResetCommandBuffer(commandBuffers->getCommandBuffers()[currentFrame], /*VkCommandBufferResetFlagBits*/ 0);
-    commandBuffers->record(currentFrame, framebuffers->getFramebuffers()[imageIndex], swapchain->getExtent(),
+    
+    // 手动记录命令缓冲
+    VkCommandBuffer commandBuffer = commandBuffers->getCommandBuffers()[currentFrame];
+    
+    VkCommandBufferBeginInfo beginInfo{};
+    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    beginInfo.flags = 0;
+    beginInfo.pInheritanceInfo = nullptr;
+    
+    if (vkBeginCommandBuffer(commandBuffer, &beginInfo) != VK_SUCCESS) {
+        throw std::runtime_error("failed to begin recording command buffer!");
+    }
+    
+    VkRenderPassBeginInfo renderPassInfo{};
+    renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+    renderPassInfo.renderPass = renderPass->getRenderPass();
+    renderPassInfo.framebuffer = framebuffers->getFramebuffers()[imageIndex];
+    renderPassInfo.renderArea.offset = {0, 0};
+    renderPassInfo.renderArea.extent = swapchain->getExtent();
+    
+    // 清除颜色和深度缓冲
+    std::array<VkClearValue, 2> clearValues{};
+    clearValues[0].color = {{0.0f, 0.0f, 0.0f, 1.0f}};  // 颜色清除值：黑色
+    clearValues[1].depthStencil = {1.0f, 0};  // 深度清除值：1.0（最远）
+    
+    renderPassInfo.clearValueCount = static_cast<uint32_t>(clearValues.size());
+    renderPassInfo.pClearValues = clearValues.data();
+    
+    vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
+    
+    vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline->getPipeline());
+    
+    VkViewport viewport{};
+    viewport.x = 0.0f;
+    viewport.y = 0.0f;
+    viewport.width = (float) swapchain->getExtent().width;
+    viewport.height = (float) swapchain->getExtent().height;
+    viewport.minDepth = 0.0f;
+    viewport.maxDepth = 1.0f;
+    vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
+    
+    VkRect2D scissor{};
+    scissor.offset = {0, 0};
+    scissor.extent = swapchain->getExtent();
+    vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
+    
+    // 渲染地板
+    floorRenderer->render(commandBuffer, graphicsPipeline->getPipelineLayout(),
                          camera->getViewMatrix(), camera->getProjectionMatrix());
+    
+    // 渲染立方体
+    cubeRenderer->render(commandBuffer, graphicsPipeline->getPipelineLayout(),
+                        camera->getViewMatrix(), camera->getProjectionMatrix());
+    
+    
+    // 渲染 ImGui
+    imguiManager->render(commandBuffer);
+    vkCmdEndRenderPass(commandBuffer);
+    
+    if (vkEndCommandBuffer(commandBuffer) != VK_SUCCESS) {
+        throw std::runtime_error("failed to record command buffer!");
+    }
     
     VkSubmitInfo submitInfo{};
     submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
@@ -234,7 +360,13 @@ void Renderer::recreateSwapchain() {
     
     vkDeviceWaitIdle(vulkanDevice->getDevice());
     
+    // 清理并重新创建深度资源
+    vulkanDevice->cleanupDepthResources();
+    
     swapchain->recreate(window);
+    
+    // 重新创建深度资源
+    vulkanDevice->createDepthResources(swapchain->getExtent());
     
     renderPass->cleanup();
     renderPass->create();
@@ -254,6 +386,7 @@ void Renderer::recreateSwapchain() {
 }
 
 void Renderer::cleanup() {
+    cubeRenderer.reset();
     floorRenderer.reset();
     physics.reset();
     input.reset();

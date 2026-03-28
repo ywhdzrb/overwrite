@@ -23,13 +23,14 @@ void VulkanFramebuffer::create(const std::vector<VkImageView>& swapchainImageVie
     
     for (size_t i = 0; i < swapchainImageViews.size(); i++) {
         VkImageView attachments[] = {
-            swapchainImageViews[i]
+            swapchainImageViews[i],
+            device->getDepthImageView()  // 添加深度图像视图
         };
         
         VkFramebufferCreateInfo framebufferInfo{};
         framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
         framebufferInfo.renderPass = renderPass;
-        framebufferInfo.attachmentCount = 1;
+        framebufferInfo.attachmentCount = 2;  // 现在有颜色和深度两个附件
         framebufferInfo.pAttachments = attachments;
         framebufferInfo.width = swapchainExtent.width;
         framebufferInfo.height = swapchainExtent.height;

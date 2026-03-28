@@ -2,45 +2,57 @@
 // 处理第一人称视角的摄像机控制
 #include "camera.h"
 #include <cmath>
+#include <iostream>
+
 
 namespace vgame {
 
 Camera::Camera(int windowWidth, int windowHeight)
-    : position(0.0f, 2.0f, 5.0f),  // 从上方开始
+    : position(0.0f, 1.5f, 5.0f),  // 从地面高度开始
       front(0.0f, 0.0f, -1.0f),
       up(0.0f, 1.0f, 0.0f),
       right(1.0f, 0.0f, 0.0f),
       worldUp(0.0f, 1.0f, 0.0f),
       yaw(-90.0f),
-      pitch(0.0f),
+      pitch(-20.0f),  // 稍微向下看，以便能看到地板
       movementSpeed(5.0f),
-      mouseSensitivity(0.1f),
+      mouseSensitivity(0.1f),  // 更高的灵敏度
       zoom(45.0f),
       windowWidth(windowWidth),
       windowHeight(windowHeight),
       velocity(0.0f),
       isJumping(false),
-      jumpForce(8.0f),
-      gravity(9.8f) {
+      jumpForce(5.5f),  // 跳跃初速度，可以跳到约1.5米高
+      gravity(15.0f) {  // 重力加速度，使下落更快
     updateCameraVectors();
 }
 
 void Camera::update(float deltaTime, bool moveForward, bool moveBackward,
                     bool moveLeft, bool moveRight, bool jump) {
-    // 处理跳跃
-    if (jump && !isJumping) {
-        velocity.y = jumpForce;
+    // 处理跳跃（物理模拟）
+    const float groundHeight = 1.5f;
+    
+    // 按下空格键且在地面时，开始跳跃
+    if (jump && !isJumping && position.y >= groundHeight - 0.01f) {
+        velocity.y = -jumpForce;  // 给一个向上的初始速度（y轴向下为正，所以向上是负值）
         isJumping = true;
     }
     
-    // 应用重力
-    velocity.y -= gravity * deltaTime;
-    
-    // 地面碰撞检测
-    if (position.y <= 1.5f) {  // 摄像机高度
-        position.y = 1.5f;
+    // 如果在跳跃中或不在地面上，应用重力
+    if (isJumping || position.y < groundHeight - 0.001f) {
+        velocity.y += gravity * deltaTime;  // 重力加速（向下为正）
+        position.y += velocity.y * deltaTime;  // 更新高度
+        
+        // 检查是否落地
+        if (position.y >= groundHeight) {
+            position.y = groundHeight;
+            velocity.y = 0.0f;
+            isJumping = false;
+        }
+    } else {
+        // 确保在地面上时不会下沉
+        position.y = groundHeight;
         velocity.y = 0.0f;
-        isJumping = false;
     }
     
     // 处理移动（水平方向）
@@ -53,10 +65,10 @@ void Camera::update(float deltaTime, bool moveForward, bool moveBackward,
         horizontalVelocity -= front;
     }
     if (moveLeft) {
-        horizontalVelocity -= right;
+        horizontalVelocity -= right;  // 向左移动：减去右向量
     }
     if (moveRight) {
-        horizontalVelocity += right;
+        horizontalVelocity += right;  // 向右移动：加上右向量
     }
     
     // 归一化并应用速度
@@ -67,15 +79,14 @@ void Camera::update(float deltaTime, bool moveForward, bool moveBackward,
     // 更新位置
     position.x += horizontalVelocity.x * deltaTime;
     position.z += horizontalVelocity.z * deltaTime;
-    position.y += velocity.y * deltaTime;
 }
 
 void Camera::processMouseMovement(float xOffset, float yOffset) {
     xOffset *= mouseSensitivity;
     yOffset *= mouseSensitivity;
     
-    yaw += xOffset;
-    pitch += yOffset;
+    yaw += xOffset;  // X 轴方向：鼠标向左，xOffset为负，yaw减少（向左转）
+    pitch += yOffset;  // Y 轴方向保持不变：鼠标向上，镜头向上看
     
     // 限制俯仰角
     if (pitch > 89.0f) {

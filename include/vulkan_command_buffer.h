@@ -32,6 +32,7 @@ private:
     VkRenderPass renderPass;
     VkPipeline pipeline;
     VkPipelineLayout pipelineLayout;
+    
     VkCommandPool commandPool;
     std::vector<VkCommandBuffer> commandBuffers;
 };

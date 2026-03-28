@@ -44,6 +44,15 @@ VulkanDevice::VulkanDevice(VkPhysicalDevice physicalDevice, VkDevice device, VkS
 
 // VulkanDevice析构函数
 VulkanDevice::~VulkanDevice() {
+    if (depthImageView != VK_NULL_HANDLE) {
+        vkDestroyImageView(device, depthImageView, nullptr);
+    }
+    if (depthImage != VK_NULL_HANDLE) {
+        vkDestroyImage(device, depthImage, nullptr);
+    }
+    if (depthImageMemory != VK_NULL_HANDLE) {
+        vkFreeMemory(device, depthImageMemory, nullptr);
+    }
     if (commandPool != VK_NULL_HANDLE) {
         vkDestroyCommandPool(device, commandPool, nullptr);
     }
@@ -198,11 +207,17 @@ void VulkanDevice::transitionImageLayout(VkImage image, VkImageLayout oldLayout,
     barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
     barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
     barrier.image = image;
-    barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
     barrier.subresourceRange.baseMipLevel = 0;
     barrier.subresourceRange.levelCount = 1;
     barrier.subresourceRange.baseArrayLayer = 0;
     barrier.subresourceRange.layerCount = 1;
+    
+    // 判断是颜色图像还是深度图像
+    if (newLayout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL) {
+        barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+    } else {
+        barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    }
     
     VkPipelineStageFlags sourceStage;
     VkPipelineStageFlags destinationStage;
@@ -219,6 +234,12 @@ void VulkanDevice::transitionImageLayout(VkImage image, VkImageLayout oldLayout,
         
         sourceStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
         destinationStage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+    } else if (oldLayout == VK_IMAGE_LAYOUT_UNDEFINED && newLayout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL) {
+        barrier.srcAccessMask = 0;
+        barrier.dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+        
+        sourceStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+        destinationStage = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
     } else {
         throw std::invalid_argument("unsupported layout transition!");
     }
@@ -245,6 +266,80 @@ void VulkanDevice::copyBufferToImage(VkBuffer buffer, VkImage image, uint32_t wi
     vkCmdCopyBufferToImage(commandBuffer, buffer, image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
     
     endSingleTimeCommands(commandBuffer);
+}
+
+void VulkanDevice::createDepthResources(VkExtent2D extent) {
+    VkFormat depthFormat = VK_FORMAT_D32_SFLOAT;
+    
+    // 创建深度图像
+    VkImageCreateInfo imageInfo{};
+    imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+    imageInfo.imageType = VK_IMAGE_TYPE_2D;
+    imageInfo.extent.width = extent.width;
+    imageInfo.extent.height = extent.height;
+    imageInfo.extent.depth = 1;
+    imageInfo.mipLevels = 1;
+    imageInfo.arrayLayers = 1;
+    imageInfo.format = depthFormat;
+    imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+    imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    imageInfo.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+    imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+    imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    
+    if (vkCreateImage(device, &imageInfo, nullptr, &depthImage) != VK_SUCCESS) {
+        throw std::runtime_error("failed to create depth image!");
+    }
+    
+    // 分配深度图像内存
+    VkMemoryRequirements memRequirements;
+    vkGetImageMemoryRequirements(device, depthImage, &memRequirements);
+    
+    VkMemoryAllocateInfo allocInfo{};
+    allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+    allocInfo.allocationSize = memRequirements.size;
+    allocInfo.memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+    
+    if (vkAllocateMemory(device, &allocInfo, nullptr, &depthImageMemory) != VK_SUCCESS) {
+        throw std::runtime_error("failed to allocate depth image memory!");
+    }
+    
+    vkBindImageMemory(device, depthImage, depthImageMemory, 0);
+    
+    // 创建深度图像视图
+    VkImageViewCreateInfo viewInfo{};
+    viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+    viewInfo.image = depthImage;
+    viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+    viewInfo.format = depthFormat;
+    viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+    viewInfo.subresourceRange.baseMipLevel = 0;
+    viewInfo.subresourceRange.levelCount = 1;
+    viewInfo.subresourceRange.baseArrayLayer = 0;
+    viewInfo.subresourceRange.layerCount = 1;
+    
+    if (vkCreateImageView(device, &viewInfo, nullptr, &depthImageView) != VK_SUCCESS) {
+        throw std::runtime_error("failed to create depth image view!");
+    }
+    
+    // 转换深度图像布局
+    transitionImageLayout(depthImage, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+                          VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT);
+}
+
+void VulkanDevice::cleanupDepthResources() {
+    if (depthImageView != VK_NULL_HANDLE) {
+        vkDestroyImageView(device, depthImageView, nullptr);
+        depthImageView = VK_NULL_HANDLE;
+    }
+    if (depthImage != VK_NULL_HANDLE) {
+        vkDestroyImage(device, depthImage, nullptr);
+        depthImage = VK_NULL_HANDLE;
+    }
+    if (depthImageMemory != VK_NULL_HANDLE) {
+        vkFreeMemory(device, depthImageMemory, nullptr);
+        depthImageMemory = VK_NULL_HANDLE;
+    }
 }
 
 } // namespace vgame
