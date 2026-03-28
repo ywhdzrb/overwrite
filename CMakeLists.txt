@@ -48,9 +48,13 @@ set(SOURCES
     src/core/vulkan_framebuffer.cpp
     src/core/vulkan_command_buffer.cpp
     src/core/vulkan_sync.cpp
+    src/core/camera.cpp
+    src/core/input.cpp
+    src/core/physics.cpp
     src/renderer/renderer.cpp
     src/renderer/model.cpp
     src/renderer/mesh.cpp
+    src/renderer/floor_renderer.cpp
     src/utils/shader_compiler.cpp
     src/utils/logger.cpp
 )

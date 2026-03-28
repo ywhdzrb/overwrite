@@ -2,6 +2,7 @@
 #define VULKAN_COMMAND_BUFFER_H
 
 #include <vulkan/vulkan.h>
+#include <glm/glm.hpp>
 #include <vector>
 #include <memory>
 
@@ -21,7 +22,8 @@ public:
 
     void create(size_t imageCount);
     void cleanup();
-    void record(size_t imageIndex, VkFramebuffer framebuffer, VkExtent2D swapchainExtent);
+    void record(size_t imageIndex, VkFramebuffer framebuffer, VkExtent2D swapchainExtent,
+               const glm::mat4& viewMatrix, const glm::mat4& projectionMatrix);
     
     const std::vector<VkCommandBuffer>& getCommandBuffers() const { return commandBuffers; }
 

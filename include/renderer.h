@@ -6,6 +6,7 @@
 #include <memory>
 #include <vector>
 #include <string>
+#include <chrono>
 
 #include "vulkan_instance.h"
 #include "vulkan_device.h"
@@ -15,6 +16,10 @@
 #include "vulkan_framebuffer.h"
 #include "vulkan_command_buffer.h"
 #include "vulkan_sync.h"
+#include "camera.h"
+#include "input.h"
+#include "physics.h"
+#include "floor_renderer.h"
 
 namespace vgame {
 
@@ -38,6 +43,7 @@ private:
     void cleanup();
     void drawFrame();
     void recreateSwapchain();
+    void updateGameLogic(float deltaTime);
 
     int windowWidth;
     int windowHeight;
@@ -52,6 +58,15 @@ private:
     std::shared_ptr<VulkanFramebuffer> framebuffers;
     std::shared_ptr<VulkanCommandBuffer> commandBuffers;
     std::shared_ptr<VulkanSync> syncObjects;
+
+    // 游戏逻辑组件
+    std::unique_ptr<Camera> camera;
+    std::unique_ptr<Input> input;
+    std::unique_ptr<Physics> physics;
+    std::unique_ptr<FloorRenderer> floorRenderer;
+
+    // 时间管理
+    std::chrono::high_resolution_clock::time_point lastTime;
 
     uint32_t currentFrame = 0;
     bool framebufferResized = false;

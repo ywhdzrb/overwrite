@@ -1,0 +1,92 @@
+#ifndef CAMERA_H
+#define CAMERA_H
+
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <vulkan/vulkan.h>
+#include <string>
+
+namespace vgame {
+
+class Camera {
+public:
+    Camera(int windowWidth, int windowHeight);
+    ~Camera() = default;
+
+    // 更新摄像机位置和方向
+    void update(float deltaTime, bool moveForward, bool moveBackward, 
+                bool moveLeft, bool moveRight, bool jump);
+    
+    // 处理鼠标移动
+    void processMouseMovement(float xOffset, float yOffset);
+    
+    // 获取视图矩阵
+    glm::mat4 getViewMatrix() const;
+    
+    // 获取投影矩阵
+    glm::mat4 getProjectionMatrix() const;
+    
+    // 获取摄像机位置
+    glm::vec3 getPosition() const { return position; }
+    
+    // 获取摄像机方向
+    glm::vec3 getFront() const { return front; }
+    
+    // 获取摄像机右向量
+    glm::vec3 getRight() const { return right; }
+    
+    // 获取摄像机上向量
+    glm::vec3 getUp() const { return up; }
+    
+    // 设置摄像机位置
+    void setPosition(const glm::vec3& pos) { position = pos; }
+    
+    // 设置摄像机朝向
+    void setFront(const glm::vec3& f) { front = f; updateCameraVectors(); }
+    
+    // 设置摄像机速度
+    void setMovementSpeed(float speed) { movementSpeed = speed; }
+    
+    // 设置鼠标灵敏度
+    void setMouseSensitivity(float sensitivity) { mouseSensitivity = sensitivity; }
+    
+    // 获取摄像机速度
+    float getMovementSpeed() const { return movementSpeed; }
+    
+    // 获取鼠标灵敏度
+    float getMouseSensitivity() const { return mouseSensitivity; }
+
+private:
+    // 更新摄像机向量
+    void updateCameraVectors();
+    
+    // 摄像机属性
+    glm::vec3 position;
+    glm::vec3 front;
+    glm::vec3 up;
+    glm::vec3 right;
+    glm::vec3 worldUp;
+    
+    // 欧拉角
+    float yaw;
+    float pitch;
+    
+    // 摄像机选项
+    float movementSpeed;
+    float mouseSensitivity;
+    float zoom;
+    
+    // 窗口尺寸
+    int windowWidth;
+    int windowHeight;
+    
+    // 物理相关
+    glm::vec3 velocity;
+    bool isJumping;
+    float jumpForce;
+    float gravity;
+};
+
+} // namespace vgame
+
+#endif // CAMERA_H

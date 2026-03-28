@@ -86,15 +86,66 @@ void Renderer::initVulkan() {
     syncObjects->create(MAX_FRAMES_IN_FLIGHT);
     
     // 不预先记录命令缓冲，每次drawFrame时动态记录
+    
+    // 初始化游戏逻辑组件
+    camera = std::make_unique<Camera>(windowWidth, windowHeight);
+    input = std::make_unique<Input>(window);
+    physics = std::make_unique<Physics>();
+    floorRenderer = std::make_unique<FloorRenderer>(vulkanDevice);
+    floorRenderer->create();
+    
+    // 捕获鼠标
+    input->setCursorCaptured(true);
+    
+    // 初始化时间
+    lastTime = std::chrono::high_resolution_clock::now();
 }
 
 void Renderer::mainLoop() {
     while (!glfwWindowShouldClose(window)) {
+        // 计算delta time
+        auto currentTime = std::chrono::high_resolution_clock::now();
+        float deltaTime = std::chrono::duration<float>(currentTime - lastTime).count();
+        lastTime = currentTime;
+        
+        // 限制delta time以防卡顿
+        if (deltaTime > 0.1f) {
+            deltaTime = 0.1f;
+        }
+        
         glfwPollEvents();
+        
+        // 更新输入
+        input->update();
+        
+        // 处理鼠标移动
+        double mouseX, mouseY;
+        input->getMouseDelta(mouseX, mouseY);
+        camera->processMouseMovement(static_cast<float>(mouseX), static_cast<float>(mouseY));
+        
+        // 更新游戏逻辑
+        updateGameLogic(deltaTime);
+        
         drawFrame();
     }
     
     vkDeviceWaitIdle(vulkanDevice->getDevice());
+}
+
+void Renderer::updateGameLogic(float deltaTime) {
+    // 更新摄像机
+    float speed = input->isSprintPressed() ? 10.0f : 5.0f;
+    camera->setMovementSpeed(speed);
+    
+    camera->update(deltaTime,
+                  input->isForwardPressed(),
+                  input->isBackPressed(),
+                  input->isLeftPressed(),
+                  input->isRightPressed(),
+                  input->isJumpPressed());
+    
+    // 更新物理
+    physics->update(deltaTime);
 }
 
 void Renderer::drawFrame() {
@@ -120,7 +171,8 @@ void Renderer::drawFrame() {
     vkResetFences(vulkanDevice->getDevice(), 1, &syncObjects->getInFlightFences()[currentFrame]);
     
     vkResetCommandBuffer(commandBuffers->getCommandBuffers()[currentFrame], /*VkCommandBufferResetFlagBits*/ 0);
-    commandBuffers->record(currentFrame, framebuffers->getFramebuffers()[imageIndex], swapchain->getExtent());
+    commandBuffers->record(currentFrame, framebuffers->getFramebuffers()[imageIndex], swapchain->getExtent(),
+                         camera->getViewMatrix(), camera->getProjectionMatrix());
     
     VkSubmitInfo submitInfo{};
     submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
@@ -190,11 +242,17 @@ void Renderer::recreateSwapchain() {
     commandBuffers->create(swapchain->getImageViews().size());
     
     for (size_t i = 0; i < commandBuffers->getCommandBuffers().size(); i++) {
-        commandBuffers->record(i, framebuffers->getFramebuffers()[i], swapchain->getExtent());
+        commandBuffers->record(i, framebuffers->getFramebuffers()[i], swapchain->getExtent(),
+                             camera->getViewMatrix(), camera->getProjectionMatrix());
     }
 }
 
 void Renderer::cleanup() {
+    floorRenderer.reset();
+    physics.reset();
+    input.reset();
+    camera.reset();
+    
     syncObjects.reset();
     commandBuffers.reset();
     framebuffers.reset();
