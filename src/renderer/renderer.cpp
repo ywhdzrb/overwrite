@@ -118,9 +118,9 @@ void Renderer::initVulkan() {
     modelRenderer->create();
     // 加载 OBJ 模型
     try {
-        modelRenderer->loadModel("assets/models/ch.obj");
+        modelRenderer->loadModel("assets/models/洛茜.obj");
         modelRenderer->setPosition(glm::vec3(0.0f, 0.0f, -10.0f));
-        modelRenderer->setScale(glm::vec3(0.1f, 0.1f, 0.1f));
+        modelRenderer->setScale(glm::vec3(1.0f, 1.0f, 1.0f));
         modelRenderer->setRotation(0.0f, 180.0f, 0.0f);  // 旋转180度，使正面朝向相机
         std::cout << "[Renderer] OBJ 模型加载成功" << std::endl;
     } catch (const std::runtime_error& e) {

@@ -72,9 +72,9 @@ void VulkanPipeline::create() {
         
         attributeDescriptions.push_back(attributeDescription);
     } else {
-        // 标准：位置 + 颜色 + 纹理坐标（与 Vertex 结构匹配）
+        // 标准：位置 + 法线 + 颜色 + 纹理坐标（与 Vertex 结构匹配）
         bindingDescription.binding = 0;
-        bindingDescription.stride = sizeof(glm::vec3) * 2 + sizeof(glm::vec2);  // position + color + texCoord
+        bindingDescription.stride = sizeof(glm::vec3) * 3 + sizeof(glm::vec2);  // position + normal + color + texCoord
         bindingDescription.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
         
         // 位置属性（location = 0）
@@ -85,20 +85,28 @@ void VulkanPipeline::create() {
         positionAttr.offset = 0;
         attributeDescriptions.push_back(positionAttr);
         
-        // 颜色属性（location = 1）
+        // 法线属性（location = 1）
+        VkVertexInputAttributeDescription normalAttr{};
+        normalAttr.binding = 0;
+        normalAttr.location = 1;
+        normalAttr.format = VK_FORMAT_R32G32B32_SFLOAT;
+        normalAttr.offset = sizeof(glm::vec3);
+        attributeDescriptions.push_back(normalAttr);
+        
+        // 颜色属性（location = 2）
         VkVertexInputAttributeDescription colorAttr{};
         colorAttr.binding = 0;
-        colorAttr.location = 1;
+        colorAttr.location = 2;
         colorAttr.format = VK_FORMAT_R32G32B32_SFLOAT;
-        colorAttr.offset = sizeof(glm::vec3);
+        colorAttr.offset = sizeof(glm::vec3) * 2;
         attributeDescriptions.push_back(colorAttr);
         
-        // 纹理坐标属性（location = 2）
+        // 纹理坐标属性（location = 3）
         VkVertexInputAttributeDescription texCoordAttr{};
         texCoordAttr.binding = 0;
-        texCoordAttr.location = 2;
+        texCoordAttr.location = 3;
         texCoordAttr.format = VK_FORMAT_R32G32_SFLOAT;
-        texCoordAttr.offset = sizeof(glm::vec3) * 2;
+        texCoordAttr.offset = sizeof(glm::vec3) * 3;
         attributeDescriptions.push_back(texCoordAttr);
     }
     

@@ -13,15 +13,17 @@ namespace vgame {
 
 struct Vertex {
     glm::vec3 pos;
+    glm::vec3 normal;
     glm::vec3 color;
     glm::vec2 texCoord;
 
     bool operator==(const Vertex& other) const {
-        return pos == other.pos && color == other.color && texCoord == other.texCoord;
+        return pos == other.pos && normal == other.normal && 
+               color == other.color && texCoord == other.texCoord;
     }
 
     static VkVertexInputBindingDescription getBindingDescription();
-    static std::array<VkVertexInputAttributeDescription, 3> getAttributeDescriptions();
+    static std::array<VkVertexInputAttributeDescription, 4> getAttributeDescriptions();
 };
 
 } // namespace vgame
@@ -36,6 +38,9 @@ namespace std {
             h ^= std::hash<float>()(vertex.pos.x) + 0x9e3779b9 + (h << 6) + (h >> 2);
             h ^= std::hash<float>()(vertex.pos.y) + 0x9e3779b9 + (h << 6) + (h >> 2);
             h ^= std::hash<float>()(vertex.pos.z) + 0x9e3779b9 + (h << 6) + (h >> 2);
+            h ^= std::hash<float>()(vertex.normal.x) + 0x9e3779b9 + (h << 6) + (h >> 2);
+            h ^= std::hash<float>()(vertex.normal.y) + 0x9e3779b9 + (h << 6) + (h >> 2);
+            h ^= std::hash<float>()(vertex.normal.z) + 0x9e3779b9 + (h << 6) + (h >> 2);
             h ^= std::hash<float>()(vertex.color.x) + 0x9e3779b9 + (h << 6) + (h >> 2);
             h ^= std::hash<float>()(vertex.color.y) + 0x9e3779b9 + (h << 6) + (h >> 2);
             h ^= std::hash<float>()(vertex.color.z) + 0x9e3779b9 + (h << 6) + (h >> 2);
