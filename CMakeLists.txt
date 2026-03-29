@@ -68,6 +68,7 @@ set(SOURCES
     src/renderer/renderer.cpp
     src/renderer/model.cpp
     src/renderer/mesh.cpp
+    src/renderer/model_renderer.cpp
     src/renderer/floor_renderer.cpp
     src/renderer/cube_renderer.cpp
     src/renderer/skybox_renderer.cpp

@@ -7,6 +7,7 @@
 #include <vector>
 #include "vulkan_device.h"
 #include "model.h"
+#include "mesh.h"
 
 namespace vgame {
 
@@ -26,10 +27,6 @@ public:
                 const glm::mat4& viewMatrix, const glm::mat4& projectionMatrix);
 
 private:
-    void createVertexBuffer();
-    void createIndexBuffer();
-    void cleanupBuffers();
-
     struct PushConstants {
         glm::mat4 model;
         glm::mat4 view;
@@ -38,12 +35,7 @@ private:
 
     std::shared_ptr<VulkanDevice> device;
     std::unique_ptr<Model> model;
-
-    VkBuffer vertexBuffer;
-    VkDeviceMemory vertexBufferMemory;
-    VkBuffer indexBuffer;
-    VkDeviceMemory indexBufferMemory;
-    uint32_t indexCount;
+    std::unique_ptr<Mesh> mesh;
 
     glm::vec3 position;
     glm::vec3 scale;

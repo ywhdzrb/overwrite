@@ -72,9 +72,9 @@ void VulkanPipeline::create() {
         
         attributeDescriptions.push_back(attributeDescription);
     } else {
-        // 标准：位置 + 颜色
+        // 标准：位置 + 颜色 + 纹理坐标（与 Vertex 结构匹配）
         bindingDescription.binding = 0;
-        bindingDescription.stride = sizeof(glm::vec3) * 2;  // position + color
+        bindingDescription.stride = sizeof(glm::vec3) * 2 + sizeof(glm::vec2);  // position + color + texCoord
         bindingDescription.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
         
         // 位置属性（location = 0）
@@ -92,6 +92,14 @@ void VulkanPipeline::create() {
         colorAttr.format = VK_FORMAT_R32G32B32_SFLOAT;
         colorAttr.offset = sizeof(glm::vec3);
         attributeDescriptions.push_back(colorAttr);
+        
+        // 纹理坐标属性（location = 2）
+        VkVertexInputAttributeDescription texCoordAttr{};
+        texCoordAttr.binding = 0;
+        texCoordAttr.location = 2;
+        texCoordAttr.format = VK_FORMAT_R32G32_SFLOAT;
+        texCoordAttr.offset = sizeof(glm::vec3) * 2;
+        attributeDescriptions.push_back(texCoordAttr);
     }
     
     vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
