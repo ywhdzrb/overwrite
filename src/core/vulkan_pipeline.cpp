@@ -13,9 +13,13 @@ namespace vgame {
 // VulkanPipeline构造函数
 VulkanPipeline::VulkanPipeline(std::shared_ptr<VulkanDevice> device, VkRenderPass renderPass,
                                VkExtent2D swapchainExtent, const std::string& vertexShaderPath,
-                               const std::string& fragmentShaderPath)
+                               const std::string& fragmentShaderPath,
+                               VertexFormat format,
+                               VkDescriptorSetLayout descriptorSetLayout)
     : device(device), renderPass(renderPass), swapchainExtent(swapchainExtent),
-      vertexShaderPath(vertexShaderPath), fragmentShaderPath(fragmentShaderPath) {
+      vertexShaderPath(vertexShaderPath), fragmentShaderPath(fragmentShaderPath),
+      descriptorSetLayout(descriptorSetLayout) {
+    // 存储描述符集布局
 }
 
 // VulkanPipeline析构函数
@@ -46,28 +50,50 @@ void VulkanPipeline::create() {
     
     VkPipelineShaderStageCreateInfo shaderStages[] = {vertShaderStageInfo, fragShaderStageInfo};
     
-    // 定义顶点绑定描述（位置和颜色）
+    // 根据顶点格式设置顶点属性
     VkVertexInputBindingDescription bindingDescription{};
-    bindingDescription.binding = 0;
-    bindingDescription.stride = sizeof(glm::vec3) * 2;  // position + color
-    bindingDescription.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
-    
-    // 定义顶点属性描述
-    std::array<VkVertexInputAttributeDescription, 2> attributeDescriptions{};
-    
-    // 位置属性（location = 0）
-    attributeDescriptions[0].binding = 0;
-    attributeDescriptions[0].location = 0;
-    attributeDescriptions[0].format = VK_FORMAT_R32G32B32_SFLOAT;
-    attributeDescriptions[0].offset = 0;
-    
-    // 颜色属性（location = 1）
-    attributeDescriptions[1].binding = 0;
-    attributeDescriptions[1].location = 1;
-    attributeDescriptions[1].format = VK_FORMAT_R32G32B32_SFLOAT;
-    attributeDescriptions[1].offset = sizeof(glm::vec3);
-    
+    std::vector<VkVertexInputAttributeDescription> attributeDescriptions;
     VkPipelineVertexInputStateCreateInfo vertexInputInfo{};
+    
+    // 检查着色器名称来判断顶点格式（简单方法）
+    bool isSkybox = (vertexShaderPath.find("skybox") != std::string::npos);
+    
+    if (isSkybox) {
+        // 天空盒：仅位置
+        bindingDescription.binding = 0;
+        bindingDescription.stride = sizeof(glm::vec3);
+        bindingDescription.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+        
+        VkVertexInputAttributeDescription attributeDescription{};
+        attributeDescription.binding = 0;
+        attributeDescription.location = 0;
+        attributeDescription.format = VK_FORMAT_R32G32B32_SFLOAT;
+        attributeDescription.offset = 0;
+        
+        attributeDescriptions.push_back(attributeDescription);
+    } else {
+        // 标准：位置 + 颜色
+        bindingDescription.binding = 0;
+        bindingDescription.stride = sizeof(glm::vec3) * 2;  // position + color
+        bindingDescription.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+        
+        // 位置属性（location = 0）
+        VkVertexInputAttributeDescription positionAttr{};
+        positionAttr.binding = 0;
+        positionAttr.location = 0;
+        positionAttr.format = VK_FORMAT_R32G32B32_SFLOAT;
+        positionAttr.offset = 0;
+        attributeDescriptions.push_back(positionAttr);
+        
+        // 颜色属性（location = 1）
+        VkVertexInputAttributeDescription colorAttr{};
+        colorAttr.binding = 0;
+        colorAttr.location = 1;
+        colorAttr.format = VK_FORMAT_R32G32B32_SFLOAT;
+        colorAttr.offset = sizeof(glm::vec3);
+        attributeDescriptions.push_back(colorAttr);
+    }
+    
     vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
     vertexInputInfo.vertexBindingDescriptionCount = 1;
     vertexInputInfo.pVertexBindingDescriptions = &bindingDescription;
@@ -116,12 +142,20 @@ void VulkanPipeline::create() {
     multisampling.sampleShadingEnable = VK_FALSE;
     multisampling.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
     
-    // 深度测试状态
+// 深度测试状态
     VkPipelineDepthStencilStateCreateInfo depthStencil{};
     depthStencil.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
-    depthStencil.depthTestEnable = VK_TRUE;  // 启用深度测试
-    depthStencil.depthWriteEnable = VK_TRUE;  // 启用深度写入
-    depthStencil.depthCompareOp = VK_COMPARE_OP_LESS;  // 深度比较操作：小于时通过
+    if (isSkybox) {
+        // 天空盒：禁用深度写入，但启用深度测试（LEQUAL），确保天空盒在最远处
+        depthStencil.depthTestEnable = VK_TRUE;
+        depthStencil.depthWriteEnable = VK_FALSE;
+        depthStencil.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
+    } else {
+        // 标准物体：启用深度测试和写入
+        depthStencil.depthTestEnable = VK_TRUE;
+        depthStencil.depthWriteEnable = VK_TRUE;
+        depthStencil.depthCompareOp = VK_COMPARE_OP_LESS;
+    }
     depthStencil.depthBoundsTestEnable = VK_FALSE;
     depthStencil.minDepthBounds = 0.0f;
     depthStencil.maxDepthBounds = 1.0f;
@@ -132,7 +166,7 @@ void VulkanPipeline::create() {
     VkPipelineColorBlendAttachmentState colorBlendAttachment{};
     colorBlendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | 
                                           VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
-    colorBlendAttachment.blendEnable = VK_TRUE;
+    colorBlendAttachment.blendEnable = VK_FALSE;  // 禁用颜色混合
     colorBlendAttachment.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
     colorBlendAttachment.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
     colorBlendAttachment.colorBlendOp = VK_BLEND_OP_ADD;
@@ -151,12 +185,25 @@ void VulkanPipeline::create() {
     VkPushConstantRange pushConstantRange{};
     pushConstantRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
     pushConstantRange.offset = 0;
-    pushConstantRange.size = sizeof(glm::mat4) * 3;  // model + view + projection
+    
+    // 根据顶点格式设置 push constant 大小
+    if (isSkybox) {
+        pushConstantRange.size = sizeof(glm::mat4) * 2;  // view + projection (天空盒)
+    } else {
+        pushConstantRange.size = sizeof(glm::mat4) * 3;  // model + view + projection (标准)
+    }
     
     VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
     pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-    pipelineLayoutInfo.setLayoutCount = 0;
-    pipelineLayoutInfo.pSetLayouts = nullptr;
+    
+    // 设置描述符集布局
+    if (descriptorSetLayout != VK_NULL_HANDLE) {
+        pipelineLayoutInfo.setLayoutCount = 1;
+        pipelineLayoutInfo.pSetLayouts = &descriptorSetLayout;
+    } else {
+        pipelineLayoutInfo.setLayoutCount = 0;
+        pipelineLayoutInfo.pSetLayouts = nullptr;
+    }
     pipelineLayoutInfo.pushConstantRangeCount = 1;
     pipelineLayoutInfo.pPushConstantRanges = &pushConstantRange;
     

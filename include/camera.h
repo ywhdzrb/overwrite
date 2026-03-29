@@ -15,7 +15,14 @@ public:
 
     // 更新摄像机位置和方向
     void update(float deltaTime, bool moveForward, bool moveBackward, 
-                bool moveLeft, bool moveRight, bool jump);
+                bool moveLeft, bool moveRight, bool jump, bool freeCameraToggle,
+                bool shiftPressed, bool spaceHeld);
+    
+    // 切换自由视角模式
+    void toggleFreeCamera() { freeCameraMode = !freeCameraMode; }
+    
+    // 检查是否在自由视角模式
+    bool isFreeCameraMode() const { return freeCameraMode; }
     
     // 处理鼠标移动
     void processMouseMovement(float xOffset, float yOffset);
@@ -85,6 +92,10 @@ private:
     bool isJumping;
     float jumpForce;
     float gravity;
+    
+    // 自由视角模式
+    bool freeCameraMode;
+    float freeCameraSpeed;
 };
 
 } // namespace vgame

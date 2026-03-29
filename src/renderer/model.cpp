@@ -75,12 +75,17 @@ void Model::loadFromObj(const std::string& filename) {
                 attrib.vertices[3 * index.vertex_index + 1],
                 attrib.vertices[3 * index.vertex_index + 2]
             };
-            
-            vertex.texCoord = {
-                attrib.texcoords[2 * index.texcoord_index + 0],
-                1.0f - attrib.texcoords[2 * index.texcoord_index + 1]
-            };
-            
+
+            // 检查是否有纹理坐标
+            if (index.texcoord_index >= 0) {
+                vertex.texCoord = {
+                    attrib.texcoords[2 * index.texcoord_index + 0],
+                    1.0f - attrib.texcoords[2 * index.texcoord_index + 1]
+                };
+            } else {
+                vertex.texCoord = {0.0f, 0.0f};
+            }
+
             vertex.color = {1.0f, 1.0f, 1.0f};
             
             if (uniqueVertices.count(vertex) == 0) {
@@ -91,7 +96,7 @@ void Model::loadFromObj(const std::string& filename) {
             indices.push_back(uniqueVertices[vertex]);
         }
     }
-    
+
     std::cout << "Loaded model: " << filename << std::endl;
     std::cout << "Vertices: " << vertices.size() << std::endl;
     std::cout << "Indices: " << indices.size() << std::endl;

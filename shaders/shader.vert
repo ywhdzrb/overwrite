@@ -4,6 +4,8 @@
 layout(location = 0) in vec3 inPosition;
 // 顶点颜色属性（location = 1）
 layout(location = 1) in vec3 inColor;
+// 纹理坐标属性（location = 2）
+layout(location = 2) in vec2 inTexCoord;
 
 // Uniform 变量
 layout(push_constant) uniform PushConstants {
@@ -18,7 +20,10 @@ layout(location = 0) out vec3 fragColor;
 void main() {
     // 应用变换矩阵
     gl_Position = pushConstants.proj * pushConstants.view * pushConstants.model * vec4(inPosition, 1.0);
-    
+
+    // Vulkan的NDC坐标系Y轴是向下的，需要反转Y轴
+    gl_Position.y = -gl_Position.y;
+
     // 传递颜色到片段着色器
     fragColor = inColor;
 }

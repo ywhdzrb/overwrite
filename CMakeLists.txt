@@ -30,6 +30,7 @@ find_package(glm REQUIRED)
 
 # 使用本地 git submodule 的 tinyobjloader
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/external/tinyobjloader)
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/external)
 
 # ImGui
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/external/imgui)
@@ -69,6 +70,7 @@ set(SOURCES
     src/renderer/mesh.cpp
     src/renderer/floor_renderer.cpp
     src/renderer/cube_renderer.cpp
+    src/renderer/skybox_renderer.cpp
     src/renderer/imgui_manager.cpp
     src/utils/shader_compiler.cpp
     src/utils/logger.cpp
@@ -91,6 +93,8 @@ target_link_libraries(${PROJECT_NAME}
 set(SHADER_SOURCES
     shaders/shader.vert
     shaders/shader.frag
+    shaders/skybox.vert
+    shaders/skybox.frag
 )
 
 foreach(shader_file ${SHADER_SOURCES})

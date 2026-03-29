@@ -9,11 +9,18 @@ namespace vgame {
 
 class VulkanDevice;
 
+enum class VertexFormat {
+    POSITION_COLOR,  // 位置 + 颜色（标准）
+    POSITION_ONLY    // 仅位置（天空盒）
+};
+
 class VulkanPipeline {
 public:
     VulkanPipeline(std::shared_ptr<VulkanDevice> device, VkRenderPass renderPass, 
                    VkExtent2D swapchainExtent, const std::string& vertexShaderPath, 
-                   const std::string& fragmentShaderPath);
+                   const std::string& fragmentShaderPath,
+                   VertexFormat format = VertexFormat::POSITION_COLOR,
+                   VkDescriptorSetLayout descriptorSetLayout = VK_NULL_HANDLE);
     ~VulkanPipeline();
 
     // 禁止拷贝
@@ -38,7 +45,9 @@ private:
     
     VkPipeline graphicsPipeline = VK_NULL_HANDLE;
     VkPipelineLayout pipelineLayout = VK_NULL_HANDLE;
-};
+    VkDescriptorSetLayout descriptorSetLayout = VK_NULL_HANDLE;
+
+}; // end of class VulkanPipeline
 
 } // namespace vgame
 

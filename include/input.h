@@ -52,6 +52,9 @@ public:
     bool isJumpPressed() const { return keys[GLFW_KEY_SPACE]; }
     bool isJumpJustPressed() const { return jumpJustPressed; }
     bool isSprintPressed() const { return keys[GLFW_KEY_LEFT_SHIFT]; }
+    bool isFreeCameraJustPressed() const { 
+        return isKeyJustPressed(GLFW_KEY_R); 
+    }
 
 private:
     // 更新上一帧的状态

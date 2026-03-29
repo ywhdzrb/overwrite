@@ -4,6 +4,7 @@
 #include "vulkan_device.h"
 #include <stdexcept>
 #include <cstring>
+#include <iostream>
 
 namespace vgame {
 
@@ -34,15 +35,14 @@ void FloorRenderer::createVertexBuffer() {
     struct Vertex {
         glm::vec3 pos;
         glm::vec3 color;
-        glm::vec2 texCoord;
     };
     
     std::vector<Vertex> vertices = {
-        // Position          Color           TexCoord
-        {{-50.0f, 0.0f, -50.0f},  {0.5f, 0.5f, 0.5f},  {0.0f, 0.0f}},
-        {{ 50.0f, 0.0f, -50.0f},  {0.5f, 0.5f, 0.5f},  {50.0f, 0.0f}},
-        {{ 50.0f, 0.0f,  50.0f},  {0.5f, 0.5f, 0.5f},  {50.0f, 50.0f}},
-        {{-50.0f, 0.0f,  50.0f},  {0.5f, 0.5f, 0.5f},  {0.0f, 50.0f}},
+        // Position          Color
+        {{-50.0f, -3.0f, -50.0f},  {0.4f, 0.4f, 0.4f}},
+        {{ 50.0f, -3.0f, -50.0f},  {0.4f, 0.4f, 0.4f}},
+        {{ 50.0f, -3.0f,  50.0f},  {0.4f, 0.4f, 0.4f}},
+        {{-50.0f, -3.0f,  50.0f},  {0.4f, 0.4f, 0.4f}},
     };
     
     VkDeviceSize bufferSize = sizeof(vertices[0]) * vertices.size();

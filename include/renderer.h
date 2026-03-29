@@ -22,6 +22,7 @@
 #include "physics.h"
 #include "floor_renderer.h"
 #include "cube_renderer.h"
+#include "skybox_renderer.h"
 
 namespace vgame {
 
@@ -60,6 +61,7 @@ private:
     std::shared_ptr<VulkanFramebuffer> framebuffers;
     std::shared_ptr<VulkanCommandBuffer> commandBuffers;
     std::shared_ptr<VulkanSync> syncObjects;
+    std::shared_ptr<VulkanPipeline> skyboxPipeline;
 
     // 游戏逻辑组件
     std::unique_ptr<Camera> camera;
@@ -67,6 +69,7 @@ private:
     std::unique_ptr<Physics> physics;
     std::unique_ptr<FloorRenderer> floorRenderer;
     std::unique_ptr<CubeRenderer> cubeRenderer;
+    std::unique_ptr<SkyboxRenderer> skyboxRenderer;
     std::unique_ptr<ImGuiManager> imguiManager;
 
     // 时间管理
@@ -74,6 +77,12 @@ private:
     
     // FPS 管理
     float currentFPS = 0.0f;
+    
+    // 按键状态（在update之前检测，避免状态被重置）
+    bool jumpInput = false;
+    bool freeCameraToggle = false;
+    bool shiftInput = false;
+    bool spaceHeld = false;
 
     uint32_t currentFrame = 0;
     bool framebufferResized = false;

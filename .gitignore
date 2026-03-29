@@ -3,9 +3,11 @@ build/
 bin/
 out/
 
-# Compiled Object files
+# Compiled Object files (C/C++)
 *.o
-*.obj
+*.o.d
+
+# Note: *.obj is used for 3D model files, don't ignore them
 
 # Executables
 *.exe

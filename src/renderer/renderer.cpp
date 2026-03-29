@@ -2,6 +2,7 @@
 // 负责管理整个渲染流程，包括窗口创建、Vulkan初始化和渲染循环
 #include "imgui.h"
 #include "renderer.h"
+#include "skybox_renderer.h"
 #include <iostream>
 #include <stdexcept>
 #include <set>
@@ -101,12 +102,36 @@ void Renderer::initVulkan() {
     cubeRenderer = std::make_unique<CubeRenderer>(vulkanDevice);
     cubeRenderer->create();
     
+    // 初始化天空盒渲染器（在创建天空盒管线之前）
+    skyboxRenderer = std::make_unique<SkyboxRenderer>(vulkanDevice);
+    skyboxRenderer->create();
+    // 加载天空盒纹理（十字形布局）
+    try {
+        skyboxRenderer->loadCubemapFromCrossLayout("assets/textures/skybox.jpg");
+    } catch (const std::runtime_error& e) {
+        std::cout << "[Renderer] 天空盒纹理加载失败: " << e.what() << std::endl;
+        std::cout << "[Renderer] 将使用默认黑色背景" << std::endl;
+    }
+    
+    // 创建天空盒管线（需要天空盒渲染器的描述符集布局）
+    skyboxPipeline = std::make_shared<VulkanPipeline>(
+        vulkanDevice,
+        renderPass->getRenderPass(),
+        swapchain->getExtent(),
+        "shaders/skybox.vert.spv",
+        "shaders/skybox.frag.spv",
+        VertexFormat::POSITION_ONLY,
+        skyboxRenderer->getDescriptorSetLayout()
+    );
+    skyboxPipeline->create();
+    
     // 初始化 ImGui
     imguiManager = std::make_unique<ImGuiManager>(vulkanDevice, swapchain, renderPass, window);
     imguiManager->init();
     
-    // 设置立方体位置
-    cubeRenderer->setPosition(glm::vec3(0.0f, 0.5f, -2.0f));
+    // 设置立方体位置（在相机正前方）
+    glm::vec3 cubePos(0.0f, 0.0f, -1.0f);
+    cubeRenderer->setPosition(cubePos);
     
     // 初始化时间
     lastTime = std::chrono::high_resolution_clock::now();
@@ -159,17 +184,33 @@ void Renderer::mainLoop() {
             std::cout << "[Renderer] 鼠标已捕获" << std::endl;
         }
         
-        // 更新输入
-        input->update();
+        // 检测按键状态（在update之前，避免状态被重置）
         
-        // 处理鼠标移动
-        double mouseX, mouseY;
-        input->getRawMouseMovement(mouseX, mouseY);
+            jumpInput = input->isKeyJustPressed(GLFW_KEY_SPACE);
         
-        if (mouseX != 0.0 || mouseY != 0.0) {
-            camera->processMouseMovement(static_cast<float>(mouseX), static_cast<float>(mouseY));
-        }
+            freeCameraToggle = input->isKeyJustPressed(GLFW_KEY_R);
         
+                    
+        
+                    shiftInput = input->isSprintPressed();
+        
+                    
+        
+                    // 自由视角中需要持续检测空格键（用于长按上升）
+        
+                    spaceHeld = input->isKeyPressed(GLFW_KEY_SPACE);
+        
+                    
+        
+                    // 更新输入
+        
+                    input->update();            // 处理鼠标移动
+            double mouseX, mouseY;
+            input->getRawMouseMovement(mouseX, mouseY);
+            
+            if (mouseX != 0.0 || mouseY != 0.0) {
+                camera->processMouseMovement(static_cast<float>(mouseX), static_cast<float>(mouseY));
+            }        
         
         // 更新 ImGui
         imguiManager->newFrame();
@@ -206,15 +247,15 @@ void Renderer::updateGameLogic(float deltaTime) {
     float speed = input->isSprintPressed() ? 10.0f : 5.0f;
     camera->setMovementSpeed(speed);
     
-    // 使用 Input 类检测空格键
-    bool jumpInput = input->isJumpJustPressed();
-    
     camera->update(deltaTime,
                   input->isForwardPressed(),
                   input->isBackPressed(),
                   input->isLeftPressed(),
                   input->isRightPressed(),
-                  jumpInput);
+                  jumpInput,
+                  freeCameraToggle,
+                  shiftInput,
+                  spaceHeld);
     
     // 更新物理
     physics->update(deltaTime);
@@ -289,17 +330,26 @@ void Renderer::drawFrame() {
     scissor.extent = swapchain->getExtent();
     vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
     
-    // 渲染地板
-    floorRenderer->render(commandBuffer, graphicsPipeline->getPipelineLayout(),
-                         camera->getViewMatrix(), camera->getProjectionMatrix());
+    // 先渲染天空盒（背景）
+    if (skyboxRenderer && skyboxRenderer->getDescriptorSet() != VK_NULL_HANDLE) {
+        vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, skyboxPipeline->getPipeline());
+        skyboxRenderer->render(commandBuffer, skyboxRenderer->getPipelineLayout(),
+                             camera->getViewMatrix(), camera->getProjectionMatrix());
+        // 重新绑定主图形管线
+        vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline->getPipeline());
+    }
+    
+    // 禁用地板渲染
+    // floorRenderer->render(commandBuffer, graphicsPipeline->getPipelineLayout(),
+    //                      camera->getViewMatrix(), camera->getProjectionMatrix());
     
     // 渲染立方体
     cubeRenderer->render(commandBuffer, graphicsPipeline->getPipelineLayout(),
                         camera->getViewMatrix(), camera->getProjectionMatrix());
     
-    
     // 渲染 ImGui
     imguiManager->render(commandBuffer);
+    
     vkCmdEndRenderPass(commandBuffer);
     
     if (vkEndCommandBuffer(commandBuffer) != VK_SUCCESS) {
@@ -374,6 +424,9 @@ void Renderer::recreateSwapchain() {
     graphicsPipeline->cleanup();
     graphicsPipeline->create();
     
+    skyboxPipeline->cleanup();
+    skyboxPipeline->create();
+    
     framebuffers->recreate(swapchain->getImageViews(), swapchain->getExtent());
     
     commandBuffers->cleanup();
@@ -387,6 +440,7 @@ void Renderer::recreateSwapchain() {
 
 void Renderer::cleanup() {
     cubeRenderer.reset();
+    skyboxRenderer.reset();
     floorRenderer.reset();
     physics.reset();
     input.reset();
@@ -395,6 +449,7 @@ void Renderer::cleanup() {
     syncObjects.reset();
     commandBuffers.reset();
     framebuffers.reset();
+    skyboxPipeline.reset();
     graphicsPipeline.reset();
     renderPass.reset();
     swapchain.reset();
