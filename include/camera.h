@@ -48,8 +48,17 @@ public:
     // 设置摄像机位置
     void setPosition(const glm::vec3& pos) { position = pos; }
     
-    // 设置摄像机朝向
-    void setFront(const glm::vec3& f) { front = f; updateCameraVectors(); }
+    // 设置摄像机朝向（直接设置 front 向量）
+    void setFront(const glm::vec3& f) { front = f; }
+    
+    // 设置欧拉角（会重新计算 front 向量）
+    void setYaw(float y) { yaw = y; updateCameraVectors(); }
+    void setPitch(float p) { pitch = p; updateCameraVectors(); }
+    void setYawPitch(float y, float p) { yaw = y; pitch = p; updateCameraVectors(); }
+    
+    // 获取欧拉角
+    float getYaw() const { return yaw; }
+    float getPitch() const { return pitch; }
     
     // 设置摄像机速度
     void setMovementSpeed(float speed) { movementSpeed = speed; }

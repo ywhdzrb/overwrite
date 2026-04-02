@@ -669,7 +669,7 @@ void Renderer::updateGameLogic(float deltaTime) {
             auto& controller = ecsWorld->registry().get<ecs::CameraControllerComponent>(ecsWorld->getMainCamera());
             
             camera->setPosition(transform.position);
-            camera->setFront(transform.getFront());
+            camera->setYawPitch(transform.yaw, transform.pitch);
             camera->setMovementSpeed(controller.movementSpeed);
             camera->setMouseSensitivity(controller.mouseSensitivity);
         }
