@@ -45,7 +45,7 @@ public:
     VkImage getDepthImage() const { return depthImage; }
     VkImageView getDepthImageView() const { return depthImageView; }
 
-    void createDepthResources(VkExtent2D extent);
+    void createDepthResources(VkExtent2D extent, VkSampleCountFlagBits msaaSamples = VK_SAMPLE_COUNT_1_BIT);
     void cleanupDepthResources();
 
 private:

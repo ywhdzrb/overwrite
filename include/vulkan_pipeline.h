@@ -16,11 +16,12 @@ enum class VertexFormat {
 
 class VulkanPipeline {
 public:
-    VulkanPipeline(std::shared_ptr<VulkanDevice> device, VkRenderPass renderPass, 
-                   VkExtent2D swapchainExtent, const std::string& vertexShaderPath, 
+    VulkanPipeline(std::shared_ptr<VulkanDevice> device, VkRenderPass renderPass,
+                   VkExtent2D swapchainExtent, const std::string& vertexShaderPath,
                    const std::string& fragmentShaderPath,
                    VertexFormat format = VertexFormat::POSITION_COLOR,
-                   const std::vector<VkDescriptorSetLayout>& descriptorSetLayouts = {});
+                   const std::vector<VkDescriptorSetLayout>& descriptorSetLayouts = {},
+                   VkSampleCountFlagBits msaaSamples = VK_SAMPLE_COUNT_1_BIT);
     ~VulkanPipeline();
 
     // 禁止拷贝
@@ -42,7 +43,8 @@ private:
     VkExtent2D swapchainExtent;
     std::string vertexShaderPath;
     std::string fragmentShaderPath;
-    
+    VkSampleCountFlagBits msaaSamples;
+
     VkPipeline graphicsPipeline = VK_NULL_HANDLE;
     VkPipelineLayout pipelineLayout = VK_NULL_HANDLE;
     std::vector<VkDescriptorSetLayout> descriptorSetLayoutsList;

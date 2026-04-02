@@ -10,7 +10,7 @@ class VulkanDevice;
 
 class VulkanRenderPass {
 public:
-    VulkanRenderPass(std::shared_ptr<VulkanDevice> device, VkFormat swapchainImageFormat);
+    VulkanRenderPass(std::shared_ptr<VulkanDevice> device, VkFormat swapchainImageFormat, VkSampleCountFlagBits msaaSamples = VK_SAMPLE_COUNT_1_BIT);
     ~VulkanRenderPass();
 
     // 禁止拷贝
@@ -21,10 +21,13 @@ public:
     void cleanup();
     
     VkRenderPass getRenderPass() const { return renderPass; }
+    
+    void setMsaaSamples(VkSampleCountFlagBits samples) { msaaSamples = samples; }
 
 private:
     std::shared_ptr<VulkanDevice> device;
     VkFormat swapchainImageFormat;
+    VkSampleCountFlagBits msaaSamples = VK_SAMPLE_COUNT_1_BIT;  // 默认不使用MSAA
     VkRenderPass renderPass = VK_NULL_HANDLE;
 };
 

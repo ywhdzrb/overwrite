@@ -71,11 +71,33 @@ private:
      * @brief 更新光源 uniform buffer
      */
     void updateLightUniformBuffer();
+    
+    /**
+     * @brief 创建多重采样颜色缓冲区
+     */
+    void createColorResources();
+    
+    /**
+     * @brief 清理多重采样资源
+     */
+    void cleanupColorResources();
+    
+    /**
+     * @brief 设置MSAA采样数
+     */
+    void setMsaaSamples(VkSampleCountFlagBits samples);
 
     int windowWidth;
     int windowHeight;
     std::string windowTitle;
     GLFWwindow* window;
+    
+    // MSAA配置
+    VkSampleCountFlagBits msaaSamples = VK_SAMPLE_COUNT_1_BIT;
+    VkImage colorImage = VK_NULL_HANDLE;
+    VkDeviceMemory colorImageMemory = VK_NULL_HANDLE;
+    VkImageView colorImageView = VK_NULL_HANDLE;
+    VkFormat colorFormat;
 
     std::shared_ptr<VulkanInstance> vulkanInstance;
     std::shared_ptr<VulkanDevice> vulkanDevice;
@@ -118,15 +140,15 @@ private:
     bool framebufferResized = false;
 
     // 描述符相关
-    VkDescriptorSetLayout textureDescriptorSetLayout;
-    VkDescriptorSetLayout lightDescriptorSetLayout;
-    VkDescriptorPool descriptorPool;
-    VkDescriptorSet textureDescriptorSet;
-    VkDescriptorSet lightDescriptorSet;
+    VkDescriptorSetLayout textureDescriptorSetLayout = VK_NULL_HANDLE;
+    VkDescriptorSetLayout lightDescriptorSetLayout = VK_NULL_HANDLE;
+    VkDescriptorPool descriptorPool = VK_NULL_HANDLE;
+    VkDescriptorSet textureDescriptorSet = VK_NULL_HANDLE;
+    VkDescriptorSet lightDescriptorSet = VK_NULL_HANDLE;
     
     // 光源 uniform buffer
-    VkBuffer lightUniformBuffer;
-    VkDeviceMemory lightUniformBufferMemory;
+    VkBuffer lightUniformBuffer = VK_NULL_HANDLE;
+    VkDeviceMemory lightUniformBufferMemory = VK_NULL_HANDLE;
 
     static void framebufferResizeCallback(GLFWwindow* window, int width, int height);
 };

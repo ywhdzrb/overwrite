@@ -16,6 +16,8 @@ namespace vgame {
 // Renderer构造函数
 Renderer::Renderer(int width, int height, const std::string& title)
     : windowWidth(width), windowHeight(height), windowTitle(title) {
+    // 启用4x MSAA抗锯齿
+    msaaSamples = VK_SAMPLE_COUNT_4_BIT;
 }
 
 // Renderer析构函数
@@ -63,8 +65,13 @@ void Renderer::initVulkan() {
     swapchain = std::make_shared<VulkanSwapchain>(vulkanDevice, window);
     swapchain->create();
     
-    renderPass = std::make_shared<VulkanRenderPass>(vulkanDevice, swapchain->getImageFormat());
+    renderPass = std::make_shared<VulkanRenderPass>(vulkanDevice, swapchain->getImageFormat(), msaaSamples);
     renderPass->create();
+    
+    // 创建多重采样颜色资源（如果使用MSAA）
+    if (msaaSamples > VK_SAMPLE_COUNT_1_BIT) {
+        createColorResources();
+    }
     
     // 创建描述符集布局（必须在 graphicsPipeline 之前）
     createDescriptorSetLayouts();
@@ -77,15 +84,16 @@ void Renderer::initVulkan() {
         "shaders/shader.vert.spv",
         "shaders/shader.frag.spv",
         vgame::VertexFormat::POSITION_COLOR,
-        descriptorSetLayouts
+        descriptorSetLayouts,
+        msaaSamples
     );
     graphicsPipeline->create();
     
-    // 创建深度资源
-    vulkanDevice->createDepthResources(swapchain->getExtent());
+    // 创建深度资源（如果使用MSAA，也需要多重采样深度资源）
+    vulkanDevice->createDepthResources(swapchain->getExtent(), msaaSamples);
     
     framebuffers = std::make_shared<VulkanFramebuffer>(vulkanDevice, renderPass->getRenderPass());
-    framebuffers->create(swapchain->getImageViews(), swapchain->getExtent());
+    framebuffers->create(swapchain->getImageViews(), swapchain->getExtent(), colorImageView);
     
     commandBuffers = std::make_shared<VulkanCommandBuffer>(
         vulkanDevice,
@@ -156,7 +164,8 @@ void Renderer::initVulkan() {
         "shaders/skybox.vert.spv",
         "shaders/skybox.frag.spv",
         VertexFormat::POSITION_ONLY,
-        std::vector<VkDescriptorSetLayout>{skyboxRenderer->getDescriptorSetLayout()}
+        std::vector<VkDescriptorSetLayout>{skyboxRenderer->getDescriptorSetLayout()},
+        msaaSamples
     );
     skyboxPipeline->create();
     
@@ -362,9 +371,15 @@ void Renderer::drawFrame() {
     renderPassInfo.renderArea.extent = swapchain->getExtent();
     
     // 清除颜色和深度缓冲
-    std::array<VkClearValue, 2> clearValues{};
-    clearValues[0].color = {{0.0f, 0.0f, 0.0f, 1.0f}};  // 颜色清除值：黑色
-    clearValues[1].depthStencil = {1.0f, 0};  // 深度清除值：1.0（最远）
+    // 根据是否使用MSAA，清除值的数量不同
+    std::vector<VkClearValue> clearValues;
+    clearValues.push_back({{{0.0f, 0.0f, 0.0f, 1.0f}}});  // 颜色清除值：黑色
+    clearValues.push_back({{1.0f, 0}});  // 深度清除值：1.0（最远）
+    
+    // 如果使用MSAA，需要为解析附件添加清除值（虽然不会被使用，但数量必须匹配）
+    if (msaaSamples > VK_SAMPLE_COUNT_1_BIT) {
+        clearValues.push_back({{{0.0f, 0.0f, 0.0f, 1.0f}}});  // 解析附件清除值
+    }
     
     renderPassInfo.clearValueCount = static_cast<uint32_t>(clearValues.size());
     renderPassInfo.pClearValues = clearValues.data();
@@ -489,16 +504,27 @@ void Renderer::recreateSwapchain() {
     
     vkDeviceWaitIdle(vulkanDevice->getDevice());
     
+    // 清理MSAA颜色资源
+    if (msaaSamples > VK_SAMPLE_COUNT_1_BIT) {
+        cleanupColorResources();
+    }
+    
     // 清理并重新创建深度资源
     vulkanDevice->cleanupDepthResources();
     
     swapchain->recreate(window);
     
-    // 重新创建深度资源
-    vulkanDevice->createDepthResources(swapchain->getExtent());
+    // 重新创建深度资源（使用MSAA样本数）
+    vulkanDevice->createDepthResources(swapchain->getExtent(), msaaSamples);
     
+    // 重新创建渲染通道（使用MSAA样本数）
     renderPass->cleanup();
     renderPass->create();
+    
+    // 重新创建MSAA颜色资源
+    if (msaaSamples > VK_SAMPLE_COUNT_1_BIT) {
+        createColorResources();
+    }
     
     graphicsPipeline->cleanup();
     graphicsPipeline->create();
@@ -506,7 +532,7 @@ void Renderer::recreateSwapchain() {
     skyboxPipeline->cleanup();
     skyboxPipeline->create();
     
-    framebuffers->recreate(swapchain->getImageViews(), swapchain->getExtent());
+    framebuffers->recreate(swapchain->getImageViews(), swapchain->getExtent(), colorImageView);
     
     commandBuffers->cleanup();
     commandBuffers->create(swapchain->getImageViews().size());
@@ -555,6 +581,10 @@ void Renderer::cleanup() {
     
     syncObjects.reset();
     commandBuffers.reset();
+    
+    // 清理MSAA颜色资源
+    cleanupColorResources();
+    
     framebuffers.reset();
     skyboxPipeline.reset();
     graphicsPipeline.reset();
@@ -568,6 +598,82 @@ void Renderer::cleanup() {
     }
     
     glfwTerminate();
+}
+
+void Renderer::createColorResources() {
+    VkFormat colorFormat = swapchain->getImageFormat();
+    
+    VkImageCreateInfo imageInfo{};
+    imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+    imageInfo.imageType = VK_IMAGE_TYPE_2D;
+    imageInfo.extent.width = swapchain->getExtent().width;
+    imageInfo.extent.height = swapchain->getExtent().height;
+    imageInfo.extent.depth = 1;
+    imageInfo.mipLevels = 1;
+    imageInfo.arrayLayers = 1;
+    imageInfo.format = colorFormat;
+    imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+    imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    imageInfo.usage = VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+    imageInfo.samples = msaaSamples;
+    imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    
+    if (vkCreateImage(vulkanDevice->getDevice(), &imageInfo, nullptr, &colorImage) != VK_SUCCESS) {
+        throw std::runtime_error("failed to create color image!");
+    }
+    
+    VkMemoryRequirements memRequirements;
+    vkGetImageMemoryRequirements(vulkanDevice->getDevice(), colorImage, &memRequirements);
+    
+    VkMemoryAllocateInfo allocInfo{};
+    allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+    allocInfo.allocationSize = memRequirements.size;
+    allocInfo.memoryTypeIndex = vulkanDevice->findMemoryType(memRequirements.memoryTypeBits, 
+                                                       VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+    
+    if (vkAllocateMemory(vulkanDevice->getDevice(), &allocInfo, nullptr, &colorImageMemory) != VK_SUCCESS) {
+        throw std::runtime_error("failed to allocate color image memory!");
+    }
+    
+    vkBindImageMemory(vulkanDevice->getDevice(), colorImage, colorImageMemory, 0);
+    
+    VkImageViewCreateInfo imageViewInfo{};
+    imageViewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+    imageViewInfo.image = colorImage;
+    imageViewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+    imageViewInfo.format = colorFormat;
+    imageViewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    imageViewInfo.subresourceRange.baseMipLevel = 0;
+    imageViewInfo.subresourceRange.levelCount = 1;
+    imageViewInfo.subresourceRange.baseArrayLayer = 0;
+    imageViewInfo.subresourceRange.layerCount = 1;
+    
+    if (vkCreateImageView(vulkanDevice->getDevice(), &imageViewInfo, nullptr, &colorImageView) != VK_SUCCESS) {
+        throw std::runtime_error("failed to create color image view!");
+    }
+    
+    // 注意：MSAA颜色附件不需要单独的布局转换，渲染通道会自动处理
+}
+
+void Renderer::cleanupColorResources() {
+    if (colorImageView != VK_NULL_HANDLE) {
+        vkDestroyImageView(vulkanDevice->getDevice(), colorImageView, nullptr);
+        colorImageView = VK_NULL_HANDLE;
+    }
+    if (colorImage != VK_NULL_HANDLE) {
+        vkDestroyImage(vulkanDevice->getDevice(), colorImage, nullptr);
+        colorImage = VK_NULL_HANDLE;
+    }
+    if (colorImageMemory != VK_NULL_HANDLE) {
+        vkFreeMemory(vulkanDevice->getDevice(), colorImageMemory, nullptr);
+        colorImageMemory = VK_NULL_HANDLE;
+    }
+}
+
+void Renderer::setMsaaSamples(VkSampleCountFlagBits samples) {
+    msaaSamples = samples;
+    // 需要重新创建渲染通道和其他资源
+    recreateSwapchain();
 }
 
 void Renderer::createDescriptorSetLayouts() {

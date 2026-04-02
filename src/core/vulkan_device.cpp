@@ -268,7 +268,7 @@ void VulkanDevice::copyBufferToImage(VkBuffer buffer, VkImage image, uint32_t wi
     endSingleTimeCommands(commandBuffer);
 }
 
-void VulkanDevice::createDepthResources(VkExtent2D extent) {
+void VulkanDevice::createDepthResources(VkExtent2D extent, VkSampleCountFlagBits msaaSamples) {
     VkFormat depthFormat = VK_FORMAT_D32_SFLOAT;
     
     // 创建深度图像
@@ -284,7 +284,7 @@ void VulkanDevice::createDepthResources(VkExtent2D extent) {
     imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
     imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
     imageInfo.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
-    imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+    imageInfo.samples = msaaSamples;
     imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
     
     if (vkCreateImage(device, &imageInfo, nullptr, &depthImage) != VK_SUCCESS) {

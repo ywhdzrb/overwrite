@@ -15,9 +15,11 @@ VulkanPipeline::VulkanPipeline(std::shared_ptr<VulkanDevice> device, VkRenderPas
                                VkExtent2D swapchainExtent, const std::string& vertexShaderPath,
                                const std::string& fragmentShaderPath,
                                VertexFormat format,
-                               const std::vector<VkDescriptorSetLayout>& descriptorSetLayouts)
+                               const std::vector<VkDescriptorSetLayout>& descriptorSetLayouts,
+                               VkSampleCountFlagBits msaaSamples)
     : device(device), renderPass(renderPass), swapchainExtent(swapchainExtent),
-      vertexShaderPath(vertexShaderPath), fragmentShaderPath(fragmentShaderPath) {
+      vertexShaderPath(vertexShaderPath), fragmentShaderPath(fragmentShaderPath),
+      msaaSamples(msaaSamples) {
     // 存储描述符集布局
     descriptorSetLayoutsList = descriptorSetLayouts;
 }
@@ -156,7 +158,7 @@ void VulkanPipeline::create() {
     VkPipelineMultisampleStateCreateInfo multisampling{};
     multisampling.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
     multisampling.sampleShadingEnable = VK_FALSE;
-    multisampling.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+    multisampling.rasterizationSamples = msaaSamples;
     
 // 深度测试状态
     VkPipelineDepthStencilStateCreateInfo depthStencil{};
