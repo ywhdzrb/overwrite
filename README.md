@@ -165,7 +165,7 @@ cmake --build . -j$(nproc)
 - [x] MSAA 抗锯齿
 - [x] 开发者工具面板
 - [x] 中文字体支持
-- [ ] ECS 架构重构（EnTT）
+- [x] ECS 架构重构（EnTT）
 
 ### 第二阶段：玩家与世界
 
