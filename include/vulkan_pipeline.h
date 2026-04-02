@@ -33,6 +33,8 @@ public:
     
     VkPipeline getPipeline() const { return graphicsPipeline; }
     VkPipelineLayout getPipelineLayout() const { return pipelineLayout; }
+    
+    void setMsaaSamples(VkSampleCountFlagBits samples) { msaaSamples = samples; }
 
 private:
     VkShaderModule createShaderModule(const std::vector<char>& code);

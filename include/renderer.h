@@ -53,6 +53,11 @@ private:
     void updateGameLogic(float deltaTime);
     
     /**
+     * @brief 渲染开发者面板
+     */
+    void renderDeveloperPanel();
+    
+    /**
      * @brief 创建描述符集布局
      */
     void createDescriptorSetLayouts();
@@ -94,6 +99,7 @@ private:
     
     // MSAA配置
     VkSampleCountFlagBits msaaSamples = VK_SAMPLE_COUNT_1_BIT;
+    VkSampleCountFlagBits maxMsaaSamples = VK_SAMPLE_COUNT_1_BIT;  // 设备支持的最大采样数
     VkImage colorImage = VK_NULL_HANDLE;
     VkDeviceMemory colorImageMemory = VK_NULL_HANDLE;
     VkImageView colorImageView = VK_NULL_HANDLE;
@@ -129,12 +135,24 @@ private:
     
     // FPS 管理
     float currentFPS = 0.0f;
+    float frameTime = 0.0f;
+    float minFrameTime = 999.0f;
+    float maxFrameTime = 0.0f;
+    
+    // 开发者模式
+    bool developerMode = false;
+    bool wireframeMode = false;
+    bool pauseGame = false;
+    float timeScale = 1.0f;
+    float userMovementSpeed = 5.0f;  // 用户设置的移动速度（持久化）
+    float userSensitivity = 0.1f;     // 用户设置的鼠标灵敏度（持久化）
     
     // 按键状态（在update之前检测，避免状态被重置）
     bool jumpInput = false;
     bool freeCameraToggle = false;
     bool shiftInput = false;
     bool spaceHeld = false;
+    bool escJustPressed = false;
 
     uint32_t currentFrame = 0;
     bool framebufferResized = false;

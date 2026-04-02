@@ -62,6 +62,26 @@ void Renderer::initVulkan() {
         vulkanInstance->getSurface()
     );
     
+    // 获取设备支持的最大 MSAA 采样数
+    VkPhysicalDeviceProperties physicalDeviceProperties;
+    vkGetPhysicalDeviceProperties(vulkanInstance->getPhysicalDevice(), &physicalDeviceProperties);
+    VkSampleCountFlags counts = physicalDeviceProperties.limits.framebufferColorSampleCounts &
+                                physicalDeviceProperties.limits.framebufferDepthSampleCounts;
+    if (counts & VK_SAMPLE_COUNT_64_BIT) maxMsaaSamples = VK_SAMPLE_COUNT_64_BIT;
+    else if (counts & VK_SAMPLE_COUNT_32_BIT) maxMsaaSamples = VK_SAMPLE_COUNT_32_BIT;
+    else if (counts & VK_SAMPLE_COUNT_16_BIT) maxMsaaSamples = VK_SAMPLE_COUNT_16_BIT;
+    else if (counts & VK_SAMPLE_COUNT_8_BIT) maxMsaaSamples = VK_SAMPLE_COUNT_8_BIT;
+    else if (counts & VK_SAMPLE_COUNT_4_BIT) maxMsaaSamples = VK_SAMPLE_COUNT_4_BIT;
+    else if (counts & VK_SAMPLE_COUNT_2_BIT) maxMsaaSamples = VK_SAMPLE_COUNT_2_BIT;
+    else maxMsaaSamples = VK_SAMPLE_COUNT_1_BIT;
+    
+    // 确保初始 MSAA 不超过设备支持的最大值
+    if (msaaSamples > maxMsaaSamples) {
+        msaaSamples = maxMsaaSamples;
+    }
+    
+    std::cout << "[Renderer] 设备支持的最大 MSAA: " << maxMsaaSamples << std::endl;
+    
     swapchain = std::make_shared<VulkanSwapchain>(vulkanDevice, window);
     swapchain->create();
     
@@ -229,40 +249,87 @@ void Renderer::mainLoop() {
             deltaTime = 0.1f;
         }
         
-        // FPS 计算
-        frameCount++;
-        fpsTimer += deltaTime;
-        if (fpsTimer >= 1.0f) {  // 每秒更新一次
-            currentFPS = frameCount / fpsTimer;
-            std::cout << "[Renderer] FPS: " << static_cast<int>(currentFPS) << std::endl;
-            
-            frameCount = 0;
-            fpsTimer = 0.0f;
-        }
+                // FPS 计算
         
-        glfwPollEvents();
+                frameCount++;
         
-        // 第一帧后捕获鼠标
-        if (firstFrame) {
-            input->setCursorCaptured(true);
-            firstFrame = false;
-            glfwPollEvents();
-            std::cout << "[Renderer] 鼠标已捕获" << std::endl;
-        }
+                fpsTimer += deltaTime;
         
-        // 检测按键状态（在update之前，避免状态被重置）
+                if (fpsTimer >= 1.0f) {  // 每秒更新一次
         
-            jumpInput = input->isKeyJustPressed(GLFW_KEY_SPACE);
+                    currentFPS = frameCount / fpsTimer;
         
-            freeCameraToggle = input->isKeyJustPressed(GLFW_KEY_R);
+                    std::cout << "[Renderer] FPS: " << static_cast<int>(currentFPS) << std::endl;
         
                     
+        
+                    frameCount = 0;
+        
+                    fpsTimer = 0.0f;
+        
+                    // 重置帧时间统计
+        
+                    minFrameTime = 999.0f;
+        
+                    maxFrameTime = 0.0f;
+        
+                }
+        
+                
+        
+                glfwPollEvents();
+        
+                
+        
+                // 第一帧后捕获鼠标
+        
+                if (firstFrame) {
+        
+                    input->setCursorCaptured(true);
+        
+                    firstFrame = false;
+        
+                    glfwPollEvents();
+        
+                    std::cout << "[Renderer] 鼠标已捕获" << std::endl;
+        
+                }
+        
+                
+        
+                // 检测 ESC 键切换开发者模式
+        
+                if (input->isKeyJustPressed(GLFW_KEY_ESCAPE)) {
+        
+                    developerMode = !developerMode;
+        
+                    if (developerMode) {
+        
+                        input->setCursorCaptured(false);
+        
+                        std::cout << "[Renderer] 开发者模式已开启，鼠标已释放" << std::endl;
+        
+                    } else {
+        
+                        input->setCursorCaptured(true);
+        
+                        std::cout << "[Renderer] 开发者模式已关闭，鼠标已捕获" << std::endl;
+        
+                    }
+        
+                }
+        
+                
+        
+                // 检测按键状态（在update之前，避免状态被重置）
+        
+                if (!developerMode) {
+        
+                    jumpInput = input->isKeyJustPressed(GLFW_KEY_SPACE);
+        
+                    freeCameraToggle = input->isKeyJustPressed(GLFW_KEY_R);
         
                     shiftInput = input->isSprintPressed();
-        
-                    
-        
-                    // 自由视角中需要持续检测空格键（用于长按上升）
         
                     spaceHeld = input->isKeyPressed(GLFW_KEY_SPACE);
         
@@ -270,24 +337,73 @@ void Renderer::mainLoop() {
         
                     // 更新输入
         
-                    input->update();            // 处理鼠标移动
-            double mouseX, mouseY;
-            input->getRawMouseMovement(mouseX, mouseY);
-            
-            if (mouseX != 0.0 || mouseY != 0.0) {
-                camera->processMouseMovement(static_cast<float>(mouseX), static_cast<float>(mouseY));
-            }        
+                    input->update();
         
-        // 更新 ImGui
-        imguiManager->newFrame();
+                    
         
-        // 显示 FPS 窗口
-        ImGui::Begin("FPS", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings);
-        ImGui::Text("FPS: %.1f", currentFPS);
-        ImGui::SetWindowPos(ImVec2(10, 10), ImGuiCond_FirstUseEver);
-        ImGui::End();
-        // 更新游戏逻辑
-        updateGameLogic(deltaTime);
+                    // 处理鼠标移动
+        
+                    double mouseX, mouseY;
+        
+                    input->getRawMouseMovement(mouseX, mouseY);
+        
+                    
+        
+                    if (mouseX != 0.0 || mouseY != 0.0) {
+        
+                        camera->processMouseMovement(static_cast<float>(mouseX), static_cast<float>(mouseY));
+        
+                    }
+        
+                } else {
+        
+                    // 开发者模式下重置输入状态
+        
+                    jumpInput = false;
+        
+                    freeCameraToggle = false;
+        
+                    shiftInput = false;
+        
+                    spaceHeld = false;
+        
+                    input->update();
+        
+                }
+        
+                
+        
+                // 更新 ImGui
+        
+                imguiManager->newFrame();
+        
+                
+        
+                // 开发者模式下显示开发者面板，否则显示简单的FPS
+        
+                if (developerMode) {
+        
+                    renderDeveloperPanel();
+        
+                } else {
+        
+                    // 简单 FPS 显示
+        
+                    ImGui::Begin("FPS", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings);
+        
+                    ImGui::Text("FPS: %.1f", currentFPS);
+        
+                    ImGui::Text("Press ESC for Dev Mode");
+        
+                    ImGui::SetWindowPos(ImVec2(10, 10), ImGuiCond_FirstUseEver);
+        
+                    ImGui::End();
+        
+                }
+        // 更新游戏逻辑（应用时间缩放）
+        if (!pauseGame) {
+            updateGameLogic(deltaTime * timeScale);
+        }
         
         drawFrame();
         
@@ -296,7 +412,11 @@ void Renderer::mainLoop() {
         
         // 帧率限制：计算这一帧用了多少时间，如果少于目标时间则睡眠剩余时间
         auto frameEndTime = std::chrono::high_resolution_clock::now();
-        float frameTime = std::chrono::duration<float>(frameEndTime - frameStartTime).count();
+        frameTime = std::chrono::duration<float>(frameEndTime - frameStartTime).count();
+        
+        // 更新帧时间统计
+        if (frameTime < minFrameTime) minFrameTime = frameTime;
+        if (frameTime > maxFrameTime) maxFrameTime = frameTime;
         
         if (frameTime < targetFrameTime) {
             float sleepTime = targetFrameTime - frameTime;
@@ -310,7 +430,11 @@ void Renderer::mainLoop() {
 
 void Renderer::updateGameLogic(float deltaTime) {
     // 更新摄像机
-    float speed = input->isSprintPressed() ? 10.0f : 5.0f;
+    // 使用持久化的用户速度设置，shift 加速时临时加倍
+    float speed = userMovementSpeed;
+    if (!developerMode && input->isSprintPressed()) {
+        speed *= 2.0f;
+    }
     camera->setMovementSpeed(speed);
     
     camera->update(deltaTime,
@@ -517,7 +641,8 @@ void Renderer::recreateSwapchain() {
     // 重新创建深度资源（使用MSAA样本数）
     vulkanDevice->createDepthResources(swapchain->getExtent(), msaaSamples);
     
-    // 重新创建渲染通道（使用MSAA样本数）
+    // 更新渲染通道的MSAA样本数并重新创建
+    renderPass->setMsaaSamples(msaaSamples);
     renderPass->cleanup();
     renderPass->create();
     
@@ -526,9 +651,12 @@ void Renderer::recreateSwapchain() {
         createColorResources();
     }
     
+    // 更新管线的MSAA样本数并重新创建
+    graphicsPipeline->setMsaaSamples(msaaSamples);
     graphicsPipeline->cleanup();
     graphicsPipeline->create();
     
+    skyboxPipeline->setMsaaSamples(msaaSamples);
     skyboxPipeline->cleanup();
     skyboxPipeline->create();
     
@@ -885,6 +1013,378 @@ void Renderer::updateLightUniformBuffer() {
     memset(static_cast<char*>(data) + lightsSize + lightCountSize + padding1Size + ambientSize, 0, padding2Size);
 
     vkUnmapMemory(vulkanDevice->getDevice(), lightUniformBufferMemory);
+}
+
+void Renderer::renderDeveloperPanel() {
+    // 设置 ImGui 窗口样式
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 5.0f);
+    ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.1f, 0.1f, 0.15f, 0.95f));
+    
+    // 主菜单栏
+    if (ImGui::BeginMainMenuBar()) {
+        if (ImGui::BeginMenu("开发者工具")) {
+            ImGui::MenuItem("性能统计", nullptr, true);
+            ImGui::MenuItem("相机控制", nullptr, true);
+            ImGui::MenuItem("光源管理", nullptr, true);
+            ImGui::MenuItem("模型控制", nullptr, true);
+            ImGui::MenuItem("物理设置", nullptr, true);
+            ImGui::MenuItem("渲染设置", nullptr, true);
+            ImGui::Separator();
+            if (ImGui::MenuItem("关闭开发者模式 (ESC)")) {
+                developerMode = false;
+                input->setCursorCaptured(true);
+            }
+            ImGui::EndMenu();
+        }
+        ImGui::EndMainMenuBar();
+    }
+    
+    // ==================== 性能统计窗口 ====================
+    ImGui::SetNextWindowPos(ImVec2(10, 30), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize(ImVec2(300, 180), ImGuiCond_FirstUseEver);
+    ImGui::Begin("性能统计", nullptr, ImGuiWindowFlags_None);
+    
+    ImGui::TextColored(ImVec4(0.4f, 1.0f, 0.4f, 1.0f), "FPS: %.1f", currentFPS);
+    ImGui::Text("帧时间: %.2f ms", frameTime * 1000.0f);
+    ImGui::Text("最小帧时间: %.2f ms", minFrameTime * 1000.0f);
+    ImGui::Text("最大帧时间: %.2f ms", maxFrameTime * 1000.0f);
+    ImGui::Separator();
+    ImGui::Text("时间缩放: %.2fx", timeScale);
+    ImGui::SameLine();
+    if (ImGui::Button("-##time")) timeScale = std::max(0.1f, timeScale - 0.1f);
+    ImGui::SameLine();
+    if (ImGui::Button("+##time")) timeScale = std::min(4.0f, timeScale + 0.1f);
+    ImGui::SameLine();
+    if (ImGui::Button("重置")) timeScale = 1.0f;
+    
+    if (ImGui::Checkbox("暂停游戏", &pauseGame)) {
+        // 暂停状态切换
+    }
+    
+    ImGui::End();
+    
+    // ==================== 相机控制窗口 ====================
+    ImGui::SetNextWindowPos(ImVec2(10, 220), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize(ImVec2(300, 200), ImGuiCond_FirstUseEver);
+    ImGui::Begin("相机控制", nullptr, ImGuiWindowFlags_None);
+    
+    glm::vec3 camPos = camera->getPosition();
+    glm::vec3 camFront = camera->getFront();
+    
+    ImGui::Text("位置: (%.2f, %.2f, %.2f)", camPos.x, camPos.y, camPos.z);
+    ImGui::Text("朝向: (%.2f, %.2f, %.2f)", camFront.x, camFront.y, camFront.z);
+    
+    if (ImGui::SliderFloat("移动速度", &userMovementSpeed, 1.0f, 50.0f)) {
+        camera->setMovementSpeed(userMovementSpeed);
+    }
+    
+    if (ImGui::SliderFloat("鼠标灵敏度", &userSensitivity, 0.01f, 1.0f)) {
+        camera->setMouseSensitivity(userSensitivity);
+    }
+    
+    bool freeCam = camera->isFreeCameraMode();
+    if (ImGui::Checkbox("自由视角模式", &freeCam)) {
+        if (freeCam) camera->toggleFreeCamera();
+        else camera->toggleFreeCamera();
+    }
+    
+    if (ImGui::Button("重置相机位置")) {
+        camera->setPosition(glm::vec3(0.0f, 1.0f, 5.0f));
+    }
+    
+    ImGui::End();
+    
+    // ==================== 光源管理窗口 ====================
+    ImGui::SetNextWindowPos(ImVec2(320, 30), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize(ImVec2(350, 400), ImGuiCond_FirstUseEver);
+    ImGui::Begin("光源管理", nullptr, ImGuiWindowFlags_None);
+    
+    // 环境光设置
+    glm::vec3 ambient = lightManager->getAmbientColor();
+    float ambientIntensity = lightManager->getAmbientIntensity();
+    
+    ImGui::Text("环境光");
+    if (ImGui::ColorEdit3("颜色##ambient", &ambient.x)) {
+        lightManager->setAmbientColor(ambient);
+    }
+    if (ImGui::SliderFloat("强度##ambient", &ambientIntensity, 0.0f, 2.0f)) {
+        lightManager->setAmbientIntensity(ambientIntensity);
+    }
+    
+    ImGui::Separator();
+    ImGui::Text("光源列表 (%zu/%d)", lightManager->getLightCount(), LightManager::getMaxLights());
+    
+    // 显示所有光源
+    const auto& lights = lightManager->getLights();
+    static int selectedLight = -1;
+    
+    for (size_t i = 0; i < lights.size(); i++) {
+        const Light* light = lights[i].get();
+        if (!light) continue;
+        
+        bool selected = (selectedLight == (int)i);
+        std::string label = light->getName() + " (" + 
+            std::string(light->getType() == LightType::DIRECTIONAL ? "方向光" :
+                       light->getType() == LightType::POINT ? "点光源" : "聚光灯") + ")";
+        
+        if (ImGui::Selectable(label.c_str(), selected)) {
+            selectedLight = i;
+        }
+        
+        // 右键菜单
+        if (ImGui::BeginPopupContextItem()) {
+            if (ImGui::MenuItem("删除")) {
+                lightManager->removeLight(lightManager->getNextLightId() - lights.size() + i);
+                if (selectedLight >= (int)lights.size()) selectedLight = -1;
+            }
+            ImGui::EndPopup();
+        }
+    }
+    
+    // 编辑选中的光源
+    if (selectedLight >= 0 && selectedLight < (int)lights.size()) {
+        Light* light = lightManager->getLight(lightManager->getNextLightId() - lights.size() + selectedLight);
+        if (light) {
+            ImGui::Separator();
+            ImGui::Text("编辑: %s", light->getName().c_str());
+            
+            bool enabled = light->isEnabled();
+            if (ImGui::Checkbox("启用", &enabled)) {
+                light->setEnabled(enabled);
+            }
+            
+            glm::vec3 color = light->getColor();
+            if (ImGui::ColorEdit3("颜色", &color.x)) {
+                light->setColor(color);
+            }
+            
+            float intensity = light->getIntensity();
+            if (ImGui::SliderFloat("强度", &intensity, 0.0f, 10.0f)) {
+                light->setIntensity(intensity);
+            }
+            
+            if (light->getType() != LightType::DIRECTIONAL) {
+                glm::vec3 pos = light->getPosition();
+                if (ImGui::DragFloat3("位置", &pos.x, 0.1f)) {
+                    light->setPosition(pos);
+                }
+            }
+            
+            if (light->getType() == LightType::DIRECTIONAL || light->getType() == LightType::SPOT) {
+                glm::vec3 dir = light->getDirection();
+                if (ImGui::DragFloat3("方向", &dir.x, 0.1f)) {
+                    light->setDirection(dir);
+                }
+            }
+            
+            if (light->getType() == LightType::POINT || light->getType() == LightType::SPOT) {
+                if (ImGui::CollapsingHeader("衰减参数")) {
+                    float constant = light->getConstant();
+                    float linear = light->getLinear();
+                    float quadratic = light->getQuadratic();
+                    
+                    if (ImGui::SliderFloat("常数项", &constant, 0.0f, 2.0f)) {
+                        light->setConstant(constant);
+                    }
+                    if (ImGui::SliderFloat("线性项", &linear, 0.0f, 1.0f)) {
+                        light->setLinear(linear);
+                    }
+                    if (ImGui::SliderFloat("二次项", &quadratic, 0.0f, 1.0f)) {
+                        light->setQuadratic(quadratic);
+                    }
+                }
+            }
+        }
+    }
+    
+    ImGui::Separator();
+    // 添加新光源按钮
+    if (ImGui::Button("添加方向光")) {
+        lightManager->addDirectionalLight("dir_light_" + std::to_string(lightManager->getLightCount()),
+                                          glm::vec3(0.0f, -1.0f, 0.0f));
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("添加点光源")) {
+        lightManager->addPointLight("point_light_" + std::to_string(lightManager->getLightCount()),
+                                   camera->getPosition() + camera->getFront() * 3.0f);
+    }
+    
+    ImGui::End();
+    
+    // ==================== 模型控制窗口 ====================
+    ImGui::SetNextWindowPos(ImVec2(320, 440), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize(ImVec2(350, 250), ImGuiCond_FirstUseEver);
+    ImGui::Begin("模型控制", nullptr, ImGuiWindowFlags_None);
+    
+    // OBJ 模型控制
+    if (modelRenderer) {
+        if (ImGui::CollapsingHeader("OBJ 模型", ImGuiTreeNodeFlags_DefaultOpen)) {
+            static glm::vec3 modelPos(0.0f, 0.0f, -10.0f);
+            static glm::vec3 modelRot(0.0f, 180.0f, 0.0f);
+            static glm::vec3 modelScale(1.0f, 1.0f, 1.0f);
+            
+            if (ImGui::DragFloat3("位置##obj", &modelPos.x, 0.1f)) {
+                modelRenderer->setPosition(modelPos);
+            }
+            if (ImGui::DragFloat3("旋转##obj", &modelRot.x, 1.0f)) {
+                modelRenderer->setRotation(modelRot.x, modelRot.y, modelRot.z);
+            }
+            if (ImGui::DragFloat3("缩放##obj", &modelScale.x, 0.01f)) {
+                modelRenderer->setScale(modelScale);
+            }
+        }
+    }
+    
+    // GLTF 模型控制
+    if (gltfModel && gltfModel->getMeshCount() > 0) {
+        if (ImGui::CollapsingHeader("GLTF 模型", ImGuiTreeNodeFlags_DefaultOpen)) {
+            static glm::vec3 gltfPos(0.0f, 0.0f, -5.0f);
+            static glm::vec3 gltfRot(0.0f, 0.0f, 0.0f);
+            static glm::vec3 gltfScale(1.0f, 1.0f, 1.0f);
+            
+            if (ImGui::DragFloat3("位置##gltf", &gltfPos.x, 0.1f)) {
+                gltfModel->setPosition(gltfPos);
+            }
+            if (ImGui::DragFloat3("旋转##gltf", &gltfRot.x, 1.0f)) {
+                gltfModel->setRotation(gltfRot.x, gltfRot.y, gltfRot.z);
+            }
+            if (ImGui::DragFloat3("缩放##gltf", &gltfScale.x, 0.01f)) {
+                gltfModel->setScale(gltfScale);
+            }
+            
+            ImGui::Text("网格数: %zu", gltfModel->getMeshCount());
+        }
+    }
+    
+    // 立方体控制
+    if (cubeRenderer) {
+        if (ImGui::CollapsingHeader("立方体")) {
+            static glm::vec3 cubePos(0.0f, 0.0f, -1.0f);
+            
+            if (ImGui::DragFloat3("位置##cube", &cubePos.x, 0.1f)) {
+                cubeRenderer->setPosition(cubePos);
+            }
+        }
+    }
+    
+    ImGui::End();
+    
+    // ==================== 物理设置窗口 ====================
+    ImGui::SetNextWindowPos(ImVec2(680, 30), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize(ImVec2(280, 220), ImGuiCond_FirstUseEver);
+    ImGui::Begin("物理设置", nullptr, ImGuiWindowFlags_None);
+    
+    float gravity = camera->getGravity();
+    if (ImGui::SliderFloat("重力", &gravity, 0.0f, 50.0f)) {
+        camera->setGravity(gravity);
+        physics->setGravity(gravity);
+    }
+    
+    float groundHeight = camera->getGroundHeight();
+    if (ImGui::SliderFloat("地面高度", &groundHeight, -10.0f, 10.0f)) {
+        camera->setGroundHeight(groundHeight);
+        physics->setGroundHeight(groundHeight);
+    }
+    
+    float jumpForce = camera->getJumpForce();
+    if (ImGui::SliderFloat("跳跃力", &jumpForce, 0.0f, 20.0f)) {
+        camera->setJumpForce(jumpForce);
+    }
+    
+    ImGui::Text("碰撞体数量: %zu", physics->getCollisionBoxes().size());
+    
+    if (ImGui::Button("添加碰撞体")) {
+        physics->addCollisionBox(camera->getPosition() + camera->getFront() * 3.0f, 
+                                glm::vec3(1.0f, 1.0f, 1.0f));
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("清空碰撞体")) {
+        physics->clearCollisionBoxes();
+    }
+    
+    ImGui::End();
+    
+    // ==================== 渲染设置窗口 ====================
+    ImGui::SetNextWindowPos(ImVec2(680, 220), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize(ImVec2(280, 200), ImGuiCond_FirstUseEver);
+    ImGui::Begin("渲染设置", nullptr, ImGuiWindowFlags_None);
+    
+    // MSAA 设置 - 根据设备支持动态构建选项
+    std::vector<const char*> msaaLevelNames;
+    std::vector<VkSampleCountFlagBits> msaaLevelValues;
+    
+    msaaLevelNames.push_back("关闭");
+    msaaLevelValues.push_back(VK_SAMPLE_COUNT_1_BIT);
+    
+    if (maxMsaaSamples >= VK_SAMPLE_COUNT_2_BIT) {
+        msaaLevelNames.push_back("2x");
+        msaaLevelValues.push_back(VK_SAMPLE_COUNT_2_BIT);
+    }
+    if (maxMsaaSamples >= VK_SAMPLE_COUNT_4_BIT) {
+        msaaLevelNames.push_back("4x");
+        msaaLevelValues.push_back(VK_SAMPLE_COUNT_4_BIT);
+    }
+    if (maxMsaaSamples >= VK_SAMPLE_COUNT_8_BIT) {
+        msaaLevelNames.push_back("8x");
+        msaaLevelValues.push_back(VK_SAMPLE_COUNT_8_BIT);
+    }
+    if (maxMsaaSamples >= VK_SAMPLE_COUNT_16_BIT) {
+        msaaLevelNames.push_back("16x");
+        msaaLevelValues.push_back(VK_SAMPLE_COUNT_16_BIT);
+    }
+    
+    int currentMsaa = 0;
+    for (size_t i = 0; i < msaaLevelValues.size(); i++) {
+        if (msaaSamples == msaaLevelValues[i]) {
+            currentMsaa = i;
+            break;
+        }
+    }
+    
+    if (ImGui::Combo("MSAA", &currentMsaa, msaaLevelNames.data(), msaaLevelNames.size())) {
+        if (currentMsaa >= 0 && currentMsaa < (int)msaaLevelValues.size()) {
+            setMsaaSamples(msaaLevelValues[currentMsaa]);
+        }
+    }
+    
+    ImGui::Text("设备最大支持: %s", 
+        maxMsaaSamples == VK_SAMPLE_COUNT_64_BIT ? "64x" :
+        maxMsaaSamples == VK_SAMPLE_COUNT_32_BIT ? "32x" :
+        maxMsaaSamples == VK_SAMPLE_COUNT_16_BIT ? "16x" :
+        maxMsaaSamples == VK_SAMPLE_COUNT_8_BIT ? "8x" :
+        maxMsaaSamples == VK_SAMPLE_COUNT_4_BIT ? "4x" :
+        maxMsaaSamples == VK_SAMPLE_COUNT_2_BIT ? "2x" : "无");
+    
+    // 线框模式
+    ImGui::Checkbox("线框模式", &wireframeMode);
+    
+    // 窗口大小
+    ImGui::Text("窗口: %d x %d", windowWidth, windowHeight);
+    
+    // Vulkan 信息
+    ImGui::Separator();
+    ImGui::Text("Vulkan 信息");
+    ImGui::Text("当前帧: %u / %u", currentFrame, MAX_FRAMES_IN_FLIGHT);
+    ImGui::Text("交换链图像: %zu", swapchain->getImageViews().size());
+    
+    ImGui::End();
+    
+    // ==================== 快捷键帮助窗口 ====================
+    ImGui::SetNextWindowPos(ImVec2(680, 430), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize(ImVec2(280, 150), ImGuiCond_FirstUseEver);
+    ImGui::Begin("快捷键帮助", nullptr, ImGuiWindowFlags_None);
+    
+    ImGui::Text("ESC - 开启/关闭开发者模式");
+    ImGui::Text("WASD - 移动");
+    ImGui::Text("Space - 跳跃/上升");
+    ImGui::Text("Shift - 加速");
+    ImGui::Text("R - 切换自由视角");
+    ImGui::Text("Mouse - 视角控制");
+    
+    ImGui::End();
+    
+    ImGui::PopStyleColor();
+    ImGui::PopStyleVar();
 }
 
 void Renderer::framebufferResizeCallback(GLFWwindow* window, int width, int height) {

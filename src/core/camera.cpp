@@ -24,6 +24,7 @@ Camera::Camera(int windowWidth, int windowHeight)
       isJumping(false),
       jumpForce(5.5f),  // 跳跃初速度，可以跳到约1.5米高
       gravity(15.0f),  // 重力加速度，使下落更快
+      groundHeight(1.5f),  // 地面高度
       freeCameraMode(false),
       freeCameraSpeed(15.0f) {  // 自由视角速度更快
     updateCameraVectors();
@@ -71,7 +72,6 @@ void Camera::update(float deltaTime, bool moveForward, bool moveBackward,
     } else {
         // 普通模式：有物理限制
         // 处理跳跃（物理模拟）
-        const float groundHeight = 1.5f;  // 地面高度
 
         // 按下空格键且在地面附近时，开始跳跃
         if (jump && !isJumping && position.y <= groundHeight + 0.1f) {

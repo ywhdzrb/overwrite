@@ -30,6 +30,27 @@ void ImGuiManager::init() {
 
     // 设置风格
     ImGui::StyleColorsDark();
+    
+    // 加载中文字体
+    ImFontConfig config;
+    config.OversampleH = 2;
+    config.OversampleV = 1;
+    
+    // 尝试加载思源黑体
+    ImFont* font = io.Fonts->AddFontFromFileTTF(
+        "/usr/share/fonts/adobe-source-han-sans/SourceHanSansCN-Bold.otf",
+        18.0f, &config,
+        io.Fonts->GetGlyphRangesChineseFull()
+    );
+    
+    if (font) {
+        io.FontDefault = font;
+        std::cout << "[ImGuiManager] 中文字体加载成功" << std::endl;
+    } else {
+        // 回退到默认字体
+        io.Fonts->AddFontDefault();
+        std::cout << "[ImGuiManager] 使用默认字体" << std::endl;
+    }
 
     // 初始化 GLFW 后端
     ImGui_ImplGlfw_InitForVulkan(window, true);

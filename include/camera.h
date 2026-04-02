@@ -62,6 +62,18 @@ public:
     
     // 获取鼠标灵敏度
     float getMouseSensitivity() const { return mouseSensitivity; }
+    
+    // 设置重力
+    void setGravity(float g) { gravity = g; }
+    float getGravity() const { return gravity; }
+    
+    // 设置地面高度
+    void setGroundHeight(float h) { groundHeight = h; }
+    float getGroundHeight() const { return groundHeight; }
+    
+    // 设置跳跃力
+    void setJumpForce(float f) { jumpForce = f; }
+    float getJumpForce() const { return jumpForce; }
 
 private:
     // 更新摄像机向量
@@ -92,6 +104,7 @@ private:
     bool isJumping;
     float jumpForce;
     float gravity;
+    float groundHeight;  // 地面高度
     
     // 自由视角模式
     bool freeCameraMode;
