@@ -14,12 +14,17 @@ layout(push_constant) uniform PushConstants {
     mat4 model;
     mat4 view;
     mat4 proj;
+    vec3 baseColor;
+    float metallic;
+    float roughness;
+    int hasTexture;
 } pushConstants;
 
 // 输出到片段着色器
 layout(location = 0) out vec3 fragPos;       // 世界空间位置
 layout(location = 1) out vec3 fragNormal;    // 法线
 layout(location = 2) out vec3 fragColor;     // 颜色
+layout(location = 3) out vec2 fragTexCoord;  // 纹理坐标
 
 void main() {
     // 计算世界空间位置
@@ -38,4 +43,7 @@ void main() {
     
     // 传递颜色到片段着色器
     fragColor = inColor;
+    
+    // 传递纹理坐标
+    fragTexCoord = inTexCoord;
 }

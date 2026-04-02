@@ -17,7 +17,8 @@ public:
     ImGuiManager(std::shared_ptr<VulkanDevice> device,
                  std::shared_ptr<VulkanSwapchain> swapchain,
                  std::shared_ptr<VulkanRenderPass> renderPass,
-                 GLFWwindow* window);
+                 GLFWwindow* window,
+                 VkInstance instance);
     ~ImGuiManager();
 
     void init();
@@ -36,6 +37,7 @@ private:
     std::shared_ptr<VulkanSwapchain> swapchain;
     std::shared_ptr<VulkanRenderPass> mainRenderPass;
     GLFWwindow* window;
+    VkInstance instance;
 
     VkDescriptorPool descriptorPool = VK_NULL_HANDLE;
     VkRenderPass imguiRenderPass = VK_NULL_HANDLE;

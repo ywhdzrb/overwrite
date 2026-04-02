@@ -31,6 +31,7 @@ find_package(glm REQUIRED)
 # 使用本地 git submodule 的 tinyobjloader
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/external/tinyobjloader)
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/external)
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/external/tinygltf)
 
 # ImGui
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/external/imgui)
@@ -65,6 +66,8 @@ set(SOURCES
     src/core/camera.cpp
     src/core/input.cpp
     src/core/physics.cpp
+    src/core/light.cpp
+    src/core/light_manager.cpp
     src/renderer/renderer.cpp
     src/renderer/model.cpp
     src/renderer/mesh.cpp
@@ -73,8 +76,12 @@ set(SOURCES
     src/renderer/cube_renderer.cpp
     src/renderer/skybox_renderer.cpp
     src/renderer/imgui_manager.cpp
+    src/renderer/texture.cpp
+    src/renderer/texture_loader.cpp
+    src/renderer/gltf_model.cpp
     src/utils/shader_compiler.cpp
     src/utils/logger.cpp
+    external/tinygltf/tiny_gltf.cc
 )
 
 # 添加 ImGui 源文件

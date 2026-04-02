@@ -8,7 +8,7 @@
 #include <algorithm>
 
 // STB Image 用于加载纹理
-#define STB_IMAGE_IMPLEMENTATION
+// 注意：STB_IMAGE_IMPLEMENTATION 由 tinygltf.cc 提供
 #include "stb_image.h"
 
 namespace vgame {

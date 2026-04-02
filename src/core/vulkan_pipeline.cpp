@@ -15,11 +15,11 @@ VulkanPipeline::VulkanPipeline(std::shared_ptr<VulkanDevice> device, VkRenderPas
                                VkExtent2D swapchainExtent, const std::string& vertexShaderPath,
                                const std::string& fragmentShaderPath,
                                VertexFormat format,
-                               VkDescriptorSetLayout descriptorSetLayout)
+                               const std::vector<VkDescriptorSetLayout>& descriptorSetLayouts)
     : device(device), renderPass(renderPass), swapchainExtent(swapchainExtent),
-      vertexShaderPath(vertexShaderPath), fragmentShaderPath(fragmentShaderPath),
-      descriptorSetLayout(descriptorSetLayout) {
+      vertexShaderPath(vertexShaderPath), fragmentShaderPath(fragmentShaderPath) {
     // 存储描述符集布局
+    descriptorSetLayoutsList = descriptorSetLayouts;
 }
 
 // VulkanPipeline析构函数
@@ -199,27 +199,29 @@ void VulkanPipeline::create() {
     
     // 定义 push constant 范围（用于传递变换矩阵）
     VkPushConstantRange pushConstantRange{};
-    pushConstantRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+    pushConstantRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
     pushConstantRange.offset = 0;
     
     // 根据顶点格式设置 push constant 大小
     if (isSkybox) {
         pushConstantRange.size = sizeof(glm::mat4) * 2;  // view + projection (天空盒)
     } else {
-        pushConstantRange.size = sizeof(glm::mat4) * 3;  // model + view + projection (标准)
+        // PushConstants结构体大小计算：
+        // model(mat4) + view(mat4) + proj(mat4) + baseColor(vec3) + metallic(float) + roughness(float) + hasTexture(int) + _pad0(float)
+        // + lightPos(vec3) + lightIntensity(float) + lightColor(vec3) + _pad1(float) + ambientColor(vec3) + _pad2(float)
+        // = 64*3 + 12 + 4 + 4 + 4 + 4 + 12 + 4 + 12 + 4 + 12 + 4
+        // = 192 + 44 + 44
+        // = 280 bytes
+        pushConstantRange.size = 280;
     }
     
     VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
     pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
     
     // 设置描述符集布局
-    if (descriptorSetLayout != VK_NULL_HANDLE) {
-        pipelineLayoutInfo.setLayoutCount = 1;
-        pipelineLayoutInfo.pSetLayouts = &descriptorSetLayout;
-    } else {
-        pipelineLayoutInfo.setLayoutCount = 0;
-        pipelineLayoutInfo.pSetLayouts = nullptr;
-    }
+    pipelineLayoutInfo.setLayoutCount = static_cast<uint32_t>(descriptorSetLayoutsList.size());
+    pipelineLayoutInfo.pSetLayouts = descriptorSetLayoutsList.empty() ? nullptr : descriptorSetLayoutsList.data();
+    
     pipelineLayoutInfo.pushConstantRangeCount = 1;
     pipelineLayoutInfo.pPushConstantRanges = &pushConstantRange;
     

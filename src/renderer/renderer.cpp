@@ -3,6 +3,7 @@
 #include "imgui.h"
 #include "renderer.h"
 #include "skybox_renderer.h"
+#include "logger.h"
 #include <iostream>
 #include <stdexcept>
 #include <set>
@@ -65,12 +66,18 @@ void Renderer::initVulkan() {
     renderPass = std::make_shared<VulkanRenderPass>(vulkanDevice, swapchain->getImageFormat());
     renderPass->create();
     
+    // 创建描述符集布局（必须在 graphicsPipeline 之前）
+    createDescriptorSetLayouts();
+    
+    std::vector<VkDescriptorSetLayout> descriptorSetLayouts = {textureDescriptorSetLayout, lightDescriptorSetLayout};
     graphicsPipeline = std::make_shared<VulkanPipeline>(
         vulkanDevice,
         renderPass->getRenderPass(),
         swapchain->getExtent(),
         "shaders/shader.vert.spv",
-        "shaders/shader.frag.spv"
+        "shaders/shader.frag.spv",
+        vgame::VertexFormat::POSITION_COLOR,
+        descriptorSetLayouts
     );
     graphicsPipeline->create();
     
@@ -102,6 +109,20 @@ void Renderer::initVulkan() {
     cubeRenderer = std::make_unique<CubeRenderer>(vulkanDevice);
     cubeRenderer->create();
     
+    // 初始化纹理加载器
+    textureLoader = std::make_shared<TextureLoader>(vulkanDevice);
+    
+    // 初始化光源管理器
+    lightManager = std::make_unique<LightManager>();
+    // 添加默认方向光（类似太阳光）- 纯白色
+    lightManager->addDirectionalLight("sun", glm::vec3(0.5f, -1.0f, 0.5f), glm::vec3(1.0f, 1.0f, 1.0f), 1.0f);
+    // 添加几个点光源 - 纯白色
+    lightManager->addPointLight("point1", glm::vec3(2.0f, 3.0f, 2.0f), glm::vec3(1.0f, 1.0f, 1.0f), 2.0f, 10.0f);
+    lightManager->addPointLight("point2", glm::vec3(-2.0f, 3.0f, -2.0f), glm::vec3(1.0f, 1.0f, 1.0f), 2.0f, 10.0f);
+    // 设置环境光为纯白色
+    lightManager->setAmbientColor(glm::vec3(0.5f, 0.5f, 0.5f));
+    lightManager->setAmbientIntensity(0.5f);
+    
     // 初始化天空盒渲染器（在创建天空盒管线之前）
     skyboxRenderer = std::make_unique<SkyboxRenderer>(vulkanDevice);
     skyboxRenderer->create();
@@ -114,7 +135,7 @@ void Renderer::initVulkan() {
     }
     
     // 初始化模型渲染器
-    modelRenderer = std::make_unique<ModelRenderer>(vulkanDevice);
+    modelRenderer = std::make_unique<ModelRenderer>(vulkanDevice, textureLoader);
     modelRenderer->create();
     // 加载 OBJ 模型
     try {
@@ -135,12 +156,34 @@ void Renderer::initVulkan() {
         "shaders/skybox.vert.spv",
         "shaders/skybox.frag.spv",
         VertexFormat::POSITION_ONLY,
-        skyboxRenderer->getDescriptorSetLayout()
+        std::vector<VkDescriptorSetLayout>{skyboxRenderer->getDescriptorSetLayout()}
     );
     skyboxPipeline->create();
     
+    // 创建描述符集布局
+    createDescriptorSetLayouts();
+    
+    // 创建描述符池
+    createDescriptorPool();
+    
+    // 初始化GLTF模型（在创建描述符集之前）
+    gltfModel = std::make_unique<GLTFModel>(vulkanDevice, textureLoader);
+    // 尝试加载GLTF模型（如果有）
+    try {
+        if (gltfModel->loadFromFile("assets/models/sample.gltf")) {
+            gltfModel->setPosition(glm::vec3(0.0f, 0.0f, -5.0f));  // 恢复到原来的位置
+            gltfModel->setScale(glm::vec3(1.0f, 1.0f, 1.0f));  // 恢复原来的缩放
+            std::cout << "[Renderer] GLTF模型加载成功" << std::endl;
+        }
+    } catch (const std::runtime_error& e) {
+        std::cout << "[Renderer] GLTF模型加载失败: " << e.what() << std::endl;
+    }
+    
+    // 创建描述符集
+    createDescriptorSets();
+    
     // 初始化 ImGui
-    imguiManager = std::make_unique<ImGuiManager>(vulkanDevice, swapchain, renderPass, window);
+    imguiManager = std::make_unique<ImGuiManager>(vulkanDevice, swapchain, renderPass, window, vulkanInstance->getInstance());
     imguiManager->init();
     
     // 设置立方体位置（在相机正前方）
@@ -357,6 +400,15 @@ void Renderer::drawFrame() {
     // floorRenderer->render(commandBuffer, graphicsPipeline->getPipelineLayout(),
     //                      camera->getViewMatrix(), camera->getProjectionMatrix());
     
+    // 更新光源 uniform buffer
+    updateLightUniformBuffer();
+    
+    // 绑定描述符集（纹理 + 光源）
+    vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                           graphicsPipeline->getPipelineLayout(), 0, 1, &textureDescriptorSet, 0, nullptr);
+    vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                           graphicsPipeline->getPipelineLayout(), 1, 1, &lightDescriptorSet, 0, nullptr);
+    
     // 渲染立方体
     cubeRenderer->render(commandBuffer, graphicsPipeline->getPipelineLayout(),
                         camera->getViewMatrix(), camera->getProjectionMatrix());
@@ -365,6 +417,13 @@ void Renderer::drawFrame() {
     if (modelRenderer) {
         modelRenderer->render(commandBuffer, graphicsPipeline->getPipelineLayout(),
                             camera->getViewMatrix(), camera->getProjectionMatrix());
+    }
+    
+    // 渲染 GLTF 模型（如果有）
+    if (gltfModel && gltfModel->getMeshCount() > 0) {
+        gltfModel->render(commandBuffer, graphicsPipeline->getPipelineLayout(),
+                        camera->getViewMatrix(), camera->getProjectionMatrix(),
+                        gltfModel->getModelMatrix());
     }
     
     // 渲染 ImGui
@@ -459,6 +518,11 @@ void Renderer::recreateSwapchain() {
 }
 
 void Renderer::cleanup() {
+    // 等待设备空闲，确保所有渲染操作完成
+    if (vulkanDevice) {
+        vkDeviceWaitIdle(vulkanDevice->getDevice());
+    }
+    
     cubeRenderer.reset();
     modelRenderer.reset();
     skyboxRenderer.reset();
@@ -466,6 +530,28 @@ void Renderer::cleanup() {
     physics.reset();
     input.reset();
     camera.reset();
+    
+    // 清理新系统
+    gltfModel.reset();
+    lightManager.reset();
+    textureLoader.reset();
+    
+    // 清理描述符集资源
+    if (lightUniformBuffer != VK_NULL_HANDLE) {
+        vkDestroyBuffer(vulkanDevice->getDevice(), lightUniformBuffer, nullptr);
+    }
+    if (lightUniformBufferMemory != VK_NULL_HANDLE) {
+        vkFreeMemory(vulkanDevice->getDevice(), lightUniformBufferMemory, nullptr);
+    }
+    if (descriptorPool != VK_NULL_HANDLE) {
+        vkDestroyDescriptorPool(vulkanDevice->getDevice(), descriptorPool, nullptr);
+    }
+    if (lightDescriptorSetLayout != VK_NULL_HANDLE) {
+        vkDestroyDescriptorSetLayout(vulkanDevice->getDevice(), lightDescriptorSetLayout, nullptr);
+    }
+    if (textureDescriptorSetLayout != VK_NULL_HANDLE) {
+        vkDestroyDescriptorSetLayout(vulkanDevice->getDevice(), textureDescriptorSetLayout, nullptr);
+    }
     
     syncObjects.reset();
     commandBuffers.reset();
@@ -482,6 +568,217 @@ void Renderer::cleanup() {
     }
     
     glfwTerminate();
+}
+
+void Renderer::createDescriptorSetLayouts() {
+    // 1. 创建纹理描述符集布局 (set = 0, binding = 0)
+    VkDescriptorSetLayoutBinding samplerLayoutBinding{};
+    samplerLayoutBinding.binding = 0;
+    samplerLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    samplerLayoutBinding.descriptorCount = 1;
+    samplerLayoutBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+    samplerLayoutBinding.pImmutableSamplers = nullptr;
+
+    std::array<VkDescriptorSetLayoutBinding, 1> textureBindings = {samplerLayoutBinding};
+
+    VkDescriptorSetLayoutCreateInfo textureLayoutInfo{};
+    textureLayoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    textureLayoutInfo.bindingCount = static_cast<uint32_t>(textureBindings.size());
+    textureLayoutInfo.pBindings = textureBindings.data();
+
+    if (vkCreateDescriptorSetLayout(vulkanDevice->getDevice(), &textureLayoutInfo, nullptr, &textureDescriptorSetLayout) != VK_SUCCESS) {
+        throw std::runtime_error("failed to create texture descriptor set layout!");
+    }
+
+    // 2. 创建光源描述符集布局 (set = 1, binding = 0)
+    // 光源 uniform buffer
+    VkDescriptorSetLayoutBinding lightBinding{};
+    lightBinding.binding = 0;
+    lightBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    lightBinding.descriptorCount = 1;
+    lightBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+    lightBinding.pImmutableSamplers = nullptr;
+
+    std::array<VkDescriptorSetLayoutBinding, 1> lightBindings = {lightBinding};
+
+    VkDescriptorSetLayoutCreateInfo lightLayoutInfo{};
+    lightLayoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    lightLayoutInfo.bindingCount = static_cast<uint32_t>(lightBindings.size());
+    lightLayoutInfo.pBindings = lightBindings.data();
+
+    if (vkCreateDescriptorSetLayout(vulkanDevice->getDevice(), &lightLayoutInfo, nullptr, &lightDescriptorSetLayout) != VK_SUCCESS) {
+        throw std::runtime_error("failed to create light descriptor set layout!");
+    }
+}
+
+void Renderer::createDescriptorPool() {
+    // 描述符池大小
+    std::array<VkDescriptorPoolSize, 2> poolSizes{};
+    
+    // 纹理描述符
+    poolSizes[0].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    poolSizes[0].descriptorCount = 1;
+    
+    // 光源 uniform buffer
+    poolSizes[1].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    poolSizes[1].descriptorCount = 1;
+
+    VkDescriptorPoolCreateInfo poolInfo{};
+    poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+    poolInfo.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
+    poolInfo.pPoolSizes = poolSizes.data();
+    poolInfo.maxSets = 2;  // 2 个描述符集（纹理 + 光源）
+
+    if (vkCreateDescriptorPool(vulkanDevice->getDevice(), &poolInfo, nullptr, &descriptorPool) != VK_SUCCESS) {
+        throw std::runtime_error("failed to create descriptor pool!");
+    }
+}
+
+void Renderer::createDescriptorSets() {
+    // 1. 创建纹理描述符集
+    VkDescriptorSetAllocateInfo textureAllocInfo{};
+    textureAllocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+    textureAllocInfo.descriptorPool = descriptorPool;
+    textureAllocInfo.descriptorSetCount = 1;
+    textureAllocInfo.pSetLayouts = &textureDescriptorSetLayout;
+
+    if (vkAllocateDescriptorSets(vulkanDevice->getDevice(), &textureAllocInfo, &textureDescriptorSet) != VK_SUCCESS) {
+        throw std::runtime_error("failed to allocate texture descriptor set!");
+    }
+
+    Logger::info("Texture descriptor set allocated successfully");
+    
+    // 使用 GLTF 模型的纹理更新描述符集
+    if (gltfModel && gltfModel->getMeshCount() > 0) {
+        std::shared_ptr<Texture> gltfTexture = gltfModel->getFirstTexture();
+        if (gltfTexture) {
+            Logger::info("Updating texture descriptor set with GLTF texture");
+            
+            VkDescriptorImageInfo imageInfo{};
+            imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+            imageInfo.imageView = gltfTexture->getImageView();
+            imageInfo.sampler = gltfTexture->getSampler();
+
+            VkWriteDescriptorSet textureDescriptorWrite{};
+            textureDescriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            textureDescriptorWrite.dstSet = textureDescriptorSet;
+            textureDescriptorWrite.dstBinding = 0;
+            textureDescriptorWrite.dstArrayElement = 0;
+            textureDescriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+            textureDescriptorWrite.descriptorCount = 1;
+            textureDescriptorWrite.pImageInfo = &imageInfo;
+
+            vkUpdateDescriptorSets(vulkanDevice->getDevice(), 1, &textureDescriptorWrite, 0, nullptr);
+            Logger::info("Texture descriptor set updated successfully");
+        } else {
+            Logger::warning("GLTF model has no textures, using default");
+        }
+    } else {
+        Logger::warning("No GLTF model loaded, using default texture");
+    }
+
+    // 2. 创建光源 uniform buffer（std140 布局）
+    // 计算正确的 buffer 大小
+    size_t lightsSize = sizeof(ShaderLight) * 16;  // 16 个光源 = 1536 bytes
+    size_t lightCountSize = sizeof(int);  // 4 bytes
+    size_t padding1Size = 12;  // 12 bytes padding (16字节对齐)
+    size_t ambientSize = sizeof(glm::vec3);  // 12 bytes
+    size_t padding2Size = 4;  // 4 bytes padding (16字节对齐)
+    VkDeviceSize bufferSize = lightsSize + lightCountSize + padding1Size + ambientSize + padding2Size;  // 1568 bytes
+    
+    Logger::info("Creating light uniform buffer: size=" + std::to_string(bufferSize));
+    
+    VkBufferCreateInfo bufferInfo{};
+    bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    bufferInfo.size = bufferSize;
+    bufferInfo.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+    bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+    if (vkCreateBuffer(vulkanDevice->getDevice(), &bufferInfo, nullptr, &lightUniformBuffer) != VK_SUCCESS) {
+        throw std::runtime_error("failed to create light uniform buffer!");
+    }
+
+    VkMemoryRequirements memRequirements;
+    vkGetBufferMemoryRequirements(vulkanDevice->getDevice(), lightUniformBuffer, &memRequirements);
+
+    VkMemoryAllocateInfo allocInfo{};
+    allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+    allocInfo.allocationSize = memRequirements.size;
+    allocInfo.memoryTypeIndex = vulkanDevice->findMemoryType(memRequirements.memoryTypeBits, 
+                                                          VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+
+    if (vkAllocateMemory(vulkanDevice->getDevice(), &allocInfo, nullptr, &lightUniformBufferMemory) != VK_SUCCESS) {
+        vkDestroyBuffer(vulkanDevice->getDevice(), lightUniformBuffer, nullptr);
+        throw std::runtime_error("failed to allocate light uniform buffer memory!");
+    }
+
+    vkBindBufferMemory(vulkanDevice->getDevice(), lightUniformBuffer, lightUniformBufferMemory, 0);
+
+    // 3. 创建光源描述符集
+    VkDescriptorSetAllocateInfo lightAllocInfo{};
+    lightAllocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+    lightAllocInfo.descriptorPool = descriptorPool;
+    lightAllocInfo.descriptorSetCount = 1;
+    lightAllocInfo.pSetLayouts = &lightDescriptorSetLayout;
+
+    if (vkAllocateDescriptorSets(vulkanDevice->getDevice(), &lightAllocInfo, &lightDescriptorSet) != VK_SUCCESS) {
+        throw std::runtime_error("failed to allocate light descriptor set!");
+    }
+
+    // 更新光源描述符集
+    VkDescriptorBufferInfo bufferInfo2{};
+    bufferInfo2.buffer = lightUniformBuffer;
+    bufferInfo2.offset = 0;
+    bufferInfo2.range = bufferSize;
+
+    VkWriteDescriptorSet lightDescriptorWrite{};
+    lightDescriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    lightDescriptorWrite.dstSet = lightDescriptorSet;
+    lightDescriptorWrite.dstBinding = 0;
+    lightDescriptorWrite.dstArrayElement = 0;
+    lightDescriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    lightDescriptorWrite.descriptorCount = 1;
+    lightDescriptorWrite.pBufferInfo = &bufferInfo2;
+
+    vkUpdateDescriptorSets(vulkanDevice->getDevice(), 1, &lightDescriptorWrite, 0, nullptr);
+    
+    // 初始化光源数据
+    updateLightUniformBuffer();
+}
+
+void Renderer::updateLightUniformBuffer() {
+    // 获取光源数据
+    ShaderLightArray lights = lightManager->getShaderLightData();
+    int lightCount = lightManager->getEnabledLightCount();
+    glm::vec3 ambientColor = lightManager->getAmbient();
+
+    // 计算正确的 buffer 大小（std140 布局）
+    // ShaderLight 现在是 96 字节 (16 * 6)
+    size_t lightsSize = sizeof(ShaderLight) * 16;  // 16 个光源 = 1536 bytes
+    size_t lightCountSize = sizeof(int);  // 4 bytes
+    size_t padding1Size = 12;  // 12 bytes padding (16字节对齐)
+    size_t ambientSize = sizeof(glm::vec3);  // 12 bytes
+    size_t padding2Size = 4;  // 4 bytes padding (16字节对齐)
+    size_t totalSize = lightsSize + lightCountSize + padding1Size + ambientSize + padding2Size;  // 1568 bytes
+
+    // 映射 uniform buffer
+    void* data;
+    vkMapMemory(vulkanDevice->getDevice(), lightUniformBufferMemory, 0, totalSize, 0, &data);
+
+    // 复制光源数据
+    memcpy(data, lights.data(), lightsSize);
+    memcpy(static_cast<char*>(data) + lightsSize, &lightCount, lightCountSize);
+
+    // 添加 12 字节 padding
+    memset(static_cast<char*>(data) + lightsSize + lightCountSize, 0, padding1Size);
+
+    // 复制环境光颜色
+    memcpy(static_cast<char*>(data) + lightsSize + lightCountSize + padding1Size, &ambientColor, ambientSize);
+
+    // 添加 4 字节 padding
+    memset(static_cast<char*>(data) + lightsSize + lightCountSize + padding1Size + ambientSize, 0, padding2Size);
+
+    vkUnmapMemory(vulkanDevice->getDevice(), lightUniformBufferMemory);
 }
 
 void Renderer::framebufferResizeCallback(GLFWwindow* window, int width, int height) {

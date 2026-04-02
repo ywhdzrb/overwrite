@@ -9,11 +9,14 @@
 
 namespace vgame {
 
-ModelRenderer::ModelRenderer(std::shared_ptr<VulkanDevice> device)
+ModelRenderer::ModelRenderer(std::shared_ptr<VulkanDevice> device,
+                             std::shared_ptr<TextureLoader> textureLoader)
     : device(device),
+      textureLoader(textureLoader),
       position(0.0f, 0.0f, 0.0f),
       scale(1.0f, 1.0f, 1.0f),
-      rotation(0.0f, 0.0f, 0.0f) {
+      rotation(0.0f, 0.0f, 0.0f),
+      useTexture(false) {
     model = std::make_unique<Model>(device);
 }
 
@@ -27,6 +30,7 @@ void ModelRenderer::create() {
 
 void ModelRenderer::cleanup() {
     mesh.reset();
+    texture.reset();
 }
 
 void ModelRenderer::loadModel(const std::string& filename) {
@@ -35,6 +39,11 @@ void ModelRenderer::loadModel(const std::string& filename) {
 
     // 使用Mesh类创建顶点和索引缓冲区（使用设备本地内存，性能更好）
     mesh = std::make_unique<Mesh>(device, model->getVertices(), model->getIndices());
+}
+
+void ModelRenderer::setTexture(std::shared_ptr<Texture> tex) {
+    texture = tex;
+    useTexture = (texture != nullptr);
 }
 
 void ModelRenderer::setPosition(const glm::vec3& pos) {
@@ -69,9 +78,23 @@ void ModelRenderer::render(VkCommandBuffer commandBuffer, VkPipelineLayout pipel
     pushConstants.model = model;
     pushConstants.view = viewMatrix;
     pushConstants.proj = projectionMatrix;
+    pushConstants.baseColor = glm::vec3(1.0f);  // 默认白色
+    pushConstants.metallic = 0.0f;
+    pushConstants.roughness = 0.5f;
+    pushConstants.hasTexture = useTexture ? 1 : 0;
+    pushConstants._pad0 = 0.0f;
+    
+    // 添加光源数据
+    pushConstants.lightPos = glm::vec3(0.0f, 0.0f, 3.0f);
+    pushConstants.lightIntensity = 1.0f;
+    pushConstants.lightColor = glm::vec3(1.0f, 1.0f, 1.0f);
+    pushConstants._pad1 = 0.0f;
+    pushConstants.ambientColor = glm::vec3(0.5f, 0.5f, 0.5f);
+    pushConstants._pad2 = 0.0f;
 
     vkCmdPushConstants(commandBuffer, pipelineLayout,
-                      VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(PushConstants), &pushConstants);
+                      VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 
+                      0, sizeof(PushConstants), &pushConstants);
 
     // 绑定并绘制Mesh
     mesh->bind(commandBuffer);

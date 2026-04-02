@@ -24,6 +24,9 @@
 #include "cube_renderer.h"
 #include "skybox_renderer.h"
 #include "model_renderer.h"
+#include "texture_loader.h"
+#include "light_manager.h"
+#include "gltf_model.h"
 
 namespace vgame {
 
@@ -48,6 +51,26 @@ private:
     void drawFrame();
     void recreateSwapchain();
     void updateGameLogic(float deltaTime);
+    
+    /**
+     * @brief 创建描述符集布局
+     */
+    void createDescriptorSetLayouts();
+    
+    /**
+     * @brief 创建描述符池
+     */
+    void createDescriptorPool();
+    
+    /**
+     * @brief 创建描述符集
+     */
+    void createDescriptorSets();
+    
+    /**
+     * @brief 更新光源 uniform buffer
+     */
+    void updateLightUniformBuffer();
 
     int windowWidth;
     int windowHeight;
@@ -74,6 +97,11 @@ private:
     std::unique_ptr<ModelRenderer> modelRenderer;
     std::unique_ptr<ImGuiManager> imguiManager;
 
+    // 新增系统
+    std::shared_ptr<TextureLoader> textureLoader;
+    std::unique_ptr<LightManager> lightManager;
+    std::unique_ptr<GLTFModel> gltfModel;
+
     // 时间管理
     std::chrono::high_resolution_clock::time_point lastTime;
     
@@ -88,6 +116,17 @@ private:
 
     uint32_t currentFrame = 0;
     bool framebufferResized = false;
+
+    // 描述符相关
+    VkDescriptorSetLayout textureDescriptorSetLayout;
+    VkDescriptorSetLayout lightDescriptorSetLayout;
+    VkDescriptorPool descriptorPool;
+    VkDescriptorSet textureDescriptorSet;
+    VkDescriptorSet lightDescriptorSet;
+    
+    // 光源 uniform buffer
+    VkBuffer lightUniformBuffer;
+    VkDeviceMemory lightUniformBufferMemory;
 
     static void framebufferResizeCallback(GLFWwindow* window, int width, int height);
 };

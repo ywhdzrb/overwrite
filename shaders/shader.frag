@@ -1,64 +1,77 @@
 #version 450
 
+// 简化光照着色器 - 只有环境光
+
 // 来自顶点着色器的输入
-layout(location = 0) in vec3 fragPos;       // 世界空间位置
-layout(location = 1) in vec3 fragNormal;    // 法线
-layout(location = 2) in vec3 fragColor;     // 颜色
+layout(location = 0) in vec3 fragPos;
+layout(location = 1) in vec3 fragNormal;
+layout(location = 2) in vec3 fragColor;
+layout(location = 3) in vec2 fragTexCoord;
 
 // 输出颜色
 layout(location = 0) out vec4 outColor;
 
-// 光照参数
-struct Light {
-    vec3 position;  // 光源位置（世界空间）
-    vec3 color;     // 光源颜色
-    float intensity; // 光源强度
-};
+// 纹理采样器
+layout(set = 0, binding = 0) uniform sampler2D texSampler;
 
-struct Material {
-    vec3 ambient;   // 环境光反射系数
-    vec3 diffuse;   // 漫反射系数
-    vec3 specular;  // 镜面反射系数
-    float shininess; // 光泽度
-};
+// Push Constants
+layout(push_constant) uniform PushConstants {
+    mat4 model;
+    mat4 view;
+    mat4 proj;
+    vec3 baseColor;
+    float metallic;
+    float roughness;
+    int hasTexture;
+    float _pad0;
+    
+    // 光源数据
+    vec3 lightPos;
+    float lightIntensity;
+    vec3 lightColor;
+    float _pad;
+    vec3 ambientColor;
+    float _pad2;
+} pushConstants;
 
 void main() {
-    // 光源设置
-    Light light;
-    light.position = vec3(5.0, 10.0, 5.0);  // 光源在右上方
-    light.color = vec3(1.0, 1.0, 1.0);     // 白光
-    light.intensity = 1.0;                   // 光源强度
+    vec3 albedo;
     
-    // 材质设置
-    Material material;
-    material.ambient = fragColor * 0.1;      // 环境光为物体颜色的 10%
-    material.diffuse = fragColor;            // 漫反射使用物体颜色
-    material.specular = vec3(0.5);           // 镜面反射（白色）
-    material.shininess = 32.0;               // 光泽度
+    // 采样纹理或使用顶点颜色
+    if (pushConstants.hasTexture == 1) {
+        vec4 texColor = texture(texSampler, fragTexCoord);
+        albedo = texColor.rgb;
+    } else {
+        albedo = fragColor;
+    }
     
     // 归一化法线
     vec3 normal = normalize(fragNormal);
     
-    // 计算光照方向（从表面到光源）
-    vec3 lightDir = normalize(light.position - fragPos);
-    
-    // 1. 环境光
-    vec3 ambient = light.color * material.ambient * light.intensity;
-    
-    // 2. 漫反射（Lambert）
-    float diff = max(dot(normal, lightDir), 0.0);
-    vec3 diffuse = light.color * (diff * material.diffuse) * light.intensity;
-    
-    // 3. 镜面反射（Phong）
-    // 观察方向（假设相机在世界原点）
+    // 观察方向
     vec3 viewDir = normalize(-fragPos);
-    vec3 reflectDir = reflect(-lightDir, normal);
-    float spec = pow(max(dot(viewDir, reflectDir), 0.0), material.shininess);
-    vec3 specular = light.color * (spec * material.specular) * light.intensity;
     
-    // 合成最终颜色
-    vec3 result = ambient + diffuse + specular;
+    // 硬编码光源参数（临时方案，避免pushConstants传递问题）
+    vec3 lightPos = vec3(0.0, 0.0, 3.0);
+    vec3 lightColor = vec3(1.0, 1.0, 1.0);
+    float lightIntensity = 1.0;
+    vec3 ambientColor = vec3(0.5, 0.5, 0.5);
     
-    // 输出
+    // 环境光
+    vec3 result = ambientColor * albedo;
+    
+    // 漫反射
+    vec3 lightDir = normalize(lightPos - fragPos);
+    float diff = max(dot(normal, lightDir), 0.0);
+    vec3 diffuse = lightColor * diff * albedo;
+    
+    // 镜面反射（Blinn-Phong）
+    vec3 halfwayDir = normalize(lightDir + viewDir);
+    float spec = pow(max(dot(normal, halfwayDir), 0.0), 32.0);
+    vec3 specular = lightColor * spec * 0.5;
+    
+    // 组合光照
+    result += (diffuse + specular) * lightIntensity;
+    
     outColor = vec4(result, 1.0);
 }

@@ -222,6 +222,7 @@ void VulkanInstance::createLogicalDevice() {
     }
     
     VkPhysicalDeviceFeatures deviceFeatures{};
+    deviceFeatures.samplerAnisotropy = VK_TRUE;  // 启用各向异性过滤
     
     VkDeviceCreateInfo createInfo{};
     createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;

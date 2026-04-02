@@ -9,8 +9,9 @@ namespace vgame {
 ImGuiManager::ImGuiManager(std::shared_ptr<VulkanDevice> device,
                            std::shared_ptr<VulkanSwapchain> swapchain,
                            std::shared_ptr<VulkanRenderPass> renderPass,
-                           GLFWwindow* window)
-    : vulkanDevice(device), swapchain(swapchain), mainRenderPass(renderPass), window(window) {
+                           GLFWwindow* window,
+                           VkInstance instance)
+    : vulkanDevice(device), swapchain(swapchain), mainRenderPass(renderPass), window(window), instance(instance) {
 }
 
 ImGuiManager::~ImGuiManager() {
@@ -39,7 +40,7 @@ void ImGuiManager::init() {
     // 初始化 Vulkan 后端
     ImGui_ImplVulkan_InitInfo init_info = {};
     init_info.ApiVersion = VK_API_VERSION_1_3;
-    init_info.Instance = nullptr;  // 需要从 VulkanInstance 获取
+    init_info.Instance = instance;
     init_info.PhysicalDevice = vulkanDevice->getPhysicalDevice();
     init_info.Device = vulkanDevice->getDevice();
     init_info.QueueFamily = 0;  // 需要获取正确的队列族索引

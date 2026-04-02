@@ -20,7 +20,7 @@ public:
                    VkExtent2D swapchainExtent, const std::string& vertexShaderPath, 
                    const std::string& fragmentShaderPath,
                    VertexFormat format = VertexFormat::POSITION_COLOR,
-                   VkDescriptorSetLayout descriptorSetLayout = VK_NULL_HANDLE);
+                   const std::vector<VkDescriptorSetLayout>& descriptorSetLayouts = {});
     ~VulkanPipeline();
 
     // 禁止拷贝
@@ -45,7 +45,7 @@ private:
     
     VkPipeline graphicsPipeline = VK_NULL_HANDLE;
     VkPipelineLayout pipelineLayout = VK_NULL_HANDLE;
-    VkDescriptorSetLayout descriptorSetLayout = VK_NULL_HANDLE;
+    std::vector<VkDescriptorSetLayout> descriptorSetLayoutsList;
 
 }; // end of class VulkanPipeline
 

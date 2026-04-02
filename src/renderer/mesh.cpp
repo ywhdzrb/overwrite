@@ -159,17 +159,31 @@ void Mesh::draw(VkCommandBuffer commandBuffer) const {
 }
 
 void Mesh::cleanup() {
+    // 检查device是否有效
+    if (!device) {
+        return;
+    }
+    
+    VkDevice vkDevice = device->getDevice();
+    if (vkDevice == VK_NULL_HANDLE) {
+        return;
+    }
+    
     if (indexBuffer != VK_NULL_HANDLE) {
-        vkDestroyBuffer(device->getDevice(), indexBuffer, nullptr);
+        vkDestroyBuffer(vkDevice, indexBuffer, nullptr);
+        indexBuffer = VK_NULL_HANDLE;
     }
     if (indexBufferMemory != VK_NULL_HANDLE) {
-        vkFreeMemory(device->getDevice(), indexBufferMemory, nullptr);
+        vkFreeMemory(vkDevice, indexBufferMemory, nullptr);
+        indexBufferMemory = VK_NULL_HANDLE;
     }
     if (vertexBuffer != VK_NULL_HANDLE) {
-        vkDestroyBuffer(device->getDevice(), vertexBuffer, nullptr);
+        vkDestroyBuffer(vkDevice, vertexBuffer, nullptr);
+        vertexBuffer = VK_NULL_HANDLE;
     }
     if (vertexBufferMemory != VK_NULL_HANDLE) {
-        vkFreeMemory(device->getDevice(), vertexBufferMemory, nullptr);
+        vkFreeMemory(vkDevice, vertexBufferMemory, nullptr);
+        vertexBufferMemory = VK_NULL_HANDLE;
     }
 }
 
