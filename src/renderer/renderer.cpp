@@ -217,9 +217,9 @@ void Renderer::initVulkan() {
     gltfModel = std::make_unique<GLTFModel>(vulkanDevice, textureLoader);
     // 尝试加载GLTF模型（如果有）
     try {
-        if (gltfModel->loadFromFile("assets/models/sample.gltf")) {
-            gltfModel->setPosition(glm::vec3(0.0f, 0.0f, -5.0f));  // 恢复到原来的位置
-            gltfModel->setScale(glm::vec3(1.0f, 1.0f, 1.0f));  // 恢复原来的缩放
+        if (gltfModel->loadFromFile("assets/models/player.glb")) {
+            gltfModel->setPosition(glm::vec3(0.0f, 0.0f, -5.0f));
+            gltfModel->setScale(glm::vec3(1.0f, 1.0f, 1.0f));
             std::cout << "[Renderer] GLTF模型加载成功" << std::endl;
         }
     } catch (const std::runtime_error& e) {
