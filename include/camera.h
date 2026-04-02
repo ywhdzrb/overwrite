@@ -10,6 +10,12 @@ namespace vgame {
 
 class Camera {
 public:
+    enum class Mode {
+        FirstPerson,    // 第一人称
+        ThirdPerson,    // 第三人称
+        Free            // 自由视角
+    };
+
     Camera(int windowWidth, int windowHeight);
     ~Camera() = default;
 
@@ -23,6 +29,11 @@ public:
     
     // 检查是否在自由视角模式
     bool isFreeCameraMode() const { return freeCameraMode; }
+    
+    // 切换相机模式
+    void setMode(Mode m) { mode = m; }
+    Mode getMode() const { return mode; }
+    void toggleMode();
     
     // 处理鼠标移动
     void processMouseMovement(float xOffset, float yOffset);
@@ -83,10 +94,21 @@ public:
     // 设置跳跃力
     void setJumpForce(float f) { jumpForce = f; }
     float getJumpForce() const { return jumpForce; }
+    
+    // 设置跟踪目标（第三人称模式）
+    void setTarget(const glm::vec3& target) { targetPosition = target; }
+    glm::vec3 getTarget() const { return targetPosition; }
+    
+    // 设置第三人称相机距离
+    void setThirdPersonDistance(float d) { thirdPersonDistance = d; }
+    float getThirdPersonDistance() const { return thirdPersonDistance; }
 
 private:
     // 更新摄像机向量
     void updateCameraVectors();
+    
+    // 更新第三人称相机位置
+    void updateThirdPersonCamera();
     
     // 摄像机属性
     glm::vec3 position;
@@ -118,6 +140,12 @@ private:
     // 自由视角模式
     bool freeCameraMode;
     float freeCameraSpeed;
+    
+    // 第三人称模式
+    Mode mode;
+    glm::vec3 targetPosition;       // 跟踪目标位置
+    float thirdPersonDistance;      // 相机与目标的距离
+    float thirdPersonHeight;        // 相机高度偏移
 };
 
 } // namespace vgame

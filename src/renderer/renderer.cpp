@@ -219,7 +219,7 @@ void Renderer::initVulkan() {
     try {
         if (gltfModel->loadFromFile("assets/models/player.glb")) {
             gltfModel->setPosition(glm::vec3(0.0f, 0.0f, -5.0f));
-            gltfModel->setScale(glm::vec3(1.0f, 1.0f, 1.0f));
+            gltfModel->setScale(glm::vec3(0.3f, 0.3f, 0.3f));
             std::cout << "[Renderer] GLTF模型加载成功" << std::endl;
         }
     } catch (const std::runtime_error& e) {
@@ -700,6 +700,11 @@ void Renderer::updateGameLogic(float deltaTime) {
                       spaceHeld);
         
         physics->update(deltaTime);
+    }
+    
+    // 第三人称模式：将 player 模型位置同步到相机目标
+    if (camera->getMode() == Camera::Mode::ThirdPerson && gltfModel) {
+        gltfModel->setPosition(camera->getTarget());
     }
 }
 
