@@ -1,168 +1,150 @@
-# OverWrite
+<div align="center">
 
-A modern Vulkan-based 3D game engine framework built for commercial production environments.
+<img src="assets/logo/logo.png" alt="OverWrite Logo" width="480">
 
-## Features
+**基于 Vulkan 的现代 3D 游戏引擎框架**
 
-- **Vulkan API**: Low-level graphics API for maximum performance
-- **3D Model Loading**: Support for OBJ model format
-- **Modern Rendering Pipeline**: Optimized for production use
-- **Cross-platform**: Linux support with Windows/Mac planned
-- **Commercial-grade**: Designed for production environments
+<img src="https://img.shields.io/badge/C++-20-00599C?style=flat-square&logo=c%2B%2B" alt="C++20">
+<img src="https://img.shields.io/badge/Vulkan-1.3+-AC162C?style=flat-square&logo=vulkan" alt="Vulkan">
+<img src="https://img.shields.io/badge/Platform-Linux-FCC624?style=flat-square&logo=linux" alt="Linux">
+<img src="https://img.shields.io/badge/License-GPL%20v3-blue?style=flat-square" alt="License">
+<img src="https://img.shields.io/badge/License-CC%20BY--NC--ND%204.0-lightgrey.svg?style=flat-square" alt="License">
 
-## Requirements
 
-- **Operating System**: Linux (x86_64)
-- **Vulkan SDK**: 1.3 or higher
-- **CMake**: 3.20 or higher
-- **C++ Compiler**: GCC 10+ or Clang 12+
-- **GLFW**: Latest version
-- **GLM**: OpenGL Mathematics library
-- **Vulkan Headers**: Latest version
-- **Vulkan Loader**: Latest version
-- **TinyOBJLoader**: For OBJ model loading
+</div>
 
-## Installation
+---
 
-### Prerequisites
+## ✨ 特性
 
-Install required dependencies on Linux (Arch/Manjaro):
+- 🎮 **高性能渲染** - 基于 Vulkan 1.3+ 的现代图形管线
+- 🌍 **3D 模型加载** - 支持 OBJ 和 GLTF 格式
+- 💡 **动态光源系统** - 方向光、点光源、聚光灯，CPU 实时控制
+- 🔧 **开发者工具** - ESC 开启开发者面板，实时调参
+- 🎯 **物理系统** - 重力模拟、碰撞检测
+- 🖼️ **MSAA 抗锯齿** - 动态多重采样，最高支持 64x
+- 🇨🇳 **中文支持** - ImGui 中文字体渲染
+
+## 🚀 快速开始
+
+### 依赖
+
+**Arch Linux:**
 
 ```bash
 sudo pacman -S vulkan-headers vulkan-tools glfw glm cmake gcc
 ```
 
-Or on Ubuntu/Debian:
+**Ubuntu/Debian:**
 
 ```bash
 sudo apt install vulkan-sdk libglfw3-dev libglm-dev cmake build-essential
 ```
 
-### Building the Project
+### 构建
 
-1. Clone the repository:
 ```bash
-git clone <repository-url>
-cd OverWrite
+./build.sh
 ```
 
-2. Create build directory:
+或手动构建：
+
 ```bash
-mkdir build
-cd build
+mkdir -p build && cd build
+cmake .. -DCMAKE_BUILD_TYPE=Release
+cmake --build . -j$(nproc)
 ```
 
-3. Configure with CMake:
+### 运行
+
 ```bash
-cmake ..
+./run.sh
 ```
 
-4. Build:
-```bash
-cmake --build .
-```
+## 🎮 操作
 
-5. Run the game:
-```bash
-./OverWrite
-```
+| 按键 | 功能 |
+|------|------|
+| `WASD` | 移动 |
+| `Mouse` | 视角控制 |
+| `Space` | 跳跃 |
+| `Shift` | 加速 |
+| `R` | 切换自由视角 |
+| `ESC` | 开发者模式 |
 
-## Project Structure
+## 🛠️ 开发者面板
+
+按 `ESC` 进入开发者模式，可实时调整：
+
+- **性能统计** - FPS、帧时间、时间缩放
+- **相机控制** - 位置、速度、灵敏度
+- **光源管理** - 颜色、强度、位置、衰减参数
+- **模型控制** - 位置、旋转、缩放
+- **物理设置** - 重力、地面高度、跳跃力
+- **渲染设置** - MSAA 级别、线框模式
+
+## 📁 项目结构
 
 ```
 OverWrite/
-├── CMakeLists.txt          # Build configuration
-├── LICENSE                 # GPL v3 for code, CC BY-NC-ND for art
-├── README.md              # This file
-├── include/               # Header files
-│   ├── vulkan_instance.h
-│   ├── vulkan_device.h
-│   ├── vulkan_swapchain.h
-│   ├── vulkan_render_pass.h
-│   ├── vulkan_pipeline.h
-│   ├── vulkan_framebuffer.h
-│   ├── vulkan_command_buffer.h
-│   ├── vulkan_sync.h
-│   ├── renderer.h
-│   ├── model.h
-│   ├── mesh.h
-│   ├── shader_compiler.h
-│   └── logger.h
-├── src/                   # Source files
-│   ├── core/              # Vulkan core components
-│   ├── renderer/          # Rendering system
-│   ├── utils/             # Utility functions
-│   └── main.cpp           # Entry point
-├── shaders/               # GLSL shaders
-│   ├── shader.vert        # Vertex shader
-│   └── shader.frag        # Fragment shader
-└── assets/                # Game assets
-    ├── models/            # 3D models
-    └── textures/          # Textures
+├── include/           # 头文件
+│   ├── vulkan_*.h     # Vulkan 核心组件
+│   ├── renderer.h     # 主渲染器
+│   ├── camera.h       # 相机系统
+│   └── ...
+├── src/
+│   ├── core/          # Vulkan 核心实现
+│   ├── renderer/      # 渲染系统
+│   └── utils/         # 工具函数
+├── shaders/           # GLSL 着色器
+├── assets/            # 模型和纹理
+└── external/          # 第三方库
 ```
 
-## Usage
+## 📜 许可证
 
-### Loading 3D Models
+本项目采用双重许可：
 
-Place your OBJ models in the `assets/models/` directory and load them using the Model class:
+### 源代码
 
-```cpp
-Model model(vulkanDevice);
-model.loadFromObj("assets/models/your_model.obj");
-```
+[GNU General Public License v3.0](LICENSE)
 
-### Custom Shaders
+适用范围：
+- `src/` 目录下所有源代码文件
+- `include/` 目录下所有头文件
+- `shaders/` 目录下所有着色器源码
+- `CMakeLists.txt` 构建脚本
 
-Shaders are written in GLSL and compiled to SPIR-V using `glslc`. Place your shaders in the `shaders/` directory.
+您有权：
+- ✅ 自由使用、研究、修改源代码
+- ✅ 分发原始或修改后的代码
+- ✅ 将代码用于商业用途
 
-## License
+义务：
+- ⚠️ 分发时必须附带 GPL v3 许可证副本
+- ⚠️ 修改后的文件必须注明修改内容
+- ⚠️ 分发二进制产品时必须提供源代码
 
-### Code
-This project is licensed under the GNU General Public License v3.0. See [LICENSE](LICENSE) for details.
+### 艺术内容
 
-### Artistic Content
-All artistic content (models, textures, sounds, etc.) is licensed under Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International License.
+[CC BY-NC-ND 4.0](https://creativecommons.org/licenses/by-nc-nd/4.0/)
 
-## Contributing
+适用范围：
+- `assets/models/` 目录下所有 3D 模型文件
+- `assets/textures/` 目录下所有纹理图片
 
-Contributions are welcome! Please ensure your code follows the existing style and includes appropriate documentation.
+您有权：
+- ✅ 复制和分发原素材
 
-## Performance
+限制：
+- ❌ 不得用于商业用途
+- ❌ 不得修改后再分发
+- ⚠️ 使用时需注明原作者
 
-This engine is optimized for commercial production environments:
-- Efficient Vulkan resource management
-- Multi-threaded rendering preparation
-- Memory-mapped vertex/index buffers
-- Optimized shader compilation pipeline
+---
 
-## Troubleshooting
+<div align="center">
 
-### Vulkan Validation Layers
-For development, enable validation layers for detailed error reporting. In production, build with `-DNDEBUG` to disable them.
+*用 ❤️ 构建*
 
-### Shader Compilation
-Ensure `glslc` is installed and in your PATH for automatic shader compilation during build.
-
-## Roadmap
-
-- [ ] Windows support
-- [ ] macOS support
-- [ ] Additional model formats (FBX, GLTF)
-- [ ] Advanced lighting (PBR)
-- [ ] Post-processing effects
-- [ ] Physics engine integration
-- [ ] Audio system
-- [ ] UI system
-
-## Contact
-
-For questions or support, please open an issue on the project repository.
-
-## Acknowledgments
-
-- Vulkan SDK and documentation
-- GLFW for window management
-- GLM for mathematics
-- TinyOBJLoader for model loading
-- The Vulkan community for excellent resources and support
+</div>
