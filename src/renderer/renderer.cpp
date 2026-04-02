@@ -237,6 +237,9 @@ void Renderer::initVulkan() {
     glm::vec3 cubePos(0.0f, 0.0f, -1.0f);
     cubeRenderer->setPosition(cubePos);
     
+    // 添加立方体碰撞体（大小为 5.0）
+    physics->addCollisionBox(cubePos, glm::vec3(5.0f, 5.0f, 5.0f));
+    
     // 初始化时间
     lastTime = std::chrono::high_resolution_clock::now();
 }

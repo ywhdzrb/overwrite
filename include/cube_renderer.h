@@ -23,6 +23,10 @@ public:
     
     void setPosition(const glm::vec3& position);
     
+    // 碰撞体相关
+    glm::vec3 getColliderSize() const { return glm::vec3(5.0f); }  // 立方体大小 5.0
+    glm::vec3 getColliderCenter() const { return position; }
+    
     struct PushConstants {
         glm::mat4 model;
         glm::mat4 view;
