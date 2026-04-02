@@ -134,7 +134,7 @@ private:
     std::unique_ptr<GLTFModel> gltfModel;
     
     // ECS 系统
-    bool useECS{false};  // 是否使用 ECS 系统（暂时禁用以测试第三人称相机）
+    bool useECS{true};  // 是否使用 ECS 系统
     std::unique_ptr<ecs::World> ecsWorld;
     std::unique_ptr<ecs::InputSystem> ecsInputSystem;
     std::unique_ptr<ecs::MovementSystem> ecsMovementSystem;
@@ -149,6 +149,7 @@ private:
     float frameTime = 0.0f;
     float minFrameTime = 999.0f;
     float maxFrameTime = 0.0f;
+    float targetFPS = 60.0f;
     
     // 开发者模式
     bool developerMode = false;

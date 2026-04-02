@@ -34,15 +34,22 @@ void FloorRenderer::createVertexBuffer() {
     // 定义地板顶点（一个大平面）
     struct Vertex {
         glm::vec3 pos;
+        glm::vec3 normal;
         glm::vec3 color;
+        glm::vec2 texCoord;
     };
     
+    // 地板渲染高度与碰撞高度一致 (-2.5f)
+    float floorY = -2.5f;
+    glm::vec3 normal(0.0f, 1.0f, 0.0f);  // 法线朝上
+    glm::vec3 color(0.4f, 0.4f, 0.4f);    // 灰色
+    
     std::vector<Vertex> vertices = {
-        // Position          Color
-        {{-50.0f, -3.0f, -50.0f},  {0.4f, 0.4f, 0.4f}},
-        {{ 50.0f, -3.0f, -50.0f},  {0.4f, 0.4f, 0.4f}},
-        {{ 50.0f, -3.0f,  50.0f},  {0.4f, 0.4f, 0.4f}},
-        {{-50.0f, -3.0f,  50.0f},  {0.4f, 0.4f, 0.4f}},
+        // Position             Normal              Color               TexCoord
+        {{-50.0f, floorY, -50.0f}, normal, color, {0.0f, 0.0f}},
+        {{ 50.0f, floorY, -50.0f}, normal, color, {50.0f, 0.0f}},
+        {{ 50.0f, floorY,  50.0f}, normal, color, {50.0f, 50.0f}},
+        {{-50.0f, floorY,  50.0f}, normal, color, {0.0f, 50.0f}},
     };
     
     VkDeviceSize bufferSize = sizeof(vertices[0]) * vertices.size();
@@ -148,9 +155,20 @@ void FloorRenderer::render(VkCommandBuffer commandBuffer, VkPipelineLayout pipel
     pushConstants.model = glm::mat4(1.0f);
     pushConstants.view = viewMatrix;
     pushConstants.proj = projectionMatrix;
+    pushConstants.baseColor = glm::vec3(1.0f);
+    pushConstants.metallic = 0.0f;
+    pushConstants.roughness = 1.0f;
+    pushConstants.hasTexture = 0;
+    pushConstants._pad0 = 0.0f;
+    pushConstants.lightPos = glm::vec3(0.0f, 10.0f, 0.0f);
+    pushConstants.lightIntensity = 1.0f;
+    pushConstants.lightColor = glm::vec3(1.0f);
+    pushConstants._pad1 = 0.0f;
+    pushConstants.ambientColor = glm::vec3(0.1f);
+    pushConstants._pad2 = 0.0f;
     
     vkCmdPushConstants(commandBuffer, pipelineLayout,
-                      VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(PushConstants), &pushConstants);
+                      VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(PushConstants), &pushConstants);
     
     // 绑定顶点缓冲区
     VkBuffer vertexBuffers[] = {vertexBuffer};

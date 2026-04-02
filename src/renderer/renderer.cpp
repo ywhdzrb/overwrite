@@ -258,8 +258,6 @@ void Renderer::mainLoop() {
     // FPS 计数
     int frameCount = 0;
     float fpsTimer = 0.0f;
-    const float targetFPS = 60.0f;
-    const float targetFrameTime = 1.0f / targetFPS;  // 60FPS = 16.67ms
     
     while (!glfwWindowShouldClose(window)) {
         // 记录帧开始时间
@@ -632,6 +630,7 @@ void Renderer::mainLoop() {
         if (frameTime < minFrameTime) minFrameTime = frameTime;
         if (frameTime > maxFrameTime) maxFrameTime = frameTime;
         
+        float targetFrameTime = 1.0f / targetFPS;
         if (frameTime < targetFrameTime) {
             float sleepTime = targetFrameTime - frameTime;
             // 转换为微秒
@@ -676,10 +675,19 @@ void Renderer::updateGameLogic(float deltaTime) {
             auto& transform = ecsWorld->registry().get<ecs::TransformComponent>(ecsWorld->getMainCamera());
             auto& controller = ecsWorld->registry().get<ecs::CameraControllerComponent>(ecsWorld->getMainCamera());
             
-            camera->setPosition(transform.position);
+            // 第三人称模式：设置目标位置，第一人称：设置相机位置
+            if (camera->getMode() == Camera::Mode::ThirdPerson) {
+                camera->setTarget(transform.position);
+            } else {
+                camera->setPosition(transform.position);
+            }
             camera->setYawPitch(transform.yaw, transform.pitch);
             camera->setMovementSpeed(controller.movementSpeed);
             camera->setMouseSensitivity(controller.mouseSensitivity);
+            
+            // 同步相机的移动方向到 ECS（第三人称模式需要）
+            controller.cameraFront = camera->getFront();
+            controller.cameraRight = camera->getRight();
         }
     } else {
         // 使用旧的系统更新
@@ -794,10 +802,6 @@ void Renderer::drawFrame() {
         vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline->getPipeline());
     }
     
-    // 禁用地板渲染
-    // floorRenderer->render(commandBuffer, graphicsPipeline->getPipelineLayout(),
-    //                      camera->getViewMatrix(), camera->getProjectionMatrix());
-    
     // 更新光源 uniform buffer
     updateLightUniformBuffer();
     
@@ -806,6 +810,10 @@ void Renderer::drawFrame() {
                            graphicsPipeline->getPipelineLayout(), 0, 1, &textureDescriptorSet, 0, nullptr);
     vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
                            graphicsPipeline->getPipelineLayout(), 1, 1, &lightDescriptorSet, 0, nullptr);
+    
+    // 渲染地板
+    floorRenderer->render(commandBuffer, graphicsPipeline->getPipelineLayout(),
+                         camera->getViewMatrix(), camera->getProjectionMatrix());
     
     // 渲染立方体
     cubeRenderer->render(commandBuffer, graphicsPipeline->getPipelineLayout(),
@@ -1543,14 +1551,35 @@ void Renderer::renderDeveloperPanel() {
     if (ImGui::SliderFloat("地面高度", &groundHeight, -10.0f, 10.0f)) {
         camera->setGroundHeight(groundHeight);
         physics->setGroundHeight(groundHeight);
+        // 同步到 ECS
+        if (useECS && ecsWorld) {
+            auto player = ecsWorld->getPlayer();
+            if (ecsWorld->registry().valid(player)) {
+                auto& physicsComp = ecsWorld->registry().get<ecs::PhysicsComponent>(player);
+                physicsComp.groundHeight = groundHeight;
+            }
+        }
     }
     
     float jumpForce = camera->getJumpForce();
     if (ImGui::SliderFloat("跳跃力", &jumpForce, 0.0f, 20.0f)) {
         camera->setJumpForce(jumpForce);
+        // 同步到 ECS
+        if (useECS && ecsWorld) {
+            auto player = ecsWorld->getPlayer();
+            if (ecsWorld->registry().valid(player)) {
+                auto& physicsComp = ecsWorld->registry().get<ecs::PhysicsComponent>(player);
+                physicsComp.jumpForce = jumpForce;
+            }
+        }
     }
     
     ImGui::Text("碰撞体数量: %zu", physics->getCollisionBoxes().size());
+    
+    // 帧率控制
+    ImGui::Separator();
+    ImGui::Text("帧率: %.0f FPS", currentFPS);
+    ImGui::SliderFloat("目标帧率", &targetFPS, 30.0f, 144.0f, "%.0f");
     
     if (ImGui::Button("添加碰撞体")) {
         physics->addCollisionBox(camera->getPosition() + camera->getFront() * 3.0f, 

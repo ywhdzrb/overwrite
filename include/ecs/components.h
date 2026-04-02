@@ -72,6 +72,10 @@ struct CameraControllerComponent {
     // 模式
     bool freeCameraMode{false};
     bool isMainCamera{true};
+    
+    // 第三人称模式下的移动方向（由 Camera 同步）
+    glm::vec3 cameraFront{0.0f, 0.0f, -1.0f};
+    glm::vec3 cameraRight{1.0f, 0.0f, 0.0f};
 };
 
 /**
@@ -79,7 +83,7 @@ struct CameraControllerComponent {
  */
 struct PhysicsComponent {
     float gravity{15.0f};
-    float groundHeight{1.5f};
+    float groundHeight{-1.5f};
     float jumpForce{5.5f};
     
     bool isJumping{false};

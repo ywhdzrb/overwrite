@@ -295,8 +295,8 @@ void MovementSystem::update(float deltaTime) {
         
         // 处理鼠标旋转（两种模式都适用）
         if (input.mouseDeltaX != 0.0f || input.mouseDeltaY != 0.0f) {
-            transform.yaw += input.mouseDeltaX * controller.mouseSensitivity;
-            transform.pitch -= input.mouseDeltaY * controller.mouseSensitivity;  // 反转 Y
+            transform.yaw -= input.mouseDeltaX * controller.mouseSensitivity;  // 左移向右转，右移向左转
+            transform.pitch += input.mouseDeltaY * controller.mouseSensitivity;  // 上移向上看，下移向下看
             
             // 限制俯仰角
             transform.pitch = glm::clamp(transform.pitch, -89.0f, 89.0f);
@@ -340,8 +340,9 @@ void MovementSystem::updateNormalMovement(entt::entity entity, TransformComponen
     
     // 计算水平移动
     glm::vec3 horizontalVelocity(0.0f);
-    glm::vec3 front = transform.getFront();
-    glm::vec3 right = transform.getRight();
+    // 使用相机的方向（第三人称模式）
+    glm::vec3 front = controller.cameraFront;
+    glm::vec3 right = controller.cameraRight;
     
     // 水平移动（忽略 Y 分量）
     front.y = 0.0f;

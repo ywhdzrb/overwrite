@@ -25,6 +25,19 @@ public:
         glm::mat4 model;
         glm::mat4 view;
         glm::mat4 proj;
+        glm::vec3 baseColor;
+        float metallic;
+        float roughness;
+        int hasTexture;
+        float _pad0;  // 填充到16字节对齐
+        
+        // 光源数据
+        glm::vec3 lightPos;
+        float lightIntensity;
+        glm::vec3 lightColor;
+        float _pad1;
+        glm::vec3 ambientColor;
+        float _pad2;
     };
 
 private:

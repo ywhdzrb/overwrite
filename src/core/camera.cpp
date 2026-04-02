@@ -24,7 +24,7 @@ Camera::Camera(int windowWidth, int windowHeight)
       isJumping(false),
       jumpForce(5.5f),
       gravity(15.0f),
-      groundHeight(1.5f),
+      groundHeight(-1.5f),
       freeCameraMode(false),
       freeCameraSpeed(15.0f),
       mode(Mode::ThirdPerson),  // 默认第三人称
@@ -173,8 +173,8 @@ void Camera::processMouseMovement(float xOffset, float yOffset) {
     xOffset *= mouseSensitivity;
     yOffset *= mouseSensitivity;
 
-    yaw -= xOffset;  // 反转X轴（左右）
-    pitch -= yOffset;  // 反转Y轴（上下）
+    yaw -= xOffset;  // 左移向右转，右移向左转
+    pitch += yOffset;  // 上移向上看，下移向下看
     
     // 限制俯仰角
     pitch = glm::clamp(pitch, -60.0f, 60.0f);

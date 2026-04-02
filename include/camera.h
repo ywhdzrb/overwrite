@@ -63,9 +63,9 @@ public:
     void setFront(const glm::vec3& f) { front = f; }
     
     // 设置欧拉角（会重新计算 front 向量）
-    void setYaw(float y) { yaw = y; updateCameraVectors(); }
-    void setPitch(float p) { pitch = p; updateCameraVectors(); }
-    void setYawPitch(float y, float p) { yaw = y; pitch = p; updateCameraVectors(); }
+    void setYaw(float y) { yaw = y; if (mode == Mode::ThirdPerson) updateThirdPersonCamera(); else updateCameraVectors(); }
+    void setPitch(float p) { pitch = p; if (mode == Mode::ThirdPerson) updateThirdPersonCamera(); else updateCameraVectors(); }
+    void setYawPitch(float y, float p) { yaw = y; pitch = p; if (mode == Mode::ThirdPerson) updateThirdPersonCamera(); else updateCameraVectors(); }
     
     // 获取欧拉角
     float getYaw() const { return yaw; }
