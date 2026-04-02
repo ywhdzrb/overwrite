@@ -702,9 +702,11 @@ void Renderer::updateGameLogic(float deltaTime) {
         physics->update(deltaTime);
     }
     
-    // 第三人称模式：将 player 模型位置同步到相机目标
+    // 第三人称模式：将 player 模型位置同步到相机目标，并背对相机
     if (camera->getMode() == Camera::Mode::ThirdPerson && gltfModel) {
         gltfModel->setPosition(camera->getTarget());
+        // player 背对相机：yaw + 180 度
+        gltfModel->setRotation(0.0f, camera->getYaw() + 180.0f, 0.0f);
     }
 }
 
