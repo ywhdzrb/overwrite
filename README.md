@@ -166,7 +166,6 @@ cmake --build . -j$(nproc)
 - [x] 开发者工具面板
 - [x] 中文字体支持
 - [ ] ECS 架构重构（EnTT）
-- [ ] 跨平台支持（Windows/macOS）
 
 ### 第二阶段：玩家与世界
 

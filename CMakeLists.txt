@@ -18,6 +18,17 @@ else()
     add_compile_options(-O3 -march=native)
 endif()
 
+# FetchContent for external dependencies
+include(FetchContent)
+
+# EnTT - ECS 库
+FetchContent_Declare(
+    entt
+    GIT_REPOSITORY https://github.com/skypjack/entt.git
+    GIT_TAG v3.13.2
+)
+FetchContent_MakeAvailable(entt)
+
 # 查找 Vulkan
 find_package(Vulkan REQUIRED)
 include_directories(${Vulkan_INCLUDE_DIRS})
@@ -81,6 +92,9 @@ set(SOURCES
     src/renderer/gltf_model.cpp
     src/utils/shader_compiler.cpp
     src/utils/logger.cpp
+    # ECS 系统
+    src/ecs/components.cpp
+    src/ecs/systems.cpp
     external/tinygltf/tiny_gltf.cc
 )
 
@@ -95,6 +109,7 @@ target_link_libraries(${PROJECT_NAME}
     Vulkan::Vulkan
     glfw
     glm::glm
+    EnTT::EnTT
 )
 
 # 着色器编译规则

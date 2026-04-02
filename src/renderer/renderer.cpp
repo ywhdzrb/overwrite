@@ -132,6 +132,24 @@ void Renderer::initVulkan() {
     camera = std::make_unique<Camera>(windowWidth, windowHeight);
     input = std::make_unique<Input>(window);
     physics = std::make_unique<Physics>();
+    
+    // 初始化 ECS 系统
+    if (useECS) {
+        ecsWorld = std::make_unique<ecs::World>();
+        ecsWorld->initSystems(window, windowWidth, windowHeight);
+        
+        // 创建玩家实体
+        ecsWorld->createPlayer(windowWidth, windowHeight);
+        
+        // 初始化 ECS 系统
+        ecsInputSystem = std::make_unique<ecs::InputSystem>(*ecsWorld, window);
+        ecsMovementSystem = std::make_unique<ecs::MovementSystem>(*ecsWorld);
+        ecsPhysicsSystem = std::make_unique<ecs::PhysicsSystem>(*ecsWorld);
+        ecsCameraSystem = std::make_unique<ecs::CameraSystem>(*ecsWorld);
+        
+        std::cout << "[Renderer] ECS 系统初始化完成" << std::endl;
+    }
+    
     floorRenderer = std::make_unique<FloorRenderer>(vulkanDevice);
     floorRenderer->create();
     cubeRenderer = std::make_unique<CubeRenderer>(vulkanDevice);
@@ -277,99 +295,287 @@ void Renderer::mainLoop() {
         
                 
         
-                glfwPollEvents();
+                                glfwPollEvents();
         
                 
         
-                // 第一帧后捕获鼠标
-        
-                if (firstFrame) {
-        
-                    input->setCursorCaptured(true);
-        
-                    firstFrame = false;
-        
-                    glfwPollEvents();
-        
-                    std::cout << "[Renderer] 鼠标已捕获" << std::endl;
-        
-                }
+                                
         
                 
         
-                // 检测 ESC 键切换开发者模式
-        
-                if (input->isKeyJustPressed(GLFW_KEY_ESCAPE)) {
-        
-                    developerMode = !developerMode;
-        
-                    if (developerMode) {
-        
-                        input->setCursorCaptured(false);
-        
-                        std::cout << "[Renderer] 开发者模式已开启，鼠标已释放" << std::endl;
-        
-                    } else {
-        
-                        input->setCursorCaptured(true);
-        
-                        std::cout << "[Renderer] 开发者模式已关闭，鼠标已捕获" << std::endl;
-        
-                    }
-        
-                }
+                                // 第一帧后捕获鼠标
         
                 
         
-                // 检测按键状态（在update之前，避免状态被重置）
+                                if (firstFrame) {
         
-                if (!developerMode) {
+                
         
-                    jumpInput = input->isKeyJustPressed(GLFW_KEY_SPACE);
+                                    if (useECS && ecsInputSystem) {
         
-                    freeCameraToggle = input->isKeyJustPressed(GLFW_KEY_R);
+                
         
-                    shiftInput = input->isSprintPressed();
+                                        ecsInputSystem->setCursorCaptured(true);
         
-                    spaceHeld = input->isKeyPressed(GLFW_KEY_SPACE);
+                
         
-                    
+                                    } else {
         
-                    // 更新输入
+                
         
-                    input->update();
+                                        input->setCursorCaptured(true);
         
-                    
+                
         
-                    // 处理鼠标移动
+                                    }
         
-                    double mouseX, mouseY;
+                
         
-                    input->getRawMouseMovement(mouseX, mouseY);
+                                    firstFrame = false;
         
-                    
+                
         
-                    if (mouseX != 0.0 || mouseY != 0.0) {
+                                    glfwPollEvents();
         
-                        camera->processMouseMovement(static_cast<float>(mouseX), static_cast<float>(mouseY));
+                
         
-                    }
+                                    std::cout << "[Renderer] 鼠标已捕获" << std::endl;
         
-                } else {
+                
         
-                    // 开发者模式下重置输入状态
+                                }
         
-                    jumpInput = false;
+                
         
-                    freeCameraToggle = false;
+                                
         
-                    shiftInput = false;
+                
         
-                    spaceHeld = false;
+                                // 检测 ESC 键切换开发者模式
         
-                    input->update();
+                
         
-                }
+                                bool escPressed = (useECS && ecsInputSystem) 
+        
+                
+        
+                                    ? ecsInputSystem->isKeyJustPressed(GLFW_KEY_ESCAPE)
+        
+                
+        
+                                    : input->isKeyJustPressed(GLFW_KEY_ESCAPE);
+        
+                
+        
+                                    
+        
+                
+        
+                                if (escPressed) {
+        
+                
+        
+                                    developerMode = !developerMode;
+        
+                
+        
+                                    if (developerMode) {
+        
+                
+        
+                                        if (useECS && ecsInputSystem) {
+        
+                
+        
+                                            ecsInputSystem->setCursorCaptured(false);
+        
+                
+        
+                                        } else {
+        
+                
+        
+                                            input->setCursorCaptured(false);
+        
+                
+        
+                                        }
+        
+                
+        
+                                        std::cout << "[Renderer] 开发者模式已开启，鼠标已释放" << std::endl;
+        
+                
+        
+                                    } else {
+        
+                
+        
+                                        if (useECS && ecsInputSystem) {
+        
+                
+        
+                                            ecsInputSystem->setCursorCaptured(true);
+        
+                
+        
+                                        } else {
+        
+                
+        
+                                            input->setCursorCaptured(true);
+        
+                
+        
+                                        }
+        
+                
+        
+                                        std::cout << "[Renderer] 开发者模式已关闭，鼠标已捕获" << std::endl;
+        
+                
+        
+                                    }
+        
+                
+        
+                                }
+        
+                
+        
+                                
+        
+                
+        
+                                // 检测按键状态（在update之前，避免状态被重置）
+        
+                
+        
+                                if (!developerMode) {
+        
+                
+        
+                                    if (useECS && ecsInputSystem) {
+        
+                
+        
+                                        // ECS 模式：输入由 ECS 系统处理，这里不需要额外操作
+        
+                
+        
+                                    } else {
+        
+                
+        
+                                        jumpInput = input->isKeyJustPressed(GLFW_KEY_SPACE);
+        
+                
+        
+                                        freeCameraToggle = input->isKeyJustPressed(GLFW_KEY_R);
+        
+                
+        
+                                        shiftInput = input->isSprintPressed();
+        
+                
+        
+                                        spaceHeld = input->isKeyPressed(GLFW_KEY_SPACE);
+        
+                
+        
+                                        
+        
+                
+        
+                                        // 更新输入
+        
+                
+        
+                                        input->update();
+        
+                
+        
+                                        
+        
+                
+        
+                                        // 处理鼠标移动
+        
+                
+        
+                                        double mouseX, mouseY;
+        
+                
+        
+                                        input->getRawMouseMovement(mouseX, mouseY);
+        
+                
+        
+                                        
+        
+                
+        
+                                        if (mouseX != 0.0 || mouseY != 0.0) {
+        
+                
+        
+                                            camera->processMouseMovement(static_cast<float>(mouseX), static_cast<float>(mouseY));
+        
+                
+        
+                                        }
+        
+                
+        
+                                    }
+        
+                
+        
+                                } else {
+        
+                
+        
+                                    // 开发者模式下重置输入状态
+        
+                
+        
+                                    jumpInput = false;
+        
+                
+        
+                                    freeCameraToggle = false;
+        
+                
+        
+                                    shiftInput = false;
+        
+                
+        
+                                    spaceHeld = false;
+        
+                
+        
+                                    if (useECS && ecsInputSystem) {
+        
+                
+        
+                                        // ECS 模式下不需要额外操作
+        
+                
+        
+                                    } else {
+        
+                
+        
+                                        input->update();
+        
+                
+        
+                                    }
+        
+                
+        
+                                }
         
                 
         
@@ -429,26 +635,64 @@ void Renderer::mainLoop() {
 }
 
 void Renderer::updateGameLogic(float deltaTime) {
-    // 更新摄像机
-    // 使用持久化的用户速度设置，shift 加速时临时加倍
-    float speed = userMovementSpeed;
-    if (!developerMode && input->isSprintPressed()) {
-        speed *= 2.0f;
+    if (useECS && ecsWorld) {
+        // 使用 ECS 系统更新
+        // 更新输入
+        ecsInputSystem->update(deltaTime);
+        
+        // 获取玩家实体并更新输入状态
+        auto player = ecsWorld->getPlayer();
+        if (ecsWorld->registry().valid(player)) {
+            auto& inputState = ecsWorld->registry().get<ecs::InputStateComponent>(player);
+            auto& controller = ecsWorld->registry().get<ecs::CameraControllerComponent>(player);
+            
+            // 更新速度设置
+            controller.movementSpeed = userMovementSpeed;
+            if (!developerMode && inputState.sprint) {
+                controller.movementSpeed *= controller.sprintMultiplier;
+            }
+            controller.mouseSensitivity = userSensitivity;
+        }
+        
+        // 更新移动
+        ecsMovementSystem->update(deltaTime);
+        
+        // 更新物理
+        ecsPhysicsSystem->update(deltaTime);
+        
+        // 更新相机
+        ecsCameraSystem->update(deltaTime);
+        
+        // 同步到旧相机系统（用于渲染）
+        if (ecsWorld->registry().valid(ecsWorld->getMainCamera())) {
+            auto& transform = ecsWorld->registry().get<ecs::TransformComponent>(ecsWorld->getMainCamera());
+            auto& controller = ecsWorld->registry().get<ecs::CameraControllerComponent>(ecsWorld->getMainCamera());
+            
+            camera->setPosition(transform.position);
+            camera->setFront(transform.getFront());
+            camera->setMovementSpeed(controller.movementSpeed);
+            camera->setMouseSensitivity(controller.mouseSensitivity);
+        }
+    } else {
+        // 使用旧的系统更新
+        float speed = userMovementSpeed;
+        if (!developerMode && input->isSprintPressed()) {
+            speed *= 2.0f;
+        }
+        camera->setMovementSpeed(speed);
+        
+        camera->update(deltaTime,
+                      input->isForwardPressed(),
+                      input->isBackPressed(),
+                      input->isLeftPressed(),
+                      input->isRightPressed(),
+                      jumpInput,
+                      freeCameraToggle,
+                      shiftInput,
+                      spaceHeld);
+        
+        physics->update(deltaTime);
     }
-    camera->setMovementSpeed(speed);
-    
-    camera->update(deltaTime,
-                  input->isForwardPressed(),
-                  input->isBackPressed(),
-                  input->isLeftPressed(),
-                  input->isRightPressed(),
-                  jumpInput,
-                  freeCameraToggle,
-                  shiftInput,
-                  spaceHeld);
-    
-    // 更新物理
-    physics->update(deltaTime);
 }
 
 void Renderer::drawFrame() {

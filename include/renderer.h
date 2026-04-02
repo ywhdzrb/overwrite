@@ -28,6 +28,9 @@
 #include "light_manager.h"
 #include "gltf_model.h"
 
+// ECS 系统
+#include "ecs/ecs.h"
+
 namespace vgame {
 
 constexpr uint32_t MAX_FRAMES_IN_FLIGHT = 2;
@@ -129,6 +132,14 @@ private:
     std::shared_ptr<TextureLoader> textureLoader;
     std::unique_ptr<LightManager> lightManager;
     std::unique_ptr<GLTFModel> gltfModel;
+    
+    // ECS 系统
+    bool useECS{true};  // 是否使用 ECS 系统
+    std::unique_ptr<ecs::World> ecsWorld;
+    std::unique_ptr<ecs::InputSystem> ecsInputSystem;
+    std::unique_ptr<ecs::MovementSystem> ecsMovementSystem;
+    std::unique_ptr<ecs::PhysicsSystem> ecsPhysicsSystem;
+    std::unique_ptr<ecs::CameraSystem> ecsCameraSystem;
 
     // 时间管理
     std::chrono::high_resolution_clock::time_point lastTime;
