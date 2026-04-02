@@ -240,6 +240,11 @@ void Renderer::initVulkan() {
     // 添加立方体碰撞体（大小为 5.0）
     physics->addCollisionBox(cubePos, glm::vec3(5.0f, 5.0f, 5.0f));
     
+    // 同时添加到 ECS 移动系统
+    if (useECS && ecsMovementSystem) {
+        ecsMovementSystem->addCollisionBox(cubePos, glm::vec3(5.0f, 5.0f, 5.0f));
+    }
+    
     // 初始化时间
     lastTime = std::chrono::high_resolution_clock::now();
 }

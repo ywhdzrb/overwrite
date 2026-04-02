@@ -218,6 +218,51 @@ MovementSystem::MovementSystem(World& world) : world_(world) {
     std::cout << "[MovementSystem] 初始化完成" << std::endl;
 }
 
+void MovementSystem::addCollisionBox(const glm::vec3& position, const glm::vec3& size) {
+    collisionBoxes_.push_back({position, size});
+}
+
+void MovementSystem::clearCollisionBoxes() {
+    collisionBoxes_.clear();
+}
+
+bool MovementSystem::checkCollision(const glm::vec3& position, const glm::vec3& playerSize) const {
+    for (const auto& box : collisionBoxes_) {
+        const glm::vec3& boxPos = box.first;
+        const glm::vec3& boxSize = box.second;
+        
+        // AABB 碰撞检测
+        if (position.x + playerSize.x / 2.0f > boxPos.x - boxSize.x / 2.0f &&
+            position.x - playerSize.x / 2.0f < boxPos.x + boxSize.x / 2.0f &&
+            position.y + playerSize.y > boxPos.y - boxSize.y / 2.0f &&
+            position.y - playerSize.y / 2.0f < boxPos.y + boxSize.y / 2.0f &&
+            position.z + playerSize.z / 2.0f > boxPos.z - boxSize.z / 2.0f &&
+            position.z - playerSize.z / 2.0f < boxPos.z + boxSize.z / 2.0f) {
+            return true;
+        }
+    }
+    return false;
+}
+
+glm::vec3 MovementSystem::resolveCollision(const glm::vec3& oldPos, const glm::vec3& newPos, const glm::vec3& playerSize) const {
+    // 尝试分轴移动，找到可以移动到的位置
+    glm::vec3 result = oldPos;
+    
+    // X 轴
+    glm::vec3 testPosX = glm::vec3(newPos.x, oldPos.y, oldPos.z);
+    if (!checkCollision(testPosX, playerSize)) {
+        result.x = newPos.x;
+    }
+    
+    // Z 轴
+    glm::vec3 testPosZ = glm::vec3(result.x, oldPos.y, newPos.z);
+    if (!checkCollision(testPosZ, playerSize)) {
+        result.z = newPos.z;
+    }
+    
+    return result;
+}
+
 void MovementSystem::update(float deltaTime) {
     // 获取玩家视图
     auto view = world_.registry().view<TransformComponent, CameraControllerComponent, InputStateComponent>();
@@ -266,8 +311,11 @@ void MovementSystem::updateFreeCamera(entt::entity entity, TransformComponent& t
                                      float deltaTime) {
     float speed = controller.freeCameraSpeed;
     
+    // 自由视角模式下也检测碰撞
+    glm::vec3 oldPos = transform.position;
     glm::vec3 front = transform.getFront();
     glm::vec3 right = transform.getRight();
+    glm::vec3 playerSize(0.6f, 1.8f, 0.6f);  // 玩家碰撞体大小
     
     if (input.moveForward) transform.position += front * speed * deltaTime;
     if (input.moveBackward) transform.position -= front * speed * deltaTime;
@@ -275,6 +323,11 @@ void MovementSystem::updateFreeCamera(entt::entity entity, TransformComponent& t
     if (input.moveRight) transform.position += right * speed * deltaTime;
     if (input.spaceHeld) transform.position += glm::vec3(0.0f, 1.0f, 0.0f) * speed * deltaTime;
     if (input.shiftHeld) transform.position -= glm::vec3(0.0f, 1.0f, 0.0f) * speed * deltaTime;
+    
+    // 碰撞检测
+    if (checkCollision(transform.position, playerSize)) {
+        transform.position = resolveCollision(oldPos, transform.position, playerSize);
+    }
 }
 
 void MovementSystem::updateNormalMovement(entt::entity entity, TransformComponent& transform,
@@ -305,9 +358,18 @@ void MovementSystem::updateNormalMovement(entt::entity entity, TransformComponen
         horizontalVelocity = glm::normalize(horizontalVelocity) * speed;
     }
     
+    // 保存旧位置
+    glm::vec3 oldPos = transform.position;
+    glm::vec3 playerSize(0.6f, 1.8f, 0.6f);  // 玩家碰撞体大小
+    
     // 更新位置
     transform.position.x += horizontalVelocity.x * deltaTime;
     transform.position.z += horizontalVelocity.z * deltaTime;
+    
+    // 碰撞检测
+    if (checkCollision(transform.position, playerSize)) {
+        transform.position = resolveCollision(oldPos, transform.position, playerSize);
+    }
 }
 
 // ==================== PhysicsSystem 实现 ====================

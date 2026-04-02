@@ -130,8 +130,18 @@ public:
     
     void update(float deltaTime);
     
+    // 碰撞体管理
+    void addCollisionBox(const glm::vec3& position, const glm::vec3& size);
+    void clearCollisionBoxes();
+    const std::vector<std::pair<glm::vec3, glm::vec3>>& getCollisionBoxes() const { return collisionBoxes_; }
+    
 private:
     World& world_;
+    std::vector<std::pair<glm::vec3, glm::vec3>> collisionBoxes_;  // position, size
+    
+    // 碰撞检测
+    bool checkCollision(const glm::vec3& position, const glm::vec3& playerSize) const;
+    glm::vec3 resolveCollision(const glm::vec3& oldPos, const glm::vec3& newPos, const glm::vec3& playerSize) const;
     
     void updateFreeCamera(entt::entity entity, TransformComponent& transform,
                          VelocityComponent* velocity,
