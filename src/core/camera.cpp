@@ -173,8 +173,8 @@ void Camera::processMouseMovement(float xOffset, float yOffset) {
     xOffset *= mouseSensitivity;
     yOffset *= mouseSensitivity;
 
-    yaw += xOffset;
-    pitch -= yOffset;  // 反转Y
+    yaw -= xOffset;  // 反转X轴（左右）
+    pitch -= yOffset;  // 反转Y轴（上下）
     
     // 限制俯仰角
     pitch = glm::clamp(pitch, -60.0f, 60.0f);
