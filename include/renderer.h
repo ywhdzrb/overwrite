@@ -134,7 +134,7 @@ private:
     std::unique_ptr<GLTFModel> gltfModel;
     
     // ECS 系统
-    bool useECS{true};  // 是否使用 ECS 系统
+    bool useECS{false};  // 是否使用 ECS 系统（暂时禁用以测试第三人称相机）
     std::unique_ptr<ecs::World> ecsWorld;
     std::unique_ptr<ecs::InputSystem> ecsInputSystem;
     std::unique_ptr<ecs::MovementSystem> ecsMovementSystem;
