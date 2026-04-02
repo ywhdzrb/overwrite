@@ -41,6 +41,9 @@ shaders/*.spv
 # external/  # 注释掉，允许git submodule
 third_party/
 
+# External libraries (核心文件已提交，其他文件忽略)
+external/tinygltf/
+
 # Assets cache
 assets/cache/
 
