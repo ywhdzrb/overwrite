@@ -82,19 +82,23 @@ void Camera::update(float deltaTime, bool moveForward, bool moveBackward,
     }
     
     if (mode == Mode::Free) {
-        // 自由视角模式
+        // 自由视角模式：相机和 Player 同时移动
         float speed = freeCameraSpeed;
         
-        if (moveForward) position += front * speed * deltaTime;
-        if (moveBackward) position -= front * speed * deltaTime;
-        if (moveLeft) position -= right * speed * deltaTime;
-        if (moveRight) position += right * speed * deltaTime;
-        if (spaceHeld) position += worldUp * speed * deltaTime;
-        if (shiftPressed) position -= worldUp * speed * deltaTime;
+        glm::vec3 moveDelta(0.0f);
+        if (moveForward) moveDelta += front * speed * deltaTime;
+        if (moveBackward) moveDelta -= front * speed * deltaTime;
+        if (moveLeft) moveDelta -= right * speed * deltaTime;
+        if (moveRight) moveDelta += right * speed * deltaTime;
+        if (spaceHeld) moveDelta += worldUp * speed * deltaTime;
+        if (shiftPressed) moveDelta -= worldUp * speed * deltaTime;
+        
+        // 同时移动相机和 Player
+        position += moveDelta;
+        targetPosition += moveDelta;
     } else if (mode == Mode::ThirdPerson) {
         // 第三人称模式：移动目标，相机跟随
         float speed = movementSpeed;
-        if (shiftPressed) speed *= 2.0f;
         
         // 计算水平移动方向（基于相机朝向）
         glm::vec3 moveDir(0.0f);
@@ -111,21 +115,15 @@ void Camera::update(float deltaTime, bool moveForward, bool moveBackward,
             targetPosition += moveDir;
         }
         
-        // 跳跃
-        if (jump && !isJumping && targetPosition.y <= groundHeight) {
-            velocity.y = jumpForce;
-            isJumping = true;
+        // 飞行模式：空格上升，Shift 下降
+        if (spaceHeld) {
+            targetPosition.y += speed * deltaTime;
         }
-        
-        // 重力
-        if (isJumping || targetPosition.y > groundHeight) {
-            velocity.y -= gravity * deltaTime;
-            targetPosition.y += velocity.y * deltaTime;
-            
-            if (targetPosition.y <= groundHeight) {
+        if (shiftPressed) {
+            targetPosition.y -= speed * deltaTime;
+            // 防止低于地面
+            if (targetPosition.y < groundHeight) {
                 targetPosition.y = groundHeight;
-                velocity.y = 0.0f;
-                isJumping = false;
             }
         }
         

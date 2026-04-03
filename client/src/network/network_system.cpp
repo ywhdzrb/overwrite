@@ -321,6 +321,9 @@ void NetworkSystem::interpolateRemotePlayers(float deltaTime) {
     for (auto& [clientId, player] : remotePlayers_) {
         if (!player.active) continue;
         
+        // 保存上一帧位置
+        player.lastPosition = player.position;
+        
         // 位置插值
         player.position = glm::mix(player.position, player.targetPosition, 
                                    std::min(1.0f, interpolationSpeed_ * deltaTime));
@@ -333,6 +336,21 @@ void NetworkSystem::interpolateRemotePlayers(float deltaTime) {
         player.yaw += yawDiff * std::min(1.0f, interpolationSpeed_ * deltaTime);
         
         player.pitch += (player.targetPitch - player.pitch) * std::min(1.0f, interpolationSpeed_ * deltaTime);
+        
+        // 检测是否在移动，并计算移动方向
+        glm::vec3 moveDir = player.position - player.lastPosition;
+        float moveDistance = glm::length(moveDir);
+        player.isMoving = moveDistance > 0.001f;
+        
+        if (player.isMoving) {
+            // 计算移动方向的角度
+            moveDir.y = 0.0f;  // 忽略Y轴
+            if (glm::length(moveDir) > 0.0001f) {
+                moveDir = glm::normalize(moveDir);
+                // 注意：模型的前方是 -Z，所以用 -moveDir
+                player.moveYaw = glm::degrees(atan2(-moveDir.x, -moveDir.z));
+            }
+        }
     }
 }
 

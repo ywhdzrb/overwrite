@@ -104,7 +104,7 @@ cd build
 
 # Configure with CMake
 echo -e "${GREEN}Configuring project with CMake...${NC}"
-cmake .. -DCMAKE_BUILD_TYPE=${BUILD_TYPE}
+cmake .. -DCMAKE_BUILD_TYPE=${BUILD_TYPE} -DCMAKE_POLICY_VERSION_MINIMUM=3.5
 
 # Build the project
 echo -e "${GREEN}Building project...${NC}"

@@ -19,7 +19,7 @@ else()
     add_compile_options(-O3 -march=native)
 endif()
 
-# FetchContent for external dependencies
+# ==================== 依赖管理 (统一使用 FetchContent) ====================
 include(FetchContent)
 
 # EnTT - ECS 库
@@ -43,38 +43,47 @@ FetchContent_Declare(
     GIT_TAG 0.8.2
 )
 
-FetchContent_MakeAvailable(entt nlohmann_json websocketpp)
+# ImGui - UI 库
+FetchContent_Declare(
+    imgui
+    GIT_REPOSITORY https://github.com/ocornut/imgui.git
+    GIT_TAG v1.91.8
+)
 
-# 查找 Vulkan
+# tinygltf - GLTF 模型加载
+FetchContent_Declare(
+    tinygltf
+    GIT_REPOSITORY https://github.com/syoyo/tinygltf.git
+    GIT_TAG v2.9.3
+)
+
+# tinyobjloader - OBJ 模型加载
+FetchContent_Declare(
+    tinyobjloader
+    GIT_REPOSITORY https://github.com/tinyobjloader/tinyobjloader.git
+    GIT_TAG v2.0.0rc13
+)
+
+FetchContent_MakeAvailable(entt nlohmann_json websocketpp imgui tinygltf tinyobjloader)
+
+# ==================== 系统库 ====================
 find_package(Vulkan REQUIRED)
-include_directories(${Vulkan_INCLUDE_DIRS})
-
-# 查找 OpenSSL（WebSocket 需要）
 find_package(OpenSSL REQUIRED)
-
-# 查找 GLFW (用于窗口管理)
 find_package(glfw3 REQUIRED)
-
-# 查找 glm (数学库)
 find_package(glm REQUIRED)
 
-# 使用本地 git submodule 的 tinyobjloader
-include_directories(${CMAKE_CURRENT_SOURCE_DIR}/external/tinyobjloader)
-include_directories(${CMAKE_CURRENT_SOURCE_DIR}/external)
-include_directories(${CMAKE_CURRENT_SOURCE_DIR}/external/tinygltf)
-
-# ImGui
-include_directories(${CMAKE_CURRENT_SOURCE_DIR}/external/imgui)
-include_directories(${CMAKE_CURRENT_SOURCE_DIR}/external/imgui/backends)
-
+# ==================== ImGui 配置 ====================
 set(IMGUI_SOURCES
-    external/imgui/imgui.cpp
-    external/imgui/imgui_draw.cpp
-    external/imgui/imgui_widgets.cpp
-    external/imgui/imgui_tables.cpp
-    external/imgui/backends/imgui_impl_vulkan.cpp
-    external/imgui/backends/imgui_impl_glfw.cpp
+    ${imgui_SOURCE_DIR}/imgui.cpp
+    ${imgui_SOURCE_DIR}/imgui_draw.cpp
+    ${imgui_SOURCE_DIR}/imgui_widgets.cpp
+    ${imgui_SOURCE_DIR}/imgui_tables.cpp
+    ${imgui_SOURCE_DIR}/backends/imgui_impl_vulkan.cpp
+    ${imgui_SOURCE_DIR}/backends/imgui_impl_glfw.cpp
 )
+
+# 本地 stb_image.h
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/external)
 
 # ==================== 共享库 (shared) ====================
 add_library(OverWriteShared STATIC
@@ -142,6 +151,9 @@ include_directories(
     ${CMAKE_CURRENT_SOURCE_DIR}/src
     ${CMAKE_CURRENT_SOURCE_DIR}/shared/include
     ${CMAKE_CURRENT_SOURCE_DIR}/client/include
+    ${tinygltf_SOURCE_DIR}
+    ${imgui_SOURCE_DIR}
+    ${imgui_SOURCE_DIR}/backends
 )
 
 # 源文件
@@ -173,7 +185,7 @@ set(SOURCES
     src/renderer/gltf_model.cpp
     src/utils/shader_compiler.cpp
     src/utils/logger.cpp
-    external/tinygltf/tiny_gltf.cc
+    ${tinygltf_SOURCE_DIR}/tiny_gltf.cc
 )
 
 # 添加 ImGui 源文件

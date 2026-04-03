@@ -7,6 +7,7 @@
 #include <memory>
 #include <map>
 #include <glm/glm.hpp>
+#include <glm/gtc/quaternion.hpp>
 #include "vulkan_device.h"
 #include "mesh.h"
 #include "texture.h"
@@ -25,6 +26,73 @@ namespace vgame {
  */
 class GLTFModel {
 public:
+    // ========== 动画相关公共类型 ==========
+    
+    // 动画通道目标路径
+    enum class AnimationPath {
+        Translation,
+        Rotation,
+        Scale,
+        Weights
+    };
+    
+    // 动画通道
+    struct AnimationChannel {
+        int nodeIndex;              // 目标节点索引
+        AnimationPath path;         // 目标属性
+        int samplerIndex;           // 采样器索引
+    };
+    
+    // 动画采样器
+    struct AnimationSampler {
+        std::vector<float> inputs;  // 时间戳
+        std::vector<glm::vec4> outputs; // 输出值（vec4 可存储 translation/scale/rotation/weights）
+        std::string interpolation;  // 插值方式：LINEAR, STEP, CUBICSPLINE
+    };
+    
+    // 动画数据
+    struct Animation {
+        std::string name;
+        std::vector<AnimationChannel> channels;
+        std::vector<AnimationSampler> samplers;
+        float duration = 0.0f;
+    };
+    
+    // 动画播放状态
+    struct AnimationState {
+        int animationIndex = -1;    // 当前播放的动画索引
+        float currentTime = 0.0f;   // 当前时间
+        bool playing = false;       // 是否正在播放
+        bool loop = true;           // 是否循环播放
+        float speed = 1.0f;         // 播放速度
+    };
+    
+    // 存储节点原始变换（用于动画混合）
+    struct NodeTransform {
+        glm::vec3 translation{0.0f};
+        glm::quat rotation{1.0f, 0.0f, 0.0f, 0.0f};
+        glm::vec3 scale{1.0f};
+        bool hasTranslation = false;
+        bool hasRotation = false;
+        bool hasScale = false;
+    };
+    
+    // 关节数据
+    struct Joint {
+        int nodeIndex;              // 节点索引
+        glm::mat4 inverseBindMatrix; // 逆绑定矩阵
+    };
+    
+    // 蒙皮数据
+    struct Skin {
+        std::string name;
+        std::vector<Joint> joints;
+        glm::mat4 inverseBindMatrix;
+        int skeletonRoot = -1;      // 骨骼根节点
+    };
+    
+    // ========== 构造/析构 ==========
+    
     /**
      * @brief 构造函数
      * @param device Vulkan 设备指针
@@ -166,6 +234,86 @@ public:
      * @return 节点的变换矩阵
      */
     glm::mat4 getNodeTransform(size_t nodeIndex, const glm::mat4& parentMatrix = glm::mat4(1.0f)) const;
+    
+    // ========== 动画接口 ==========
+    
+    /**
+     * @brief 获取动画数量
+     */
+    size_t getAnimationCount() const { return animations.size(); }
+    
+    /**
+     * @brief 获取动画名称
+     * @param index 动画索引
+     * @return 动画名称，如果索引无效返回空字符串
+     */
+    const std::string& getAnimationName(size_t index) const;
+    
+    /**
+     * @brief 播放指定索引的动画
+     * @param index 动画索引
+     * @param loop 是否循环播放
+     * @param speed 播放速度
+     */
+    void playAnimation(size_t index, bool loop = true, float speed = 1.0f);
+    
+    /**
+     * @brief 播放指定名称的动画
+     * @param name 动画名称
+     * @param loop 是否循环播放
+     * @param speed 播放速度
+     * @return 是否找到并播放成功
+     */
+    bool playAnimation(const std::string& name, bool loop = true, float speed = 1.0f);
+    
+    /**
+     * @brief 停止当前动画
+     */
+    void stopAnimation();
+    
+    /**
+     * @brief 暂停/恢复动画
+     */
+    void pauseAnimation();
+    void resumeAnimation();
+    
+    /**
+     * @brief 更新动画状态
+     * @param deltaTime 帧间隔时间（秒）
+     */
+    void updateAnimation(float deltaTime);
+    
+    /**
+     * @brief 检查是否正在播放动画
+     */
+    bool isAnimationPlaying() const { return animationState.playing; }
+    
+    /**
+     * @brief 获取当前播放的动画索引
+     */
+    int getCurrentAnimationIndex() const { return animationState.animationIndex; }
+    
+    /**
+     * @brief 设置动画播放速度
+     */
+    void setAnimationSpeed(float speed) { animationState.speed = speed; }
+    
+    /**
+     * @brief 设置动画是否循环
+     */
+    void setAnimationLoop(bool loop) { animationState.loop = loop; }
+    
+    /**
+     * @brief 播放所有动画（用于多部件动画模型）
+     * @param loop 是否循环播放
+     * @param speed 播放速度
+     */
+    void playAllAnimations(bool loop = true, float speed = 1.0f);
+    
+    /**
+     * @brief 检查是否在播放多个动画
+     */
+    bool isPlayingMultipleAnimations() const { return playAllAnimationsMode; }
 
 private:
     /**
@@ -222,6 +370,46 @@ private:
      * @param parentMatrix 父节点的变换矩阵
      */
     void calculateNodeBoundingBox(size_t nodeIndex, const glm::mat4& parentMatrix);
+    
+    // ========== 动画内部方法 ==========
+    
+    /**
+     * @brief 加载所有动画
+     */
+    void loadAnimations();
+    
+    /**
+     * @brief 加载蒙皮数据
+     */
+    void loadSkins();
+    
+    /**
+     * @brief 存储节点原始变换（用于动画）
+     */
+    void storeNodeTransforms();
+    
+    /**
+     * @brief 采样动画通道
+     * @param sampler 采样器
+     * @param time 当前时间
+     * @return 插值后的值
+     */
+    glm::vec4 sampleAnimationChannel(const AnimationSampler& sampler, float time) const;
+    
+    /**
+     * @brief 应用动画到节点
+     * @param animationIndex 动画索引
+     * @param time 当前时间
+     */
+    void applyAnimation(int animationIndex, float time);
+    
+    /**
+     * @brief 查找关键帧索引
+     * @param times 时间戳数组
+     * @param time 当前时间
+     * @return 关键帧索引和插值因子
+     */
+    std::pair<size_t, float> findKeyframeIndex(const std::vector<float>& times, float time) const;
 
 private:
     std::shared_ptr<VulkanDevice> device;           // Vulkan 设备
@@ -262,9 +450,22 @@ private:
     struct NodeData {
         size_t meshIndex;
         glm::mat4 transform;
+        glm::mat4 inverseBindMatrix;  // 蒙皮用逆绑定矩阵
+        int skinIndex = -1;           // 所属蒙皮索引
+        int jointIndex = -1;          // 在蒙皮中的关节索引
         std::vector<size_t> children;
     };
     std::vector<NodeData> nodes;                    // 节点列表
+    
+    // ========== 动画系统数据 ==========
+    
+    std::vector<Animation> animations;              // 动画列表
+    AnimationState animationState;                  // 动画播放状态
+    std::vector<NodeTransform> nodeTransforms;      // 节点原始变换（动画用）
+    bool playAllAnimationsMode = false;             // 是否同时播放所有动画模式
+    // ========== 蒙皮系统数据 ==========
+    
+    std::vector<Skin> skins;                        // 蒙皮列表
 
     // 模型变换
     glm::vec3 position;

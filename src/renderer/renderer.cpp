@@ -215,9 +215,33 @@ void Renderer::initVulkan() {
             gltfModel->setPosition(glm::vec3(0.0f, 0.0f, -5.0f));
             gltfModel->setScale(glm::vec3(0.3f, 0.3f, 0.3f));
             std::cout << "[Renderer] GLTF模型加载成功" << std::endl;
+            
+            // 如果模型有动画，播放第一个动画（通常是空闲动画）
+            if (gltfModel->getAnimationCount() > 0) {
+                std::cout << "[Renderer] 模型包含 " << gltfModel->getAnimationCount() << " 个动画" << std::endl;
+                gltfModel->playAnimation(0, true, 1.0f);
+            }
         }
     } catch (const std::runtime_error& e) {
         std::cout << "[Renderer] GLTF模型加载失败: " << e.what() << std::endl;
+    }
+    
+    // 尝试加载行走动画模型
+    gltfWalkModel = std::make_unique<GLTFModel>(vulkanDevice, textureLoader);
+    try {
+        if (gltfWalkModel->loadFromFile("assets/models/player_walk.glb")) {
+            gltfWalkModel->setScale(glm::vec3(0.3f, 0.3f, 0.3f));
+            std::cout << "[Renderer] 行走动画模型加载成功" << std::endl;
+            
+            // 同时播放所有动画（多部件动画）
+            if (gltfWalkModel->getAnimationCount() > 0) {
+                std::cout << "[Renderer] 行走模型包含 " << gltfWalkModel->getAnimationCount() << " 个动画，同时播放" << std::endl;
+                gltfWalkModel->playAllAnimations(true, 1.0f);
+            }
+        }
+    } catch (const std::runtime_error& e) {
+        std::cout << "[Renderer] 行走动画模型加载失败: " << e.what() << std::endl;
+        gltfWalkModel.reset();
     }
     
     // 创建描述符集
@@ -672,20 +696,42 @@ void Renderer::updateGameLogic(float deltaTime) {
         // 使用 ClientWorld 统一更新所有系统
         ecsClientWorld->updateClientSystems(deltaTime);
         
-        // 同步到旧相机系统（用于渲染）
-        if (ecsClientWorld->registry().valid(ecsClientWorld->getMainCamera())) {
-            auto& transform = ecsClientWorld->registry().get<ecs::TransformComponent>(ecsClientWorld->getMainCamera());
-            auto& controller = ecsClientWorld->registry().get<ecs::MovementControllerComponent>(ecsClientWorld->getMainCamera());
-            
-            // 第三人称模式：设置目标位置，第一人称：设置相机位置
-            if (camera->getMode() == Camera::Mode::ThirdPerson) {
-                camera->setTarget(transform.position);
-            } else {
-                camera->setPosition(transform.position);
+        // 获取输入状态
+        auto* input = ecsClientWorld->registry().try_get<ecs::InputStateComponent>(player);
+        
+        // 处理自由视角切换
+        if (input && input->freeCameraToggle) {
+            camera->toggleFreeCamera();
+        }
+        
+        // 自由视角模式下，使用相机自己的移动逻辑
+        if (camera->isFreeCameraMode() && input) {
+            // 处理鼠标移动（自由视角需要单独处理）
+            if (input->mouseDeltaX != 0.0f || input->mouseDeltaY != 0.0f) {
+                camera->processMouseMovement(input->mouseDeltaX, input->mouseDeltaY);
             }
-            camera->setYawPitch(transform.yaw, transform.pitch);
-            camera->setMovementSpeed(controller.movementSpeed);
-            camera->setMouseSensitivity(controller.mouseSensitivity);
+            
+            camera->update(deltaTime,
+                          input->moveForward, input->moveBackward,
+                          input->moveLeft, input->moveRight,
+                          input->jump, false,  // freeCameraToggle 已处理
+                          input->shiftHeld, input->spaceHeld);
+        } else {
+            // 非自由视角模式下，从 ECS 同步到旧相机系统（用于渲染）
+            if (ecsClientWorld->registry().valid(ecsClientWorld->getMainCamera())) {
+                auto& transform = ecsClientWorld->registry().get<ecs::TransformComponent>(ecsClientWorld->getMainCamera());
+                auto& controller = ecsClientWorld->registry().get<ecs::MovementControllerComponent>(ecsClientWorld->getMainCamera());
+                
+                // 第三人称模式：设置目标位置，第一人称：设置相机位置
+                if (camera->getMode() == Camera::Mode::ThirdPerson) {
+                    camera->setTarget(transform.position);
+                } else {
+                    camera->setPosition(transform.position);
+                }
+                camera->setYawPitch(transform.yaw, transform.pitch);
+                camera->setMovementSpeed(controller.movementSpeed);
+                camera->setMouseSensitivity(controller.mouseSensitivity);
+            }
         }
     } else {
         // 使用旧的系统更新
@@ -708,11 +754,92 @@ void Renderer::updateGameLogic(float deltaTime) {
         physics->update(deltaTime);
     }
     
-    // 第三人称模式：将 player 模型位置同步到相机目标，并背对相机
-    if (camera->getMode() == Camera::Mode::ThirdPerson && gltfModel) {
-        gltfModel->setPosition(camera->getTarget());
-        // player 背对相机：yaw + 180 度
-        gltfModel->setRotation(0.0f, camera->getYaw() + 180.0f, 0.0f);
+    // 第三人称模式：将 player 模型位置同步到相机目标
+    if (camera->getMode() == Camera::Mode::ThirdPerson) {
+        // 检测玩家是否在移动，并计算移动方向
+        bool isMoving = false;
+        float moveYaw = camera->getYaw();  // 默认面向相机方向
+        
+        if (useECS && ecsClientWorld) {
+            auto player = ecsClientWorld->getPlayer();
+            if (ecsClientWorld->registry().valid(player)) {
+                auto* input = ecsClientWorld->registry().try_get<ecs::InputStateComponent>(player);
+                if (input) {
+                    isMoving = input->moveForward || input->moveBackward || 
+                              input->moveLeft || input->moveRight;
+                    
+                    // 计算移动方向
+                    if (isMoving) {
+                        float dirX = 0.0f, dirZ = 0.0f;
+                        
+                        // 相机的前方向（忽略Y轴）
+                        glm::vec3 camFront = camera->getFront();
+                        camFront.y = 0.0f;
+                        camFront = glm::normalize(camFront);
+                        
+                        // 相机的右方向
+                        glm::vec3 camRight = camera->getRight();
+                        camRight.y = 0.0f;
+                        camRight = glm::normalize(camRight);
+                        
+                        // 根据输入计算移动向量
+                        if (input->moveForward) {
+                            dirX += camFront.x;
+                            dirZ += camFront.z;
+                        }
+                        if (input->moveBackward) {
+                            dirX -= camFront.x;
+                            dirZ -= camFront.z;
+                        }
+                        if (input->moveLeft) {
+                            dirX -= camRight.x;
+                            dirZ -= camRight.z;
+                        }
+                        if (input->moveRight) {
+                            dirX += camRight.x;
+                            dirZ += camRight.z;
+                        }
+                        
+                        // 计算移动方向的yaw角度
+                        if (dirX != 0.0f || dirZ != 0.0f) {
+                            moveYaw = glm::degrees(atan2(-dirX, -dirZ));
+                        }
+                    }
+                }
+            }
+        }
+        
+        // 选择要渲染的模型（空闲或行走）
+        GLTFModel* activeModel = nullptr;
+        if (isMoving && gltfWalkModel && gltfWalkModel->getMeshCount() > 0) {
+            activeModel = gltfWalkModel.get();
+            // 如果刚切换到移动状态，播放所有行走动画
+            if (!playerWasMoving) {
+                if (gltfWalkModel->getAnimationCount() > 0) {
+                    gltfWalkModel->playAllAnimations(true, 1.0f);
+                }
+            }
+        } else if (gltfModel && gltfModel->getMeshCount() > 0) {
+            activeModel = gltfModel.get();
+        }
+        
+        // 更新活动模型的位置和动画
+        if (activeModel) {
+            activeModel->setPosition(camera->getTarget());
+            // 面向移动方向（静止时面向相机方向）
+            activeModel->setRotation(0.0f, moveYaw, 0.0f);
+            activeModel->updateAnimation(deltaTime);
+        }
+        
+        playerWasMoving = isMoving;
+    } else {
+        // 非第三人称模式也更新动画（用于模型预览等）
+        if (gltfModel) {
+            gltfModel->updateAnimation(deltaTime);
+        }
+        if (gltfWalkModel) {
+            gltfWalkModel->updateAnimation(deltaTime);
+        }
     }
     
     // 更新远程玩家模型
@@ -735,16 +862,55 @@ void Renderer::updateGameLogic(float deltaTime) {
             auto it = remotePlayerModels.find(clientId);
             if (it == remotePlayerModels.end()) {
                 // 创建新模型
-                auto model = std::make_unique<GLTFModel>(vulkanDevice, textureLoader);
-                if (model->loadFromFile("assets/models/player.glb")) {
-                    model->setScale(glm::vec3(0.3f, 0.3f, 0.3f));
-                    model->setPosition(player.position);
-                    remotePlayerModels[clientId] = std::move(model);
+                RemotePlayerModels models;
+                
+                // 空闲模型
+                auto idleModel = std::make_unique<GLTFModel>(vulkanDevice, textureLoader);
+                if (idleModel->loadFromFile("assets/models/player.glb")) {
+                    idleModel->setScale(glm::vec3(0.3f, 0.3f, 0.3f));
+                    idleModel->setPosition(player.position);
+                    models.idleModel = std::move(idleModel);
                 }
+                
+                // 行走模型
+                auto walkModel = std::make_unique<GLTFModel>(vulkanDevice, textureLoader);
+                if (walkModel->loadFromFile("assets/models/player_walk.glb")) {
+                    walkModel->setScale(glm::vec3(0.3f, 0.3f, 0.3f));
+                    walkModel->setPosition(player.position);
+                    if (walkModel->getAnimationCount() > 0) {
+                        walkModel->playAllAnimations(true, 1.0f);
+                    }
+                    models.walkModel = std::move(walkModel);
+                }
+                
+                remotePlayerModels[clientId] = std::move(models);
             } else {
-                // 更新位置和旋转
-                it->second->setPosition(player.position);
-                it->second->setRotation(0.0f, player.yaw + 180.0f, 0.0f);
+                // 更新两个模型的位置和旋转
+                if (it->second.idleModel) {
+                    it->second.idleModel->setPosition(player.position);
+                    // 空闲时面向相机方向
+                    it->second.idleModel->setRotation(0.0f, player.yaw, 0.0f);
+                }
+                if (it->second.walkModel) {
+                    it->second.walkModel->setPosition(player.position);
+                    // 移动时面向移动方向，静止时面向相机方向
+                    float renderYaw = player.isMoving ? player.moveYaw : player.yaw;
+                    it->second.walkModel->setRotation(0.0f, renderYaw, 0.0f);
+                    
+                    // 更新行走动画
+                    if (player.isMoving) {
+                        if (!it->second.walkModel->isAnimationPlaying()) {
+                            it->second.walkModel->playAllAnimations(true, 1.0f);
+                        }
+                        it->second.walkModel->updateAnimation(deltaTime);
+                    } else {
+                        if (it->second.walkModel->isAnimationPlaying()) {
+                            it->second.walkModel->stopAnimation();
+                        }
+                    }
+                }
+                
+                it->second.wasMoving = player.isMoving;
             }
         }
     } else {
@@ -860,19 +1026,36 @@ void Renderer::drawFrame() {
                             camera->getViewMatrix(), camera->getProjectionMatrix());
     }
     
-    // 渲染 GLTF 模型（如果有）
-    if (gltfModel && gltfModel->getMeshCount() > 0) {
+    // 渲染玩家模型（第三人称模式下选择空闲或行走模型）
+    if (camera->getMode() == Camera::Mode::ThirdPerson) {
+        // 根据移动状态选择模型
+        GLTFModel* activeModel = nullptr;
+        if (playerWasMoving && gltfWalkModel && gltfWalkModel->getMeshCount() > 0) {
+            activeModel = gltfWalkModel.get();
+        } else if (gltfModel && gltfModel->getMeshCount() > 0) {
+            activeModel = gltfModel.get();
+        }
+        
+        if (activeModel) {
+            activeModel->render(commandBuffer, graphicsPipeline->getPipelineLayout(),
+                              camera->getViewMatrix(), camera->getProjectionMatrix(),
+                              activeModel->getModelMatrix());
+        }
+    } else if (gltfModel && gltfModel->getMeshCount() > 0) {
+        // 非第三人称模式，渲染空闲模型
         gltfModel->render(commandBuffer, graphicsPipeline->getPipelineLayout(),
                         camera->getViewMatrix(), camera->getProjectionMatrix(),
                         gltfModel->getModelMatrix());
     }
     
     // 渲染远程玩家模型
-    for (auto& [clientId, model] : remotePlayerModels) {
-        if (model && model->getMeshCount() > 0) {
-            model->render(commandBuffer, graphicsPipeline->getPipelineLayout(),
+    for (auto& [clientId, models] : remotePlayerModels) {
+        // 根据移动状态选择模型
+        GLTFModel* activeModel = models.wasMoving ? models.walkModel.get() : models.idleModel.get();
+        if (activeModel && activeModel->getMeshCount() > 0) {
+            activeModel->render(commandBuffer, graphicsPipeline->getPipelineLayout(),
                         camera->getViewMatrix(), camera->getProjectionMatrix(),
-                        model->getModelMatrix());
+                        activeModel->getModelMatrix());
         }
     }
     

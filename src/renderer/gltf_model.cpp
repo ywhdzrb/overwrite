@@ -4,9 +4,13 @@
 #include <algorithm>
 #include <stdexcept>
 #include <filesystem>
+
+// 启用 GLM 实验性扩展
+#define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/quaternion.hpp>
 #include <glm/gtc/type_ptr.hpp>
+#include <glm/gtx/matrix_decompose.hpp>
 
 // STB Image 用于解码嵌入纹理（由 tinygltf.cc 提供 STB_IMAGE_IMPLEMENTATION）
 #include "stb_image.h"
@@ -132,13 +136,24 @@ bool GLTFModel::loadFromFile(const std::string& filename) {
         nodes.push_back(nodeData);
     }
     
+    // 加载蒙皮数据
+    loadSkins();
+    
+    // 存储节点原始变换（用于动画）
+    storeNodeTransforms();
+    
+    // 加载动画数据
+    loadAnimations();
+    
     // 计算包围盒
     calculateBoundingBox();
     
     Logger::info("GLTF model loaded successfully: " + name + 
                 " (nodes: " + std::to_string(nodes.size()) + 
                 ", meshes: " + std::to_string(meshes.size()) + 
-                ", materials: " + std::to_string(materials.size()) + ")");
+                ", materials: " + std::to_string(materials.size()) + 
+                ", animations: " + std::to_string(animations.size()) + 
+                ", skins: " + std::to_string(skins.size()) + ")");
     
     return true;
 }
@@ -645,6 +660,418 @@ std::shared_ptr<Texture> GLTFModel::getFirstTexture() const {
         }
     }
     return nullptr;
+}
+
+// ==================== 动画系统实现 ====================
+
+void GLTFModel::loadAnimations() {
+    animations.clear();
+    
+    for (const auto& gltfAnimation : gltfModel.animations) {
+        Animation animation;
+        animation.name = gltfAnimation.name;
+        
+        // 加载采样器
+        for (size_t s = 0; s < gltfAnimation.samplers.size(); ++s) {
+            const auto& gltfSampler = gltfAnimation.samplers[s];
+            AnimationSampler sampler;
+            sampler.interpolation = gltfSampler.interpolation;
+            
+            // 调试：检查采样器索引
+            Logger::info("  glTF Sampler: input=" + std::to_string(gltfSampler.input) + 
+                        ", output=" + std::to_string(gltfSampler.output) + 
+                        ", accessors count=" + std::to_string(gltfModel.accessors.size()));
+            
+            // 检查索引是否有效
+            if (gltfSampler.input < 0 || gltfSampler.input >= static_cast<int>(gltfModel.accessors.size())) {
+                Logger::warning("  Invalid input accessor index!");
+                continue;
+            }
+            if (gltfSampler.output < 0 || gltfSampler.output >= static_cast<int>(gltfModel.accessors.size())) {
+                Logger::warning("  Invalid output accessor index!");
+                continue;
+            }
+            
+            // 加载输入时间戳
+            const auto& inputAccessor = gltfModel.accessors[gltfSampler.input];
+            const auto* inputData = getBufferData(inputAccessor);
+            sampler.inputs.reserve(inputAccessor.count);
+            
+            for (size_t i = 0; i < inputAccessor.count; ++i) {
+                float time;
+                if (inputAccessor.componentType == TINYGLTF_COMPONENT_TYPE_FLOAT) {
+                    time = reinterpret_cast<const float*>(inputData)[i];
+                } else {
+                    time = static_cast<float>(reinterpret_cast<const double*>(inputData)[i]);
+                }
+                sampler.inputs.push_back(time);
+            }
+            
+            // 加载输出值
+            const auto& outputAccessor = gltfModel.accessors[gltfSampler.output];
+            const auto* outputData = getBufferData(outputAccessor);
+            sampler.outputs.reserve(outputAccessor.count);
+            
+            for (size_t i = 0; i < outputAccessor.count; ++i) {
+                glm::vec4 value(0.0f);
+                if (outputAccessor.type == TINYGLTF_TYPE_VEC3) {
+                    const float* v = reinterpret_cast<const float*>(outputData) + i * 3;
+                    value = glm::vec4(v[0], v[1], v[2], 1.0f);
+                } else if (outputAccessor.type == TINYGLTF_TYPE_VEC4) {
+                    const float* v = reinterpret_cast<const float*>(outputData) + i * 4;
+                    value = glm::vec4(v[0], v[1], v[2], v[3]);
+                }
+                sampler.outputs.push_back(value);
+            }
+            
+            animation.samplers.push_back(std::move(sampler));
+        }
+        
+        // 加载通道
+        for (const auto& gltfChannel : gltfAnimation.channels) {
+            AnimationChannel channel;
+            channel.nodeIndex = gltfChannel.target_node;
+            channel.samplerIndex = gltfChannel.sampler;
+            
+            // 解析目标路径
+            if (gltfChannel.target_path == "translation") {
+                channel.path = AnimationPath::Translation;
+            } else if (gltfChannel.target_path == "rotation") {
+                channel.path = AnimationPath::Rotation;
+            } else if (gltfChannel.target_path == "scale") {
+                channel.path = AnimationPath::Scale;
+            } else if (gltfChannel.target_path == "weights") {
+                channel.path = AnimationPath::Weights;
+            }
+            
+            animation.channels.push_back(std::move(channel));
+        }
+        
+        // 计算动画持续时间
+        for (const auto& sampler : animation.samplers) {
+            if (!sampler.inputs.empty()) {
+                float maxTime = sampler.inputs.back();
+                if (maxTime > animation.duration) {
+                    animation.duration = maxTime;
+                }
+            }
+        }
+        
+        animations.push_back(std::move(animation));
+    }
+    
+    if (!animations.empty()) {
+        Logger::info("Loaded " + std::to_string(animations.size()) + " animations");
+        for (size_t i = 0; i < animations.size(); ++i) {
+            Logger::info("  Animation[" + std::to_string(i) + "]: " + 
+                        (animations[i].name.empty() ? "<unnamed>" : animations[i].name) +
+                        " (duration: " + std::to_string(animations[i].duration) + "s, " +
+                        std::to_string(animations[i].channels.size()) + " channels)");
+        }
+    }
+}
+
+void GLTFModel::loadSkins() {
+    skins.clear();
+    
+    for (const auto& gltfSkin : gltfModel.skins) {
+        Skin skin;
+        skin.name = gltfSkin.name;
+        skin.skeletonRoot = gltfSkin.skeleton;
+        
+        // 加载关节
+        for (size_t i = 0; i < gltfSkin.joints.size(); ++i) {
+            Joint joint;
+            joint.nodeIndex = gltfSkin.joints[i];
+            
+            // 获取逆绑定矩阵
+            if (gltfSkin.inverseBindMatrices >= 0) {
+                const auto& accessor = gltfModel.accessors[gltfSkin.inverseBindMatrices];
+                const auto* data = getBufferData(accessor);
+                const float* matrixData = reinterpret_cast<const float*>(data) + i * 16;
+                joint.inverseBindMatrix = glm::mat4(
+                    matrixData[0], matrixData[1], matrixData[2], matrixData[3],
+                    matrixData[4], matrixData[5], matrixData[6], matrixData[7],
+                    matrixData[8], matrixData[9], matrixData[10], matrixData[11],
+                    matrixData[12], matrixData[13], matrixData[14], matrixData[15]
+                );
+            } else {
+                joint.inverseBindMatrix = glm::mat4(1.0f);
+            }
+            
+            skin.joints.push_back(std::move(joint));
+            
+            // 更新节点的关节索引
+            if (joint.nodeIndex >= 0 && joint.nodeIndex < static_cast<int>(nodes.size())) {
+                nodes[joint.nodeIndex].jointIndex = static_cast<int>(i);
+                nodes[joint.nodeIndex].inverseBindMatrix = joint.inverseBindMatrix;
+            }
+        }
+        
+        skins.push_back(std::move(skin));
+    }
+    
+    if (!skins.empty()) {
+        Logger::info("Loaded " + std::to_string(skins.size()) + " skins");
+    }
+}
+
+void GLTFModel::storeNodeTransforms() {
+    nodeTransforms.resize(nodes.size());
+    
+    for (size_t i = 0; i < nodes.size(); ++i) {
+        const auto& node = nodes[i];
+        
+        // 从变换矩阵分解 TRS
+        glm::vec3 scale, translation, skew;
+        glm::quat rotation;
+        glm::vec4 perspective;
+        if (glm::decompose(node.transform, scale, rotation, translation, skew, perspective)) {
+            nodeTransforms[i].translation = translation;
+            nodeTransforms[i].rotation = rotation;
+            nodeTransforms[i].scale = scale;
+            nodeTransforms[i].hasTranslation = true;
+            nodeTransforms[i].hasRotation = true;
+            nodeTransforms[i].hasScale = true;
+        }
+    }
+}
+
+const std::string& GLTFModel::getAnimationName(size_t index) const {
+    static const std::string empty;
+    if (index < animations.size()) {
+        return animations[index].name;
+    }
+    return empty;
+}
+
+void GLTFModel::playAnimation(size_t index, bool loop, float speed) {
+    if (index < animations.size()) {
+        animationState.animationIndex = static_cast<int>(index);
+        animationState.currentTime = 0.0f;
+        animationState.playing = true;
+        animationState.loop = loop;
+        animationState.speed = speed;
+        
+        Logger::info("Playing animation: " + 
+                    (animations[index].name.empty() ? std::to_string(index) : animations[index].name));
+    }
+}
+
+bool GLTFModel::playAnimation(const std::string& name, bool loop, float speed) {
+    for (size_t i = 0; i < animations.size(); ++i) {
+        if (animations[i].name == name) {
+            playAnimation(i, loop, speed);
+            return true;
+        }
+    }
+    Logger::warning("Animation not found: " + name);
+    return false;
+}
+
+void GLTFModel::stopAnimation() {
+    animationState.playing = false;
+    animationState.currentTime = 0.0f;
+    playAllAnimationsMode = false;
+    
+    // 恢复节点原始变换
+    for (size_t i = 0; i < nodes.size() && i < nodeTransforms.size(); ++i) {
+        const auto& transform = nodeTransforms[i];
+        glm::mat4 T = glm::translate(glm::mat4(1.0f), transform.translation);
+        glm::mat4 R = glm::mat4_cast(transform.rotation);
+        glm::mat4 S = glm::scale(glm::mat4(1.0f), transform.scale);
+        nodes[i].transform = T * R * S;
+    }
+}
+
+void GLTFModel::playAllAnimations(bool loop, float speed) {
+    if (animations.empty()) return;
+    
+    playAllAnimationsMode = true;
+    animationState.playing = true;
+    animationState.currentTime = 0.0f;
+    animationState.loop = loop;
+    animationState.speed = speed;
+    animationState.animationIndex = 0;  // 用于时间同步
+    
+    Logger::info("Playing all " + std::to_string(animations.size()) + " animations simultaneously");
+}
+
+void GLTFModel::pauseAnimation() {
+    animationState.playing = false;
+}
+
+void GLTFModel::resumeAnimation() {
+    if (animationState.animationIndex >= 0) {
+        animationState.playing = true;
+    }
+}
+
+void GLTFModel::updateAnimation(float deltaTime) {
+    if (!animationState.playing) {
+        return;
+    }
+    
+    // 更新时间
+    animationState.currentTime += deltaTime * animationState.speed;
+    
+    // 如果是播放所有动画模式
+    if (playAllAnimationsMode) {
+        // 找到最长动画时长
+        float maxDuration = 0.0f;
+        for (const auto& anim : animations) {
+            if (anim.duration > maxDuration) {
+                maxDuration = anim.duration;
+            }
+        }
+        
+        // 检查是否播放完成
+        if (animationState.currentTime >= maxDuration) {
+            if (animationState.loop) {
+                animationState.currentTime = std::fmod(animationState.currentTime, maxDuration);
+            } else {
+                animationState.currentTime = maxDuration;
+                animationState.playing = false;
+            }
+        }
+        
+        // 应用所有动画
+        for (size_t i = 0; i < animations.size(); ++i) {
+            // 对每个动画使用模运算使其循环
+            float animTime = animationState.currentTime;
+            if (animations[i].duration > 0.0f) {
+                animTime = std::fmod(animTime, animations[i].duration);
+            }
+            applyAnimation(static_cast<int>(i), animTime);
+        }
+        return;
+    }
+    
+    // 单个动画模式
+    if (animationState.animationIndex < 0 ||
+        animationState.animationIndex >= static_cast<int>(animations.size())) {
+        return;
+    }
+    
+    const auto& animation = animations[animationState.animationIndex];
+    
+    // 检查是否播放完成
+    if (animationState.currentTime >= animation.duration) {
+        if (animationState.loop) {
+            animationState.currentTime = std::fmod(animationState.currentTime, animation.duration);
+        } else {
+            animationState.currentTime = animation.duration;
+            animationState.playing = false;
+        }
+    }
+    
+    // 应用动画
+    applyAnimation(animationState.animationIndex, animationState.currentTime);
+}
+
+std::pair<size_t, float> GLTFModel::findKeyframeIndex(const std::vector<float>& times, float time) const {
+    if (times.empty()) {
+        return {0, 0.0f};
+    }
+    
+    // 找到当前时间所在的关键帧区间
+    size_t index = 0;
+    for (size_t i = 0; i < times.size() - 1; ++i) {
+        if (time >= times[i] && time < times[i + 1]) {
+            index = i;
+            break;
+        }
+        if (i == times.size() - 2) {
+            index = i;
+        }
+    }
+    
+    // 计算插值因子
+    float factor = 0.0f;
+    if (index < times.size() - 1) {
+        float startTime = times[index];
+        float endTime = times[index + 1];
+        float duration = endTime - startTime;
+        if (duration > 0.0f) {
+            factor = (time - startTime) / duration;
+        }
+    }
+    
+    return {index, std::clamp(factor, 0.0f, 1.0f)};
+}
+
+glm::vec4 GLTFModel::sampleAnimationChannel(const AnimationSampler& sampler, float time) const {
+    if (sampler.inputs.empty() || sampler.outputs.empty()) {
+        return glm::vec4(0.0f);
+    }
+    
+    auto [index, factor] = findKeyframeIndex(sampler.inputs, time);
+    
+    if (sampler.interpolation == "STEP") {
+        return sampler.outputs[index];
+    }
+    
+    // LINEAR 插值
+    if (index < sampler.outputs.size() - 1) {
+        const glm::vec4& v0 = sampler.outputs[index];
+        const glm::vec4& v1 = sampler.outputs[index + 1];
+        
+        // 对于旋转使用球面线性插值
+        if (sampler.interpolation == "LINEAR") {
+            return glm::mix(v0, v1, factor);
+        }
+    }
+    
+    return sampler.outputs[index];
+}
+
+void GLTFModel::applyAnimation(int animationIndex, float time) {
+    if (animationIndex < 0 || animationIndex >= static_cast<int>(animations.size())) {
+        return;
+    }
+    
+    const auto& animation = animations[animationIndex];
+    
+    for (const auto& channel : animation.channels) {
+        if (channel.nodeIndex < 0 || channel.nodeIndex >= static_cast<int>(nodes.size())) {
+            continue;
+        }
+        
+        const auto& sampler = animation.samplers[channel.samplerIndex];
+        glm::vec4 value = sampleAnimationChannel(sampler, time);
+        
+        auto& node = nodes[channel.nodeIndex];
+        auto& transform = nodeTransforms[channel.nodeIndex];
+        
+        // 应用通道值到节点变换
+        switch (channel.path) {
+            case AnimationPath::Translation: {
+                transform.translation = glm::vec3(value.x, value.y, value.z);
+                transform.hasTranslation = true;
+                break;
+            }
+            case AnimationPath::Rotation: {
+                // glTF 四元数格式: (x, y, z, w)，GLM 格式: (w, x, y, z)
+                transform.rotation = glm::quat(value.w, value.x, value.y, value.z);
+                transform.hasRotation = true;
+                break;
+            }
+            case AnimationPath::Scale: {
+                transform.scale = glm::vec3(value.x, value.y, value.z);
+                transform.hasScale = true;
+                break;
+            }
+            case AnimationPath::Weights:
+                // 权重动画暂不支持
+                break;
+        }
+        
+        // 重建变换矩阵
+        glm::mat4 T = glm::translate(glm::mat4(1.0f), transform.translation);
+        glm::mat4 R = glm::mat4_cast(transform.rotation);
+        glm::mat4 S = glm::scale(glm::mat4(1.0f), transform.scale);
+        node.transform = T * R * S;
+    }
 }
 
 } // namespace vgame

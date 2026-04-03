@@ -132,9 +132,18 @@ private:
     std::shared_ptr<TextureLoader> textureLoader;
     std::unique_ptr<LightManager> lightManager;
     std::unique_ptr<GLTFModel> gltfModel;
+    std::unique_ptr<GLTFModel> gltfWalkModel;  // 行走动画模型
     
-    // 远程玩家模型
-    std::unordered_map<std::string, std::unique_ptr<GLTFModel>> remotePlayerModels;
+    // 玩家动画状态
+    bool playerWasMoving = false;  // 上一帧是否在移动
+    
+    // 远程玩家模型（每个玩家有两个模型：空闲和行走）
+    struct RemotePlayerModels {
+        std::unique_ptr<GLTFModel> idleModel;   // 空闲模型 (player.glb)
+        std::unique_ptr<GLTFModel> walkModel;   // 行走模型 (player_walk.glb)
+        bool wasMoving = false;                 // 上一帧是否在移动
+    };
+    std::unordered_map<std::string, RemotePlayerModels> remotePlayerModels;
     
     // ECS 系统（使用 ClientWorld 封装）
     bool useECS{true};  // 是否使用 ECS 系统

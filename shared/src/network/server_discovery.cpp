@@ -1,5 +1,5 @@
 #include "network/server_discovery.h"
-#include <json.hpp>
+#include <nlohmann/json.hpp>
 #include <iostream>
 #include <cstring>
 #include <algorithm>

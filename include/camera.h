@@ -25,7 +25,14 @@ public:
                 bool shiftPressed, bool spaceHeld);
     
     // 切换自由视角模式
-    void toggleFreeCamera() { freeCameraMode = !freeCameraMode; }
+    void toggleFreeCamera() { 
+        freeCameraMode = !freeCameraMode; 
+        if (freeCameraMode) {
+            mode = Mode::Free;
+        } else {
+            mode = Mode::ThirdPerson;
+        }
+    }
     
     // 检查是否在自由视角模式
     bool isFreeCameraMode() const { return freeCameraMode; }

@@ -23,12 +23,15 @@ struct RemotePlayer {
     std::string clientId;
     glm::vec3 position{0.0f};
     glm::vec3 targetPosition{0.0f};  // 插值目标
+    glm::vec3 lastPosition{0.0f};    // 上一帧位置（用于检测移动）
     float yaw{0.0f};
     float targetYaw{0.0f};
     float pitch{0.0f};
     float targetPitch{0.0f};
+    float moveYaw{0.0f};             // 移动方向（面向方向）
     bool isJumping{false};
     bool isGrounded{true};
+    bool isMoving{false};            // 是否在移动
     bool active{true};
 };
 

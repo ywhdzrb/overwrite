@@ -60,7 +60,6 @@ void ImGuiManager::init() {
 
     // 初始化 Vulkan 后端
     ImGui_ImplVulkan_InitInfo init_info = {};
-    init_info.ApiVersion = VK_API_VERSION_1_3;
     init_info.Instance = instance;
     init_info.PhysicalDevice = vulkanDevice->getPhysicalDevice();
     init_info.Device = vulkanDevice->getDevice();
@@ -70,11 +69,9 @@ void ImGuiManager::init() {
     init_info.DescriptorPool = descriptorPool;
     init_info.MinImageCount = 2;
     init_info.ImageCount = static_cast<uint32_t>(swapchain->getImageViews().size());
-    
-    // 设置管线信息
-    init_info.PipelineInfoMain.RenderPass = mainRenderPass->getRenderPass();
-    init_info.PipelineInfoMain.Subpass = 0;
-    init_info.PipelineInfoMain.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
+    init_info.RenderPass = mainRenderPass->getRenderPass();
+    init_info.Subpass = 0;
+    init_info.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
 
     if (!ImGui_ImplVulkan_Init(&init_info)) {
         throw std::runtime_error("Failed to initialize ImGui Vulkan backend");
