@@ -96,6 +96,8 @@ public:
     // 获取客户端系统
     InputSystem* getInputSystem() { return inputSystem_.get(); }
     CameraSystem* getCameraSystem() { return cameraSystem_.get(); }
+    MovementSystem* getMovementSystem() { return movementSystem_.get(); }
+    PhysicsSystem* getPhysicsSystem() { return physicsSystem_.get(); }
     
     // 创建带相机组件的玩家
     entt::entity createClientPlayer(int viewportWidth, int viewportHeight);
@@ -103,6 +105,8 @@ public:
 private:
     std::unique_ptr<InputSystem> inputSystem_;
     std::unique_ptr<CameraSystem> cameraSystem_;
+    std::unique_ptr<MovementSystem> movementSystem_;
+    std::unique_ptr<PhysicsSystem> physicsSystem_;
     int viewportWidth_{800};
     int viewportHeight_{600};
 };

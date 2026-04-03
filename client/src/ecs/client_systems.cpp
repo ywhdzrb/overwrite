@@ -186,6 +186,8 @@ void ClientWorld::initClientSystems(GLFWwindow* window, int viewportWidth, int v
     
     inputSystem_ = std::make_unique<InputSystem>(*this, window);
     cameraSystem_ = std::make_unique<CameraSystem>(*this);
+    movementSystem_ = std::make_unique<MovementSystem>(*this);
+    physicsSystem_ = std::make_unique<PhysicsSystem>(*this);
     
     std::cout << "[ClientWorld] 客户端系统初始化完成，视口: " 
               << viewportWidth << "x" << viewportHeight << std::endl;
@@ -194,6 +196,12 @@ void ClientWorld::initClientSystems(GLFWwindow* window, int viewportWidth, int v
 void ClientWorld::updateClientSystems(float deltaTime) {
     // 更新输入
     inputSystem_->update(deltaTime);
+    
+    // 更新移动
+    movementSystem_->update(deltaTime);
+    
+    // 更新物理
+    physicsSystem_->update(deltaTime);
     
     // 更新相机
     cameraSystem_->update(deltaTime);
