@@ -83,12 +83,11 @@
 | 渲染引擎 | Vulkan 1.3+ |
 | ECS 框架 | EnTT |
 | 窗口/输入 | GLFW |
-| 物理引擎 | Jolt Physics |
 | UI 系统 | Dear ImGui |
-| 音频 | miniaudio |
-| 序列化 | protobuf |
-| 网络 | Boost.Asio |
-| 构建系统 | CMake + vcpkg |
+| 模型加载 | tinygltf, tinyobjloader |
+| JSON | nlohmann/json |
+| 网络 | websocketpp |
+| 构建系统 | CMake + FetchContent |
 
 ---
 
@@ -133,8 +132,8 @@ cmake --build . -j$(nproc)
 |------|------|
 | `WASD` | 移动 |
 | `Mouse` | 视角控制 |
-| `Space` | 跳跃 |
-| `Shift` | 加速 |
+| `Space` | 上升（飞行） |
+| `Shift` | 下降 |
 | `R` | 切换自由视角 |
 | `ESC` | 开发者模式 |
 
@@ -158,7 +157,7 @@ cmake --build . -j$(nproc)
 ### 第一阶段：核心引擎 (当前)
 
 - [x] Vulkan 渲染管线
-- [x] 相机系统（第一人称视角）
+- [x] 相机系统（第三人称/自由视角）
 - [x] 基础物理系统
 - [x] 3D 模型加载（OBJ/GLTF）
 - [x] 动态光源系统
@@ -166,6 +165,9 @@ cmake --build . -j$(nproc)
 - [x] 开发者工具面板
 - [x] 中文字体支持
 - [x] ECS 架构重构（EnTT）
+- [x] 前后端分离架构
+- [x] WebSocket 网络通信
+- [x] 多人联机基础框架
 
 ### 第二阶段：玩家与世界
 
@@ -193,7 +195,8 @@ cmake --build . -j$(nproc)
 
 ### 第五阶段：网络与社交
 
-- [ ] 网络通信模块
+- [x] 网络通信模块
+- [x] 服务器发现机制
 - [ ] 账号系统
 - [ ] 拜访他人世界
 - [ ] 成就与展示
@@ -225,17 +228,25 @@ OverWrite/
 │   ├── vulkan_*.h     # Vulkan 核心组件
 │   ├── renderer.h     # 主渲染器
 │   ├── camera.h       # 相机系统
-│   └── ...
+│   └── ecs/           # ECS 组件定义
 ├── src/
 │   ├── core/          # 核心系统实现
 │   ├── renderer/      # 渲染系统
 │   └── utils/         # 工具函数
+├── client/            # 客户端专用代码
+│   ├── include/       # 客户端头文件
+│   └── src/           # 客户端实现
+├── server/            # 服务器代码
+│   ├── include/       # 服务器头文件
+│   └── src/           # 服务器实现
+├── shared/            # 客户端/服务器共享代码
+│   ├── include/       # 共享头文件
+│   └── src/           # 共享实现
 ├── shaders/           # GLSL 着色器
-├── assets/            # 模型和纹理
-│   ├── models/        # 3D 模型
-│   ├── textures/      # 纹理图片
-│   └── logo/          # 项目 Logo
-└── external/          # 第三方库
+└── assets/            # 模型和纹理
+    ├── models/        # 3D 模型
+    ├── textures/      # 纹理图片
+    └── logo/          # 项目 Logo
 ```
 
 ---
