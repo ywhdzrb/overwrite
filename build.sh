@@ -1,14 +1,16 @@
 #!/bin/bash
 
 # OverWrite Build Script
-# For commercial production environments
+# 前后端分离架构构建脚本
 #
 # Usage:
-#   ./build.sh          # 默认构建 release 版本
-#   ./build.sh release  # 构建 release 版本
-#   ./build.sh debug    # 构建 debug 版本
-#   ./build.sh clean    # 清理构建目录
-#   ./build.sh run      # 构建并运行
+#   ./build.sh              # 默认构建 release 版本
+#   ./build.sh release      # 构建 release 版本
+#   ./build.sh debug        # 构建 debug 版本
+#   ./build.sh clean        # 清理构建目录
+#   ./build.sh run          # 构建并运行客户端
+#   ./build.sh run-server   # 构建并运行服务端
+#   ./build.sh all          # 构建所有目标（默认）
 
 set -e  # Exit on error
 
@@ -17,11 +19,14 @@ RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
+CYAN='\033[0;36m'
 NC='\033[0m' # No Color
 
-# 默认构建类型
+# 默认构建类型和目标
 BUILD_TYPE="Release"
 RUN_AFTER_BUILD=false
+RUN_SERVER=false
+BUILD_TARGET="all"
 
 # 解析参数
 for arg in "$@"; do
@@ -41,14 +46,34 @@ for arg in "$@"; do
         run|Run)
             RUN_AFTER_BUILD=true
             ;;
+        run-server|server)
+            RUN_SERVER=true
+            RUN_AFTER_BUILD=true
+            ;;
+        client)
+            BUILD_TARGET="OverWrite"
+            ;;
+        all)
+            BUILD_TARGET="all"
+            ;;
         help|--help|-h)
+            echo "OverWrite 构建脚本"
+            echo ""
             echo "Usage: $0 [options]"
+            echo ""
             echo "Options:"
-            echo "  release  构建 release 版本（默认）"
-            echo "  debug    构建 debug 版本"
-            echo "  clean    清理构建目录"
-            echo "  run      构建并运行"
-            echo "  help     显示帮助信息"
+            echo "  release      构建 release 版本（默认）"
+            echo "  debug        构建 debug 版本"
+            echo "  clean        清理构建目录"
+            echo "  run          构建并运行客户端"
+            echo "  run-server   构建并运行服务端"
+            echo "  client       仅构建客户端"
+            echo "  all          构建所有目标（默认）"
+            echo "  help         显示帮助信息"
+            echo ""
+            echo "Targets:"
+            echo "  ${CYAN}OverWrite${NC}        - 客户端（Vulkan 渲染）"
+            echo "  ${CYAN}overwrite-server${NC} - 服务端（WebSocket）"
             exit 0
             ;;
         *)
@@ -63,6 +88,7 @@ echo "=================================="
 echo "OverWrite Build Script"
 echo "=================================="
 echo -e "Build type: ${BLUE}${BUILD_TYPE}${NC}"
+echo -e "Target:     ${CYAN}${BUILD_TARGET}${NC}"
 echo ""
 
 # 检查 build 目录是否存在
@@ -82,7 +108,11 @@ cmake .. -DCMAKE_BUILD_TYPE=${BUILD_TYPE}
 
 # Build the project
 echo -e "${GREEN}Building project...${NC}"
-cmake --build . -j$(nproc)
+if [ "$BUILD_TARGET" = "all" ]; then
+    cmake --build . -j$(nproc)
+else
+    cmake --build . -j$(nproc) --target ${BUILD_TARGET}
+fi
 
 # Check if build was successful
 if [ $? -eq 0 ]; then
@@ -90,14 +120,21 @@ if [ $? -eq 0 ]; then
     echo -e "${GREEN}=================================="
     echo "Build completed successfully!"
     echo "=================================="
-    echo -e "Run the game with: ${YELLOW}./OverWrite${NC}"
+    echo -e "Targets built:"
+    echo -e "  ${CYAN}OverWrite${NC}        - ${YELLOW}./build/OverWrite${NC} (客户端)"
+    echo -e "  ${CYAN}overwrite-server${NC} - ${YELLOW}./build/overwrite-server${NC} (服务端)"
     echo ""
     
     # 如果指定了 run 参数，则运行程序
     if [ "$RUN_AFTER_BUILD" = true ]; then
-        echo -e "${BLUE}Running the game...${NC}"
         cd ..
-        ./run.sh
+        if [ "$RUN_SERVER" = true ]; then
+            echo -e "${BLUE}Starting server on port 9002...${NC}"
+            ./build/overwrite-server
+        else
+            echo -e "${BLUE}Running the game client...${NC}"
+            ./run.sh
+        fi
     fi
 else
     echo ""

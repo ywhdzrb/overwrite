@@ -133,19 +133,13 @@ void Renderer::initVulkan() {
     input = std::make_unique<Input>(window);
     physics = std::make_unique<Physics>();
     
-    // 初始化 ECS 系统
+    // 初始化 ECS 系统（使用 ClientWorld）
     if (useECS) {
-        ecsWorld = std::make_unique<ecs::World>();
-        ecsWorld->initSystems(window, windowWidth, windowHeight);
+        ecsClientWorld = std::make_unique<ecs::ClientWorld>();
+        ecsClientWorld->initClientSystems(window, windowWidth, windowHeight);
         
         // 创建玩家实体
-        ecsWorld->createPlayer(windowWidth, windowHeight);
-        
-        // 初始化 ECS 系统
-        ecsInputSystem = std::make_unique<ecs::InputSystem>(*ecsWorld, window);
-        ecsMovementSystem = std::make_unique<ecs::MovementSystem>(*ecsWorld);
-        ecsPhysicsSystem = std::make_unique<ecs::PhysicsSystem>(*ecsWorld);
-        ecsCameraSystem = std::make_unique<ecs::CameraSystem>(*ecsWorld);
+        ecsClientWorld->createClientPlayer(windowWidth, windowHeight);
         
         std::cout << "[Renderer] ECS 系统初始化完成" << std::endl;
     }
@@ -241,8 +235,8 @@ void Renderer::initVulkan() {
     physics->addCollisionBox(cubePos, glm::vec3(5.0f, 5.0f, 5.0f));
     
     // 同时添加到 ECS 移动系统
-    if (useECS && ecsMovementSystem) {
-        ecsMovementSystem->addCollisionBox(cubePos, glm::vec3(5.0f, 5.0f, 5.0f));
+    if (useECS && ecsClientWorld && ecsClientWorld->getMovementSystem()) {
+        ecsClientWorld->getMovementSystem()->addCollisionBox(cubePos, glm::vec3(5.0f, 5.0f, 5.0f));
     }
     
     // 初始化时间
@@ -317,11 +311,11 @@ void Renderer::mainLoop() {
         
                 
         
-                                    if (useECS && ecsInputSystem) {
+                                    if (useECS && ecsClientWorld->getInputSystem()) {
         
                 
         
-                                        ecsInputSystem->setCursorCaptured(true);
+                                        ecsClientWorld->getInputSystem()->setCursorCaptured(true);
         
                 
         
@@ -361,11 +355,11 @@ void Renderer::mainLoop() {
         
                 
         
-                                bool escPressed = (useECS && ecsInputSystem) 
+                                bool escPressed = (useECS && ecsClientWorld->getInputSystem()) 
         
                 
         
-                                    ? ecsInputSystem->isKeyJustPressed(GLFW_KEY_ESCAPE)
+                                    ? ecsClientWorld->getInputSystem()->isKeyJustPressed(GLFW_KEY_ESCAPE)
         
                 
         
@@ -389,11 +383,11 @@ void Renderer::mainLoop() {
         
                 
         
-                                        if (useECS && ecsInputSystem) {
+                                        if (useECS && ecsClientWorld->getInputSystem()) {
         
                 
         
-                                            ecsInputSystem->setCursorCaptured(false);
+                                            ecsClientWorld->getInputSystem()->setCursorCaptured(false);
         
                 
         
@@ -417,11 +411,11 @@ void Renderer::mainLoop() {
         
                 
         
-                                        if (useECS && ecsInputSystem) {
+                                        if (useECS && ecsClientWorld->getInputSystem()) {
         
                 
         
-                                            ecsInputSystem->setCursorCaptured(true);
+                                            ecsClientWorld->getInputSystem()->setCursorCaptured(true);
         
                 
         
@@ -461,7 +455,7 @@ void Renderer::mainLoop() {
         
                 
         
-                                    if (useECS && ecsInputSystem) {
+                                    if (useECS && ecsClientWorld->getInputSystem()) {
         
                 
         
@@ -561,7 +555,7 @@ void Renderer::mainLoop() {
         
                 
         
-                                    if (useECS && ecsInputSystem) {
+                                    if (useECS && ecsClientWorld->getInputSystem()) {
         
                 
         
@@ -642,38 +636,46 @@ void Renderer::mainLoop() {
 }
 
 void Renderer::updateGameLogic(float deltaTime) {
-    if (useECS && ecsWorld) {
-        // 使用 ECS 系统更新
-        // 更新输入
-        ecsInputSystem->update(deltaTime);
-        
-        // 获取玩家实体并更新输入状态
-        auto player = ecsWorld->getPlayer();
-        if (ecsWorld->registry().valid(player)) {
-            auto& inputState = ecsWorld->registry().get<ecs::InputStateComponent>(player);
-            auto& controller = ecsWorld->registry().get<ecs::CameraControllerComponent>(player);
+    // 处理网络连接请求
+    if (connectRequested && ecsClientWorld) {
+        std::cout << "[Renderer] 正在连接到 " << serverHost << ":" << serverPort << std::endl;
+        if (ecsClientWorld->connectToServer(serverHost, static_cast<uint16_t>(serverPort))) {
+            std::cout << "[Renderer] 连接成功" << std::endl;
+        } else {
+            std::cerr << "[Renderer] 连接失败" << std::endl;
+        }
+        connectRequested = false;
+    }
+    
+    // 处理断开连接请求
+    if (disconnectRequested && ecsClientWorld) {
+        ecsClientWorld->disconnectFromServer();
+        disconnectRequested = false;
+        std::cout << "[Renderer] 已断开连接" << std::endl;
+    }
+    
+    if (useECS && ecsClientWorld) {
+        // 获取玩家实体并更新设置
+        auto player = ecsClientWorld->getPlayer();
+        if (ecsClientWorld->registry().valid(player)) {
+            auto& controller = ecsClientWorld->registry().get<ecs::MovementControllerComponent>(player);
             
             // 更新速度设置
             controller.movementSpeed = userMovementSpeed;
-            if (!developerMode && inputState.sprint) {
-                controller.movementSpeed *= controller.sprintMultiplier;
-            }
             controller.mouseSensitivity = userSensitivity;
+            
+            // 先同步相机方向（在更新系统之前，确保发送正确的方向）
+            controller.moveFront = camera->getFront();
+            controller.moveRight = camera->getRight();
         }
         
-        // 更新移动
-        ecsMovementSystem->update(deltaTime);
-        
-        // 更新物理
-        ecsPhysicsSystem->update(deltaTime);
-        
-        // 更新相机
-        ecsCameraSystem->update(deltaTime);
+        // 使用 ClientWorld 统一更新所有系统
+        ecsClientWorld->updateClientSystems(deltaTime);
         
         // 同步到旧相机系统（用于渲染）
-        if (ecsWorld->registry().valid(ecsWorld->getMainCamera())) {
-            auto& transform = ecsWorld->registry().get<ecs::TransformComponent>(ecsWorld->getMainCamera());
-            auto& controller = ecsWorld->registry().get<ecs::CameraControllerComponent>(ecsWorld->getMainCamera());
+        if (ecsClientWorld->registry().valid(ecsClientWorld->getMainCamera())) {
+            auto& transform = ecsClientWorld->registry().get<ecs::TransformComponent>(ecsClientWorld->getMainCamera());
+            auto& controller = ecsClientWorld->registry().get<ecs::MovementControllerComponent>(ecsClientWorld->getMainCamera());
             
             // 第三人称模式：设置目标位置，第一人称：设置相机位置
             if (camera->getMode() == Camera::Mode::ThirdPerson) {
@@ -684,10 +686,6 @@ void Renderer::updateGameLogic(float deltaTime) {
             camera->setYawPitch(transform.yaw, transform.pitch);
             camera->setMovementSpeed(controller.movementSpeed);
             camera->setMouseSensitivity(controller.mouseSensitivity);
-            
-            // 同步相机的移动方向到 ECS（第三人称模式需要）
-            controller.cameraFront = camera->getFront();
-            controller.cameraRight = camera->getRight();
         }
     } else {
         // 使用旧的系统更新
@@ -715,6 +713,43 @@ void Renderer::updateGameLogic(float deltaTime) {
         gltfModel->setPosition(camera->getTarget());
         // player 背对相机：yaw + 180 度
         gltfModel->setRotation(0.0f, camera->getYaw() + 180.0f, 0.0f);
+    }
+    
+    // 更新远程玩家模型
+    if (ecsClientWorld && ecsClientWorld->isConnectedToServer()) {
+        auto& remotePlayers = ecsClientWorld->getNetworkSystem()->getRemotePlayers();
+        
+        // 移除已离开的玩家模型
+        for (auto it = remotePlayerModels.begin(); it != remotePlayerModels.end(); ) {
+            if (remotePlayers.find(it->first) == remotePlayers.end()) {
+                it = remotePlayerModels.erase(it);
+            } else {
+                ++it;
+            }
+        }
+        
+        // 更新或创建远程玩家模型
+        for (const auto& [clientId, player] : remotePlayers) {
+            if (!player.active) continue;
+            
+            auto it = remotePlayerModels.find(clientId);
+            if (it == remotePlayerModels.end()) {
+                // 创建新模型
+                auto model = std::make_unique<GLTFModel>(vulkanDevice, textureLoader);
+                if (model->loadFromFile("assets/models/player.glb")) {
+                    model->setScale(glm::vec3(0.3f, 0.3f, 0.3f));
+                    model->setPosition(player.position);
+                    remotePlayerModels[clientId] = std::move(model);
+                }
+            } else {
+                // 更新位置和旋转
+                it->second->setPosition(player.position);
+                it->second->setRotation(0.0f, player.yaw + 180.0f, 0.0f);
+            }
+        }
+    } else {
+        // 未连接时清除所有远程玩家模型
+        remotePlayerModels.clear();
     }
 }
 
@@ -830,6 +865,15 @@ void Renderer::drawFrame() {
         gltfModel->render(commandBuffer, graphicsPipeline->getPipelineLayout(),
                         camera->getViewMatrix(), camera->getProjectionMatrix(),
                         gltfModel->getModelMatrix());
+    }
+    
+    // 渲染远程玩家模型
+    for (auto& [clientId, model] : remotePlayerModels) {
+        if (model && model->getMeshCount() > 0) {
+            model->render(commandBuffer, graphicsPipeline->getPipelineLayout(),
+                        camera->getViewMatrix(), camera->getProjectionMatrix(),
+                        model->getModelMatrix());
+        }
     }
     
     // 渲染 ImGui
@@ -1552,10 +1596,10 @@ void Renderer::renderDeveloperPanel() {
         camera->setGroundHeight(groundHeight);
         physics->setGroundHeight(groundHeight);
         // 同步到 ECS
-        if (useECS && ecsWorld) {
-            auto player = ecsWorld->getPlayer();
-            if (ecsWorld->registry().valid(player)) {
-                auto& physicsComp = ecsWorld->registry().get<ecs::PhysicsComponent>(player);
+        if (useECS && ecsClientWorld) {
+            auto player = ecsClientWorld->getPlayer();
+            if (ecsClientWorld->registry().valid(player)) {
+                auto& physicsComp = ecsClientWorld->registry().get<ecs::PhysicsComponent>(player);
                 physicsComp.groundHeight = groundHeight;
             }
         }
@@ -1565,10 +1609,10 @@ void Renderer::renderDeveloperPanel() {
     if (ImGui::SliderFloat("跳跃力", &jumpForce, 0.0f, 20.0f)) {
         camera->setJumpForce(jumpForce);
         // 同步到 ECS
-        if (useECS && ecsWorld) {
-            auto player = ecsWorld->getPlayer();
-            if (ecsWorld->registry().valid(player)) {
-                auto& physicsComp = ecsWorld->registry().get<ecs::PhysicsComponent>(player);
+        if (useECS && ecsClientWorld) {
+            auto player = ecsClientWorld->getPlayer();
+            if (ecsClientWorld->registry().valid(player)) {
+                auto& physicsComp = ecsClientWorld->registry().get<ecs::PhysicsComponent>(player);
                 physicsComp.jumpForce = jumpForce;
             }
         }
@@ -1654,6 +1698,77 @@ void Renderer::renderDeveloperPanel() {
     ImGui::Text("Vulkan 信息");
     ImGui::Text("当前帧: %u / %u", currentFrame, MAX_FRAMES_IN_FLIGHT);
     ImGui::Text("交换链图像: %zu", swapchain->getImageViews().size());
+    
+    ImGui::End();
+    
+    // ==================== 网络连接窗口 ====================
+    ImGui::SetNextWindowPos(ImVec2(680, 30), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize(ImVec2(300, 280), ImGuiCond_FirstUseEver);
+    ImGui::Begin("网络连接", nullptr, ImGuiWindowFlags_None);
+    
+    bool isConnected = ecsClientWorld && ecsClientWorld->isConnectedToServer();
+    
+    // 连接状态
+    if (isConnected) {
+        ImGui::TextColored(ImVec4(0.2f, 1.0f, 0.2f, 1.0f), "已连接到服务器");
+        ImGui::Text("服务器: %s:%d", serverHost, serverPort);
+        
+        // 显示远程玩家数量
+        auto& remotePlayers = ecsClientWorld->getNetworkSystem()->getRemotePlayers();
+        ImGui::Text("远程玩家: %zu", remotePlayers.size());
+        
+        if (ImGui::Button("断开连接")) {
+            disconnectRequested = true;
+        }
+    } else {
+        // 服务器发现
+        ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.2f, 1.0f), "未连接");
+        
+        ImGui::Separator();
+        ImGui::Text("发现的服务器:");
+        
+        // 获取发现的服务器列表
+        static int selectedServer = -1;
+        if (ecsClientWorld) {
+            auto servers = ecsClientWorld->getDiscoveredServers();
+            
+            if (servers.empty()) {
+                ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.5f, 1.0f), "正在搜索...");
+                
+                // 自动启动扫描
+                static bool discoveryStarted = false;
+                if (!discoveryStarted) {
+                    ecsClientWorld->startServerDiscovery();
+                    discoveryStarted = true;
+                }
+            } else {
+                for (int i = 0; i < (int)servers.size(); i++) {
+                    const auto& server = servers[i];
+                    
+                    std::string label = server.name + " (" + server.host + ":" + std::to_string(server.port) + ")";
+                    label += " [" + std::to_string(server.currentPlayers) + "/" + std::to_string(server.maxPlayers) + "]";
+                    
+                    if (ImGui::Selectable(label.c_str(), selectedServer == i)) {
+                        selectedServer = i;
+                        strncpy(serverHost, server.host.c_str(), sizeof(serverHost) - 1);
+                        serverPort = server.port;
+                    }
+                }
+            }
+        }
+        
+        ImGui::Separator();
+        ImGui::Text("手动连接:");
+        ImGui::InputText("服务器", serverHost, sizeof(serverHost));
+        ImGui::InputInt("端口", &serverPort);
+        
+        if (serverPort < 1) serverPort = 1;
+        if (serverPort > 65535) serverPort = 65535;
+        
+        if (ImGui::Button("连接")) {
+            connectRequested = true;
+        }
+    }
     
     ImGui::End();
     

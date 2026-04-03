@@ -218,13 +218,24 @@ void PhysicsSystem::update(float deltaTime) {
         auto& transform = view.get<TransformComponent>(entity);
         auto& physics = view.get<PhysicsComponent>(entity);
         
-        // 获取可选的速度组件
+        // 获取可选的速度组件和输入状态
         VelocityComponent* velocity = nullptr;
+        InputStateComponent* input = nullptr;
         if (world_.registry().all_of<VelocityComponent>(entity)) {
             velocity = &world_.registry().get<VelocityComponent>(entity);
         }
+        if (world_.registry().all_of<InputStateComponent>(entity)) {
+            input = &world_.registry().get<InputStateComponent>(entity);
+        }
         
         if (velocity && physics.useGravity) {
+            // 处理跳跃输入
+            if (input && input->jump && !physics.isJumping && physics.isGrounded) {
+                velocity->linear.y = physics.jumpForce;
+                physics.isJumping = true;
+                physics.isGrounded = false;
+            }
+            
             // 应用重力
             if (physics.isJumping || transform.position.y > physics.groundHeight) {
                 velocity->linear.y -= physics.gravity * deltaTime;

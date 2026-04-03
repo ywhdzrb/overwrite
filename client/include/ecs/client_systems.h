@@ -7,6 +7,8 @@
 #include <glm/glm.hpp>
 #include "ecs/client_components.h"
 #include "ecs/systems.h"  // 共享系统
+#include "network/network_system.h"  // 网络系统
+#include "network/server_discovery.h"  // 服务器发现
 
 namespace vgame {
 namespace ecs {
@@ -85,7 +87,7 @@ private:
 class ClientWorld : public World {
 public:
     ClientWorld();
-    ~ClientWorld() = default;
+    ~ClientWorld();
     
     // 初始化客户端系统
     void initClientSystems(GLFWwindow* window, int viewportWidth, int viewportHeight);
@@ -98,6 +100,17 @@ public:
     CameraSystem* getCameraSystem() { return cameraSystem_.get(); }
     MovementSystem* getMovementSystem() { return movementSystem_.get(); }
     PhysicsSystem* getPhysicsSystem() { return physicsSystem_.get(); }
+    client::NetworkSystem* getNetworkSystem() { return networkSystem_.get(); }
+    
+    // 网络连接
+    bool connectToServer(const std::string& host, uint16_t port);
+    void disconnectFromServer();
+    bool isConnectedToServer() const;
+    
+    // 服务器发现
+    bool startServerDiscovery();
+    void stopServerDiscovery();
+    std::vector<DiscoveredServer> getDiscoveredServers();
     
     // 创建带相机组件的玩家
     entt::entity createClientPlayer(int viewportWidth, int viewportHeight);
@@ -107,6 +120,8 @@ private:
     std::unique_ptr<CameraSystem> cameraSystem_;
     std::unique_ptr<MovementSystem> movementSystem_;
     std::unique_ptr<PhysicsSystem> physicsSystem_;
+    std::unique_ptr<client::NetworkSystem> networkSystem_;
+    std::unique_ptr<ServerDiscoveryScanner> discoveryScanner_;
     int viewportWidth_{800};
     int viewportHeight_{600};
 };

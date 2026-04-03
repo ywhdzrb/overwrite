@@ -1,4 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
+cmake_policy(VERSION 3.20...3.30)
 project(OverWrite VERSION 1.0.0 LANGUAGES CXX)
 
 # C++ 标准
@@ -27,11 +28,29 @@ FetchContent_Declare(
     GIT_REPOSITORY https://github.com/skypjack/entt.git
     GIT_TAG v3.13.2
 )
-FetchContent_MakeAvailable(entt)
+
+# nlohmann_json - JSON 库
+FetchContent_Declare(
+    nlohmann_json
+    GIT_REPOSITORY https://github.com/nlohmann/json.git
+    GIT_TAG v3.11.3
+)
+
+# websocketpp - WebSocket 库
+FetchContent_Declare(
+    websocketpp
+    GIT_REPOSITORY https://github.com/zaphoyd/websocketpp.git
+    GIT_TAG 0.8.2
+)
+
+FetchContent_MakeAvailable(entt nlohmann_json websocketpp)
 
 # 查找 Vulkan
 find_package(Vulkan REQUIRED)
 include_directories(${Vulkan_INCLUDE_DIRS})
+
+# 查找 OpenSSL（WebSocket 需要）
+find_package(OpenSSL REQUIRED)
 
 # 查找 GLFW (用于窗口管理)
 find_package(glfw3 REQUIRED)
@@ -61,6 +80,7 @@ set(IMGUI_SOURCES
 add_library(OverWriteShared STATIC
     shared/src/ecs/components.cpp
     shared/src/ecs/systems.cpp
+    shared/src/network/server_discovery.cpp
 )
 
 target_include_directories(OverWriteShared PUBLIC
@@ -70,11 +90,13 @@ target_include_directories(OverWriteShared PUBLIC
 target_link_libraries(OverWriteShared PUBLIC
     glm::glm
     EnTT::EnTT
+    nlohmann_json::nlohmann_json
 )
 
 # ==================== 客户端库 (client) ====================
 add_library(OverWriteClient STATIC
     client/src/ecs/client_systems.cpp
+    client/src/network/network_system.cpp
 )
 
 target_include_directories(OverWriteClient PUBLIC
@@ -86,9 +108,34 @@ target_link_libraries(OverWriteClient PUBLIC
     OverWriteShared
     glm::glm
     glfw
+    nlohmann_json::nlohmann_json
+    OpenSSL::SSL
+    OpenSSL::Crypto
+    Threads::Threads
 )
 
-# ==================== 主程序 ====================
+# ==================== 服务器库 (server) ====================
+add_library(OverWriteServer STATIC
+    server/src/server/server_world.cpp
+    server/src/server/websocket_server.cpp
+)
+
+target_include_directories(OverWriteServer PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/server/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/shared/include
+)
+
+target_include_directories(OverWriteServer PUBLIC
+    /usr/include
+)
+
+target_link_libraries(OverWriteServer PUBLIC
+    OverWriteShared
+    nlohmann_json::nlohmann_json
+    Threads::Threads
+)
+
+# ==================== 客户端主程序 ====================
 # 包含目录
 include_directories(
     ${CMAKE_CURRENT_SOURCE_DIR}/include
@@ -126,19 +173,15 @@ set(SOURCES
     src/renderer/gltf_model.cpp
     src/utils/shader_compiler.cpp
     src/utils/logger.cpp
-    # 保留原有 ECS（过渡期）
-    src/ecs/components.cpp
-    src/ecs/systems.cpp
     external/tinygltf/tiny_gltf.cc
 )
 
 # 添加 ImGui 源文件
 list(APPEND SOURCES ${IMGUI_SOURCES})
 
-# 创建可执行文件
+# 创建客户端可执行文件
 add_executable(${PROJECT_NAME} ${SOURCES})
 
-# 链接库
 target_link_libraries(${PROJECT_NAME}
     OverWriteShared
     OverWriteClient
@@ -146,6 +189,20 @@ target_link_libraries(${PROJECT_NAME}
     glfw
     glm::glm
     EnTT::EnTT
+)
+
+# ==================== 服务器主程序 ====================
+add_executable(OverWriteServerBin
+    server/src/server_main.cpp
+)
+
+target_link_libraries(OverWriteServerBin
+    OverWriteServer
+    nlohmann_json::nlohmann_json
+)
+
+set_target_properties(OverWriteServerBin PROPERTIES
+    OUTPUT_NAME "overwrite-server"
 )
 
 # 着色器编译规则
@@ -185,9 +242,10 @@ add_custom_target(compile_shaders DEPENDS ${SHADER_OUTPUTS})
 add_dependencies(${PROJECT_NAME} compile_shaders)
 
 # 安装规则
-install(TARGETS ${PROJECT_NAME} DESTINATION bin)
+install(TARGETS ${PROJECT_NAME} OverWriteServerBin DESTINATION bin)
 
 # 输出构建信息
 message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
 message(STATUS "C++ Standard: ${CMAKE_CXX_STANDARD}")
 message(STATUS "Vulkan headers: ${Vulkan_INCLUDE_DIRS}")
+message(STATUS "Targets: ${PROJECT_NAME} (client), overwrite-server (server)")

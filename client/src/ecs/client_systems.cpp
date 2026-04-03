@@ -177,7 +177,14 @@ glm::mat4 CameraSystem::getMainProjectionMatrix() const {
 // ==================== ClientWorld 实现 ====================
 
 ClientWorld::ClientWorld() : World() {
+    networkSystem_ = std::make_unique<client::NetworkSystem>();
     std::cout << "[ClientWorld] 初始化完成" << std::endl;
+}
+
+ClientWorld::~ClientWorld() {
+    if (networkSystem_ && networkSystem_->isConnected()) {
+        networkSystem_->disconnect();
+    }
 }
 
 void ClientWorld::initClientSystems(GLFWwindow* window, int viewportWidth, int viewportHeight) {
@@ -194,10 +201,15 @@ void ClientWorld::initClientSystems(GLFWwindow* window, int viewportWidth, int v
 }
 
 void ClientWorld::updateClientSystems(float deltaTime) {
+    // 更新网络系统（处理接收消息）
+    if (networkSystem_) {
+        networkSystem_->update(deltaTime);
+    }
+    
     // 更新输入
     inputSystem_->update(deltaTime);
     
-    // 更新移动
+    // 更新移动（单机模式或客户端预测）
     movementSystem_->update(deltaTime);
     
     // 更新物理
@@ -205,6 +217,86 @@ void ClientWorld::updateClientSystems(float deltaTime) {
     
     // 更新相机
     cameraSystem_->update(deltaTime);
+    
+    // 连接到服务器后发送输入（在所有系统更新之后）
+    if (networkSystem_ && networkSystem_->isConnected()) {
+        auto player = getPlayer();
+        if (registry().valid(player)) {
+            auto* input = registry().try_get<InputStateComponent>(player);
+            auto* movement = registry().try_get<MovementControllerComponent>(player);
+            
+            if (input && movement) {
+                networkSystem_->sendInput(
+                    input->moveForward, input->moveBackward,
+                    input->moveLeft, input->moveRight,
+                    input->jump, input->sprint,
+                    input->spaceHeld, input->shiftHeld,
+                    input->mouseDeltaX, input->mouseDeltaY,
+                    movement->moveFront, movement->moveRight
+                );
+            }
+        }
+    }
+}
+
+bool ClientWorld::connectToServer(const std::string& host, uint16_t port) {
+    if (!networkSystem_) return false;
+    
+    // 设置回调
+    networkSystem_->setOnConnected([this](const std::string& clientId) {
+        std::cout << "[ClientWorld] 已连接到服务器，ID: " << clientId << std::endl;
+    });
+    
+    networkSystem_->setOnDisconnected([this]() {
+        std::cout << "[ClientWorld] 已断开服务器连接" << std::endl;
+    });
+    
+    networkSystem_->setOnError([](const std::string& error) {
+        std::cerr << "[ClientWorld] 网络错误: " << error << std::endl;
+    });
+    
+    networkSystem_->setOnPlayerJoin([this](const client::RemotePlayer& player) {
+        std::cout << "[ClientWorld] 远程玩家加入: " << player.clientId << std::endl;
+        // TODO: 创建远程玩家实体用于渲染
+    });
+    
+    networkSystem_->setOnPlayerLeave([this](const std::string& clientId) {
+        std::cout << "[ClientWorld] 远程玩家离开: " << clientId << std::endl;
+        // TODO: 移除远程玩家实体
+    });
+    
+    return networkSystem_->connect(host, port);
+}
+
+void ClientWorld::disconnectFromServer() {
+    if (networkSystem_ && networkSystem_->isConnected()) {
+        networkSystem_->disconnect();
+    }
+}
+
+bool ClientWorld::isConnectedToServer() const {
+    return networkSystem_ && networkSystem_->isConnected();
+}
+
+bool ClientWorld::startServerDiscovery() {
+    if (!discoveryScanner_) {
+        discoveryScanner_ = std::make_unique<ServerDiscoveryScanner>();
+    }
+    return discoveryScanner_->start();
+}
+
+void ClientWorld::stopServerDiscovery() {
+    if (discoveryScanner_) {
+        discoveryScanner_->stop();
+    }
+}
+
+std::vector<DiscoveredServer> ClientWorld::getDiscoveredServers() {
+    if (discoveryScanner_) {
+        discoveryScanner_->pruneStaleServers();
+        return discoveryScanner_->getDiscoveredServers();
+    }
+    return {};
 }
 
 entt::entity ClientWorld::createClientPlayer(int viewportWidth, int viewportHeight) {

@@ -133,13 +133,12 @@ private:
     std::unique_ptr<LightManager> lightManager;
     std::unique_ptr<GLTFModel> gltfModel;
     
-    // ECS 系统
+    // 远程玩家模型
+    std::unordered_map<std::string, std::unique_ptr<GLTFModel>> remotePlayerModels;
+    
+    // ECS 系统（使用 ClientWorld 封装）
     bool useECS{true};  // 是否使用 ECS 系统
-    std::unique_ptr<ecs::World> ecsWorld;
-    std::unique_ptr<ecs::InputSystem> ecsInputSystem;
-    std::unique_ptr<ecs::MovementSystem> ecsMovementSystem;
-    std::unique_ptr<ecs::PhysicsSystem> ecsPhysicsSystem;
-    std::unique_ptr<ecs::CameraSystem> ecsCameraSystem;
+    std::unique_ptr<ecs::ClientWorld> ecsClientWorld;
 
     // 时间管理
     std::chrono::high_resolution_clock::time_point lastTime;
@@ -158,6 +157,12 @@ private:
     float timeScale = 1.0f;
     float userMovementSpeed = 5.0f;  // 用户设置的移动速度（持久化）
     float userSensitivity = 0.1f;     // 用户设置的鼠标灵敏度（持久化）
+    
+    // 网络连接
+    char serverHost[64] = "localhost";
+    int serverPort = 9002;
+    bool connectRequested = false;
+    bool disconnectRequested = false;
     
     // 按键状态（在update之前检测，避免状态被重置）
     bool jumpInput = false;
