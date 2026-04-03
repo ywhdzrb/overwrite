@@ -82,8 +82,7 @@ set(IMGUI_SOURCES
     ${imgui_SOURCE_DIR}/backends/imgui_impl_glfw.cpp
 )
 
-# 本地 stb_image.h
-include_directories(${CMAKE_CURRENT_SOURCE_DIR}/external)
+# stb_image.h 由 tinygltf 提供
 
 # ==================== 共享库 (shared) ====================
 add_library(OverWriteShared STATIC
