@@ -57,10 +57,44 @@ set(IMGUI_SOURCES
     external/imgui/backends/imgui_impl_glfw.cpp
 )
 
+# ==================== 共享库 (shared) ====================
+add_library(OverWriteShared STATIC
+    shared/src/ecs/components.cpp
+    shared/src/ecs/systems.cpp
+)
+
+target_include_directories(OverWriteShared PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/shared/include
+)
+
+target_link_libraries(OverWriteShared PUBLIC
+    glm::glm
+    EnTT::EnTT
+)
+
+# ==================== 客户端库 (client) ====================
+add_library(OverWriteClient STATIC
+    client/src/ecs/client_systems.cpp
+)
+
+target_include_directories(OverWriteClient PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/client/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/shared/include
+)
+
+target_link_libraries(OverWriteClient PUBLIC
+    OverWriteShared
+    glm::glm
+    glfw
+)
+
+# ==================== 主程序 ====================
 # 包含目录
 include_directories(
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${CMAKE_CURRENT_SOURCE_DIR}/shared/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/client/include
 )
 
 # 源文件
@@ -92,7 +126,7 @@ set(SOURCES
     src/renderer/gltf_model.cpp
     src/utils/shader_compiler.cpp
     src/utils/logger.cpp
-    # ECS 系统
+    # 保留原有 ECS（过渡期）
     src/ecs/components.cpp
     src/ecs/systems.cpp
     external/tinygltf/tiny_gltf.cc
@@ -106,6 +140,8 @@ add_executable(${PROJECT_NAME} ${SOURCES})
 
 # 链接库
 target_link_libraries(${PROJECT_NAME}
+    OverWriteShared
+    OverWriteClient
     Vulkan::Vulkan
     glfw
     glm::glm
