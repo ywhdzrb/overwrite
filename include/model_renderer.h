@@ -63,14 +63,6 @@ private:
         float roughness;
         int hasTexture;
         float _pad0;
-        
-        // 光源数据
-        glm::vec3 lightPos;
-        float lightIntensity;
-        glm::vec3 lightColor;
-        float _pad1;
-        glm::vec3 ambientColor;
-        float _pad2;
     };
 
     std::shared_ptr<VulkanDevice> device;

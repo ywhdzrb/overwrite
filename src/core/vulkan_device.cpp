@@ -36,6 +36,9 @@ VulkanDevice::VulkanDevice(VkPhysicalDevice physicalDevice, VkDevice device, VkS
         }
     }
     
+    // 存储图形队列族索引
+    graphicsQueueFamily = graphicsFamily;
+    
     vkGetDeviceQueue(device, graphicsFamily, 0, &graphicsQueue);
     vkGetDeviceQueue(device, presentFamily, 0, &presentQueue);
     

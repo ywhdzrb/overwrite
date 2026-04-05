@@ -167,6 +167,10 @@ private:
     float userMovementSpeed = 5.0f;  // 用户设置的移动速度（持久化）
     float userSensitivity = 0.1f;     // 用户设置的鼠标灵敏度（持久化）
     
+    // 延迟 MSAA 更改（避免在 ImGui 渲染过程中重建交换链）
+    bool pendingMsaaChange = false;
+    VkSampleCountFlagBits pendingMsaaSamples = VK_SAMPLE_COUNT_1_BIT;
+    
     // 网络连接
     char serverHost[64] = "localhost";
     int serverPort = 9002;

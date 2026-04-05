@@ -26,6 +26,11 @@ public:
                const glm::mat4& viewMatrix, const glm::mat4& projectionMatrix);
     
     const std::vector<VkCommandBuffer>& getCommandBuffers() const { return commandBuffers; }
+    
+    // 更新 renderPass 和 pipeline（用于重建交换链时）
+    void updateRenderPass(VkRenderPass newRenderPass) { renderPass = newRenderPass; }
+    void updatePipeline(VkPipeline newPipeline) { pipeline = newPipeline; }
+    void updatePipelineLayout(VkPipelineLayout newPipelineLayout) { pipelineLayout = newPipelineLayout; }
 
 private:
     std::shared_ptr<VulkanDevice> device;

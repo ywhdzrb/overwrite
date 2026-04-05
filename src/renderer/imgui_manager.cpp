@@ -3,6 +3,7 @@
 #include "imgui_impl_vulkan.h"
 #include "imgui_impl_glfw.h"
 #include <iostream>
+#include <cmath>
 
 namespace vgame {
 
@@ -10,8 +11,9 @@ ImGuiManager::ImGuiManager(std::shared_ptr<VulkanDevice> device,
                            std::shared_ptr<VulkanSwapchain> swapchain,
                            std::shared_ptr<VulkanRenderPass> renderPass,
                            GLFWwindow* window,
-                           VkInstance instance)
-    : vulkanDevice(device), swapchain(swapchain), mainRenderPass(renderPass), window(window), instance(instance) {
+                           VkInstance instance,
+                           VkSampleCountFlagBits msaaSamples)
+    : vulkanDevice(device), swapchain(swapchain), mainRenderPass(renderPass), window(window), instance(instance), msaaSamples(msaaSamples) {
 }
 
 ImGuiManager::~ImGuiManager() {
@@ -28,24 +30,37 @@ void ImGuiManager::init() {
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;
 
+    // 获取显示缩放比例（高 DPI 支持）
+    float xscale, yscale;
+    glfwGetWindowContentScale(window, &xscale, &yscale);
+    float scale = (xscale + yscale) / 2.0f;
+    if (scale < 1.0f) scale = 1.0f;
+    
+    std::cout << "[ImGuiManager] 显示缩放比例: " << scale << std::endl;
+
     // 设置风格
     ImGui::StyleColorsDark();
     
-    // 加载中文字体
+    // 缩放风格以适应高 DPI
+    ImGuiStyle& style = ImGui::GetStyle();
+    style.ScaleAllSizes(scale);
+
+    // 加载中文字体（根据缩放比例调整大小）
     ImFontConfig config;
     config.OversampleH = 2;
     config.OversampleV = 1;
+    config.SizePixels = 18.0f * scale;  // 根据缩放调整字体大小
     
     // 尝试加载思源黑体
     ImFont* font = io.Fonts->AddFontFromFileTTF(
         "/usr/share/fonts/adobe-source-han-sans/SourceHanSansCN-Bold.otf",
-        18.0f, &config,
+        18.0f * scale, &config,
         io.Fonts->GetGlyphRangesChineseFull()
     );
     
     if (font) {
         io.FontDefault = font;
-        std::cout << "[ImGuiManager] 中文字体加载成功" << std::endl;
+        std::cout << "[ImGuiManager] 中文字体加载成功，大小: " << (18.0f * scale) << std::endl;
     } else {
         // 回退到默认字体
         io.Fonts->AddFontDefault();
@@ -63,7 +78,7 @@ void ImGuiManager::init() {
     init_info.Instance = instance;
     init_info.PhysicalDevice = vulkanDevice->getPhysicalDevice();
     init_info.Device = vulkanDevice->getDevice();
-    init_info.QueueFamily = 0;  // 需要获取正确的队列族索引
+    init_info.QueueFamily = vulkanDevice->getGraphicsQueueFamily();  // 使用正确的队列族索引
     init_info.Queue = vulkanDevice->getGraphicsQueue();
     init_info.PipelineCache = VK_NULL_HANDLE;
     init_info.DescriptorPool = descriptorPool;
@@ -71,16 +86,17 @@ void ImGuiManager::init() {
     init_info.ImageCount = static_cast<uint32_t>(swapchain->getImageViews().size());
     init_info.RenderPass = mainRenderPass->getRenderPass();
     init_info.Subpass = 0;
-    init_info.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
+    init_info.MSAASamples = msaaSamples;  // 使用渲染器的 MSAA 设置
 
     if (!ImGui_ImplVulkan_Init(&init_info)) {
         throw std::runtime_error("Failed to initialize ImGui Vulkan backend");
     }
 
-    // 字体现在自动加载，不需要手动调用 CreateFontsTexture
+    // 上传字体纹理到 GPU
+    ImGui_ImplVulkan_CreateFontsTexture();
 
     initialized = true;
-    std::cout << "[ImGuiManager] 初始化成功" << std::endl;
+    std::cout << "[ImGuiManager] 初始化成功，MSAA: " << msaaSamples << std::endl;
 }
 
 void ImGuiManager::cleanup() {

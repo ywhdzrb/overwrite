@@ -18,7 +18,8 @@ public:
                  std::shared_ptr<VulkanSwapchain> swapchain,
                  std::shared_ptr<VulkanRenderPass> renderPass,
                  GLFWwindow* window,
-                 VkInstance instance);
+                 VkInstance instance,
+                 VkSampleCountFlagBits msaaSamples = VK_SAMPLE_COUNT_1_BIT);
     ~ImGuiManager();
 
     void init();
@@ -38,6 +39,7 @@ private:
     std::shared_ptr<VulkanRenderPass> mainRenderPass;
     GLFWwindow* window;
     VkInstance instance;
+    VkSampleCountFlagBits msaaSamples;
 
     VkDescriptorPool descriptorPool = VK_NULL_HANDLE;
     VkRenderPass imguiRenderPass = VK_NULL_HANDLE;

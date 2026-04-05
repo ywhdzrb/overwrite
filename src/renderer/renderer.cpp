@@ -248,7 +248,7 @@ void Renderer::initVulkan() {
     createDescriptorSets();
     
     // 初始化 ImGui
-    imguiManager = std::make_unique<ImGuiManager>(vulkanDevice, swapchain, renderPass, window, vulkanInstance->getInstance());
+    imguiManager = std::make_unique<ImGuiManager>(vulkanDevice, swapchain, renderPass, window, vulkanInstance->getInstance(), msaaSamples);
     imguiManager->init();
     
     // 设置立方体位置（在相机正前方）
@@ -289,6 +289,12 @@ void Renderer::mainLoop() {
         // 限制delta time以防卡顿
         if (deltaTime > 0.1f) {
             deltaTime = 0.1f;
+        }
+        
+        // 检查是否有延迟的 MSAA 更改
+        if (pendingMsaaChange) {
+            pendingMsaaChange = false;
+            setMsaaSamples(pendingMsaaSamples);
         }
         
                 // FPS 计算
@@ -936,6 +942,10 @@ void Renderer::drawFrame() {
         recreateSwapchain();
         return;
     } else if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
+        // 如果窗口正在关闭，不抛出异常，直接返回
+        if (glfwWindowShouldClose(window)) {
+            return;
+        }
         throw std::runtime_error("failed to acquire swap chain image!");
     }
     
@@ -1084,7 +1094,26 @@ void Renderer::drawFrame() {
     submitInfo.signalSemaphoreCount = 1;
     submitInfo.pSignalSemaphores = signalSemaphores;
     
-    if (vkQueueSubmit(vulkanDevice->getGraphicsQueue(), 1, &submitInfo, syncObjects->getInFlightFences()[currentFrame]) != VK_SUCCESS) {
+    VkResult submitResult = vkQueueSubmit(vulkanDevice->getGraphicsQueue(), 1, &submitInfo, syncObjects->getInFlightFences()[currentFrame]);
+    if (submitResult != VK_SUCCESS) {
+        // 打印详细的错误码
+        std::cerr << "[Renderer] vkQueueSubmit failed with error code: " << submitResult << std::endl;
+        if (submitResult == VK_ERROR_DEVICE_LOST) {
+            std::cerr << "[Renderer] VK_ERROR_DEVICE_LOST - GPU device lost!" << std::endl;
+        } else if (submitResult == VK_ERROR_OUT_OF_DEVICE_MEMORY) {
+            std::cerr << "[Renderer] VK_ERROR_OUT_OF_DEVICE_MEMORY - Out of device memory!" << std::endl;
+        } else if (submitResult == VK_ERROR_OUT_OF_HOST_MEMORY) {
+            std::cerr << "[Renderer] VK_ERROR_OUT_OF_HOST_MEMORY - Out of host memory!" << std::endl;
+        }
+        
+        // 如果窗口正在关闭，不抛出异常，直接返回
+        if (glfwWindowShouldClose(window)) {
+            // 提交一个空的信号操作来恢复 fence 状态
+            VkSubmitInfo emptySubmit{};
+            emptySubmit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+            vkQueueSubmit(vulkanDevice->getGraphicsQueue(), 1, &emptySubmit, syncObjects->getInFlightFences()[currentFrame]);
+            return;
+        }
         throw std::runtime_error("failed to submit draw command buffer!");
     }
     
@@ -1105,6 +1134,10 @@ void Renderer::drawFrame() {
         framebufferResized = false;
         recreateSwapchain();
     } else if (result != VK_SUCCESS) {
+        // 如果窗口正在关闭，不抛出异常，直接返回
+        if (glfwWindowShouldClose(window)) {
+            return;
+        }
         throw std::runtime_error("failed to present swap chain image!");
     }
     
@@ -1157,7 +1190,15 @@ void Renderer::recreateSwapchain() {
     framebuffers->recreate(swapchain->getImageViews(), swapchain->getExtent(), colorImageView);
     
     commandBuffers->cleanup();
+    commandBuffers->updateRenderPass(renderPass->getRenderPass());
+    commandBuffers->updatePipeline(graphicsPipeline->getPipeline());
+    commandBuffers->updatePipelineLayout(graphicsPipeline->getPipelineLayout());
     commandBuffers->create(swapchain->getImageViews().size());
+    
+    // 重新初始化 ImGui 以匹配新的 MSAA 设置
+    imguiManager.reset();
+    imguiManager = std::make_unique<ImGuiManager>(vulkanDevice, swapchain, renderPass, window, vulkanInstance->getInstance(), msaaSamples);
+    imguiManager->init();
     
     for (size_t i = 0; i < commandBuffers->getCommandBuffers().size(); i++) {
         commandBuffers->record(i, framebuffers->getFramebuffers()[i], swapchain->getExtent(),
@@ -1171,6 +1212,20 @@ void Renderer::cleanup() {
         vkDeviceWaitIdle(vulkanDevice->getDevice());
     }
     
+    // 首先清理所有依赖 Vulkan 设备的资源（必须在 vulkanDevice 销毁之前）
+    // 清理远程玩家模型
+    remotePlayerModels.clear();
+    
+    // 清理 GLTF 模型（包含 Vulkan 缓冲区）
+    gltfWalkModel.reset();
+    gltfModel.reset();
+    
+    // 清理 ImGui（使用 Vulkan）
+    imguiManager.reset();
+    
+    // 清理 ECS 客户端世界
+    ecsClientWorld.reset();
+    
     cubeRenderer.reset();
     modelRenderer.reset();
     skyboxRenderer.reset();
@@ -1180,7 +1235,6 @@ void Renderer::cleanup() {
     camera.reset();
     
     // 清理新系统
-    gltfModel.reset();
     lightManager.reset();
     textureLoader.reset();
     
@@ -1858,7 +1912,9 @@ void Renderer::renderDeveloperPanel() {
     
     if (ImGui::Combo("MSAA", &currentMsaa, msaaLevelNames.data(), msaaLevelNames.size())) {
         if (currentMsaa >= 0 && currentMsaa < (int)msaaLevelValues.size()) {
-            setMsaaSamples(msaaLevelValues[currentMsaa]);
+            // 延迟到下一帧开始时应用，避免在 ImGui 渲染过程中重建交换链
+            pendingMsaaSamples = msaaLevelValues[currentMsaa];
+            pendingMsaaChange = true;
         }
     }
     

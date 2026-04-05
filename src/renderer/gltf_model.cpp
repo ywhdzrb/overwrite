@@ -221,14 +221,6 @@ void GLTFModel::renderNode(VkCommandBuffer commandBuffer,
                 float roughness;
                 int hasTexture;
                 float _pad0;
-                
-                // 光源数据
-                glm::vec3 lightPos;
-                float lightIntensity;
-                glm::vec3 lightColor;
-                float _pad1;
-                glm::vec3 ambientColor;
-                float _pad2;
             };
             
             PushConstants pushConstants{};
@@ -244,14 +236,6 @@ void GLTFModel::renderNode(VkCommandBuffer commandBuffer,
                 pushConstants.roughness = material.roughness;
                 pushConstants.hasTexture = material.useBaseColorTexture ? 1 : 0;
             }
-            
-            // 硬编码光源数据
-            pushConstants.lightPos = glm::vec3(0.0f, 0.0f, 3.0f);
-            pushConstants.lightIntensity = 1.0f;
-            pushConstants.lightColor = glm::vec3(1.0f, 1.0f, 1.0f);
-            pushConstants._pad1 = 0.0f;
-            pushConstants.ambientColor = glm::vec3(0.5f, 0.5f, 0.5f);
-            pushConstants._pad2 = 0.0f;
             
             vkCmdPushConstants(commandBuffer, pipelineLayout,
                              VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,

@@ -220,14 +220,6 @@ void CubeRenderer::render(VkCommandBuffer commandBuffer, VkPipelineLayout pipeli
     pushConstants.hasTexture = 0;  // 没有纹理
     pushConstants._pad0 = 0.0f;
     
-    // 添加光源数据
-    pushConstants.lightPos = glm::vec3(0.0f, 0.0f, 3.0f);
-    pushConstants.lightIntensity = 1.0f;
-    pushConstants.lightColor = glm::vec3(1.0f, 1.0f, 1.0f);
-    pushConstants._pad1 = 0.0f;
-    pushConstants.ambientColor = glm::vec3(0.5f, 0.5f, 0.5f);
-    pushConstants._pad2 = 0.0f;
-    
     vkCmdPushConstants(commandBuffer, pipelineLayout,
                       VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 
                       0, sizeof(PushConstants), &pushConstants);

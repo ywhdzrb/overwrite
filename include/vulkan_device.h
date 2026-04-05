@@ -41,6 +41,7 @@ public:
     VkSurfaceKHR getSurface() const { return surface; }
     VkQueue getGraphicsQueue() const { return graphicsQueue; }
     VkQueue getPresentQueue() const { return presentQueue; }
+    uint32_t getGraphicsQueueFamily() const { return graphicsQueueFamily; }
     VkCommandPool getCommandPool() const { return commandPool; }
     VkImage getDepthImage() const { return depthImage; }
     VkImageView getDepthImageView() const { return depthImageView; }
@@ -56,6 +57,7 @@ private:
     VkSurfaceKHR surface;
     VkQueue graphicsQueue;
     VkQueue presentQueue;
+    uint32_t graphicsQueueFamily = 0;
     VkCommandPool commandPool;
     
     // 深度缓冲资源

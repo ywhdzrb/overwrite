@@ -210,11 +210,10 @@ void VulkanPipeline::create() {
     } else {
         // PushConstants结构体大小计算：
         // model(mat4) + view(mat4) + proj(mat4) + baseColor(vec3) + metallic(float) + roughness(float) + hasTexture(int) + _pad0(float)
-        // + lightPos(vec3) + lightIntensity(float) + lightColor(vec3) + _pad1(float) + ambientColor(vec3) + _pad2(float)
-        // = 64*3 + 12 + 4 + 4 + 4 + 4 + 12 + 4 + 12 + 4 + 12 + 4
-        // = 192 + 44 + 44
-        // = 280 bytes
-        pushConstantRange.size = 280;
+        // = 64*3 + 12 + 4 + 4 + 4 + 4
+        // = 192 + 28
+        // = 220 bytes
+        pushConstantRange.size = 220;
     }
     
     VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
