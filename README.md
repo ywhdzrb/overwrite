@@ -61,27 +61,18 @@ sudo apt install vulkan-sdk libglfw3-dev libglm-dev cmake build-essential
 ./build.sh run
 ```
 
----
-
-## 操作
-
-| 按键 | 功能 |
-|------|------|
-| `WASD` | 移动 |
-| `Mouse` | 视角控制 |
-| `Space` | 上升（飞行） |
-| `Shift` | 下降 |
-| `R` | 切换自由视角 |
-| `ESC` | 开发者模式 |
-
----
-
 ## 许可证
 
-本项目采用双重许可：
+本项目采用**双许可证**模式：
 
-- **源代码**: [GPL v3](LICENSE) - 适用 `src/`、`include/`、`shaders/` 目录
-- **美术资产**: [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/) - 适用 `assets/` 目录
+- **代码**（`.cpp`, `.h`, `.glsl` 等）：[GNU GPL v3](./LICENSE-CODE)
+- **美术资产**（`.glb`, `.png`, `.blend` 等）：[CC BY-NC-SA 4.0](./LICENSE-ART)
+
+简单来说：
+- 可自由使用、修改、分享
+- 必须注明原作者
+- 禁止商用
+- 修改后需以相同许可证发布
 
 ---
 
