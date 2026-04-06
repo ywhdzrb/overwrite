@@ -57,6 +57,8 @@ sudo apt install vulkan-sdk libglfw3-dev libglm-dev cmake build-essential
 
 ```bash
 ./run.sh
+# 或者
+./build.sh run
 ```
 
 ---
@@ -76,8 +78,10 @@ sudo apt install vulkan-sdk libglfw3-dev libglm-dev cmake build-essential
 
 ## 许可证
 
-- **源代码**: [GPL v3](LICENSE)
-- **艺术内容**: CC BY-NC-ND 4.0
+本项目采用双重许可：
+
+- **源代码**: [GPL v3](LICENSE) - 适用 `src/`、`include/`、`shaders/` 目录
+- **美术资产**: [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/) - 适用 `assets/` 目录
 
 ---
 
