@@ -7,8 +7,53 @@
 #include <string>
 #include <functional>
 #include <vector>
+#include <array>
 
 namespace vgame {
+
+/**
+ * @brief 视锥体平面
+ */
+struct FrustumPlane {
+    glm::vec3 normal;
+    float distance;
+    
+    float distanceToPoint(const glm::vec3& point) const {
+        return glm::dot(normal, point) + distance;
+    }
+};
+
+/**
+ * @brief 视锥体类，用于视锥体剔除
+ */
+class Frustum {
+public:
+    std::array<FrustumPlane, 6> planes; // left, right, bottom, top, near, far
+    
+    /**
+     * @brief 从视图投影矩阵提取视锥体平面
+     */
+    void update(const glm::mat4& viewProjection);
+    
+    /**
+     * @brief 检查点是否在视锥体内
+     */
+    bool isPointInside(const glm::vec3& point) const;
+    
+    /**
+     * @brief 检查球体是否在视锥体内
+     * @param center 球心
+     * @param radius 半径
+     */
+    bool isSphereInside(const glm::vec3& center, float radius) const;
+    
+    /**
+     * @brief 检查轴对齐包围盒是否在视锥体内
+     * @param min 最小点
+     * @param max 最大点
+     */
+    bool isAABBInside(const glm::vec3& min, const glm::vec3& max) const;
+};
 
 /**
  * @brief 地形高度查询函数类型（Camera 使用）
@@ -128,6 +173,14 @@ public:
     // 设置第三人称相机距离
     void setThirdPersonDistance(float d) { thirdPersonDistance = d; }
     float getThirdPersonDistance() const { return thirdPersonDistance; }
+    
+    // 获取视锥体（用于剔除）
+    const Frustum& getFrustum() const { return frustum; }
+    
+    /**
+     * @brief 更新视锥体（每帧调用）
+     */
+    void updateFrustum();
 
 private:
     // 更新摄像机向量
@@ -180,6 +233,9 @@ private:
     glm::vec3 targetPosition;       // 跟踪目标位置
     float thirdPersonDistance;      // 相机与目标的距离
     float thirdPersonHeight;        // 相机高度偏移
+    
+    // 视锥体（用于剔除）
+    Frustum frustum;
 };
 
 } // namespace vgame

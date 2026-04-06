@@ -1,6 +1,7 @@
 // 摄像机实现
 // 处理第一人称和第三人称视角的摄像机控制
 #include "camera.h"
+#include <glm/gtc/type_ptr.hpp>
 #include <cmath>
 #include <iostream>
 
@@ -257,6 +258,100 @@ glm::mat4 Camera::getViewMatrix() const {
 glm::mat4 Camera::getProjectionMatrix() const {
     float aspect = static_cast<float>(windowWidth) / static_cast<float>(windowHeight);
     return glm::perspective(glm::radians(zoom), aspect, 0.1f, 100.0f);
+}
+
+void Camera::updateFrustum() {
+    glm::mat4 viewProjection = getProjectionMatrix() * getViewMatrix();
+    frustum.update(viewProjection);
+}
+
+// ==================== Frustum 实现 ====================
+
+void Frustum::update(const glm::mat4& viewProjection) {
+    // 提取视锥体的6个平面
+    // 平面方程: ax + by + cz + d = 0
+    // 存储为 normal = (a, b, c), distance = d
+    
+    const float* m = glm::value_ptr(viewProjection);
+    
+    // Left plane
+    planes[0].normal.x = m[3] + m[0];
+    planes[0].normal.y = m[7] + m[4];
+    planes[0].normal.z = m[11] + m[8];
+    planes[0].distance = m[15] + m[12];
+    
+    // Right plane
+    planes[1].normal.x = m[3] - m[0];
+    planes[1].normal.y = m[7] - m[4];
+    planes[1].normal.z = m[11] - m[8];
+    planes[1].distance = m[15] - m[12];
+    
+    // Bottom plane
+    planes[2].normal.x = m[3] + m[1];
+    planes[2].normal.y = m[7] + m[5];
+    planes[2].normal.z = m[11] + m[9];
+    planes[2].distance = m[15] + m[13];
+    
+    // Top plane
+    planes[3].normal.x = m[3] - m[1];
+    planes[3].normal.y = m[7] - m[5];
+    planes[3].normal.z = m[11] - m[9];
+    planes[3].distance = m[15] - m[13];
+    
+    // Near plane
+    planes[4].normal.x = m[3] + m[2];
+    planes[4].normal.y = m[7] + m[6];
+    planes[4].normal.z = m[11] + m[10];
+    planes[4].distance = m[15] + m[14];
+    
+    // Far plane
+    planes[5].normal.x = m[3] - m[2];
+    planes[5].normal.y = m[7] - m[6];
+    planes[5].normal.z = m[11] - m[10];
+    planes[5].distance = m[15] - m[14];
+    
+    // 归一化平面
+    for (auto& plane : planes) {
+        float length = glm::length(plane.normal);
+        if (length > 0.0001f) {
+            plane.normal /= length;
+            plane.distance /= length;
+        }
+    }
+}
+
+bool Frustum::isPointInside(const glm::vec3& point) const {
+    for (const auto& plane : planes) {
+        if (plane.distanceToPoint(point) < 0.0f) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool Frustum::isSphereInside(const glm::vec3& center, float radius) const {
+    for (const auto& plane : planes) {
+        if (plane.distanceToPoint(center) < -radius) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool Frustum::isAABBInside(const glm::vec3& min, const glm::vec3& max) const {
+    // 检查包围盒的8个顶点是否都在某个平面外侧
+    for (const auto& plane : planes) {
+        // 找到平面正方向最远的顶点
+        glm::vec3 positiveVertex = min;
+        if (plane.normal.x >= 0) positiveVertex.x = max.x;
+        if (plane.normal.y >= 0) positiveVertex.y = max.y;
+        if (plane.normal.z >= 0) positiveVertex.z = max.z;
+        
+        if (plane.distanceToPoint(positiveVertex) < 0) {
+            return false;
+        }
+    }
+    return true;
 }
 
 } // namespace vgame

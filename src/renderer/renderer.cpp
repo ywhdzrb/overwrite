@@ -666,6 +666,9 @@ void Renderer::mainLoop() {
 }
 
 void Renderer::updateGameLogic(float deltaTime) {
+    // 更新视锥体（用于剔除）
+    camera->updateFrustum();
+    
     // 处理网络连接请求
     if (connectRequested && ecsClientWorld) {
         std::cout << "[Renderer] 正在连接到 " << serverHost << ":" << serverPort << std::endl;
@@ -1076,9 +1079,26 @@ void Renderer::drawFrame() {
                         gltfModel->getModelMatrix());
     }
     
-    // 渲染动态加载的模型
+    // 渲染动态加载的模型（带视锥体剔除）
     for (auto& [id, model] : models) {
         if (model && model->getMeshCount() > 0) {
+            // 视锥体剔除检测
+            auto bbox = model->getBoundingBox();
+            glm::vec3 worldMin = model->getPosition() + bbox.first * model->getScale();
+            glm::vec3 worldMax = model->getPosition() + bbox.second * model->getScale();
+            
+            // 距离剔除（超过100米不渲染）
+            glm::vec3 modelCenter = (worldMin + worldMax) * 0.5f;
+            float distance = glm::length(modelCenter - camera->getPosition());
+            if (distance > 100.0f) {
+                continue;
+            }
+            
+            // 视锥体剔除
+            if (!camera->getFrustum().isAABBInside(worldMin, worldMax)) {
+                continue;
+            }
+            
             // 绑定模型的纹理描述符集
             auto it = modelDescriptorSets.find(id);
             if (it != modelDescriptorSets.end() && it->second != VK_NULL_HANDLE) {
