@@ -56,8 +56,6 @@ sudo apt install vulkan-sdk libglfw3-dev libglm-dev cmake build-essential
 ### 运行
 
 ```bash
-./run.sh
-# 或者
 ./build.sh run
 ```
 
