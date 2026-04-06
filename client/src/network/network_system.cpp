@@ -52,6 +52,15 @@ bool NetworkSystem::connect(const std::string& host, uint16_t port) {
         return false;
     }
     
+    // 如果之前有连接尝试，需要先清理并重建 Impl
+    if (impl_->clientThread.joinable()) {
+        impl_->client.stop();
+        impl_->clientThread.join();
+    }
+    
+    // 重新创建 Impl 对象（因为 init_asio 只能调用一次）
+    impl_ = std::make_unique<Impl>();
+    
     state_ = NetworkState::Connecting;
     lastError_.clear();
     
@@ -206,14 +215,24 @@ void NetworkSystem::processMessages() {
         impl_->incomingMessages = std::queue<json>();
     }
     
+    size_t count = 0;
     while (!messages.empty()) {
         handleMessage(messages.front());
         messages.pop();
+        count++;
+    }
+    if (count > 0) {
+        // std::cout << "[NetworkSystem] 处理了 " << count << " 条消息" << std::endl;
     }
 }
 
 void NetworkSystem::handleMessage(const json& message) {
     std::string type = message.value("type", "");
+    
+    // 只打印重要消息类型
+    if (type != "state" && type != "pong") {
+        std::cout << "[NetworkSystem] 收到消息类型: " << type << std::endl;
+    }
     
     if (type == "welcome") {
         // 连接成功，获取客户端 ID
@@ -251,6 +270,11 @@ void NetworkSystem::handleMessage(const json& message) {
         }
         
     } else if (type == "state") {
+        // 如果还没收到 welcome 消息，跳过 state 处理（避免把自己添加为远程玩家）
+        if (clientId_.empty()) {
+            return;
+        }
+        
         // 更新玩家状态
         if (message.contains("players") && message["players"].is_array()) {
             for (const auto& playerData : message["players"]) {
@@ -269,6 +293,27 @@ void NetworkSystem::handleMessage(const json& message) {
                     it->second.targetPitch = playerData.value("pitch", it->second.pitch);
                     it->second.isJumping = playerData.value("isJumping", false);
                     it->second.isGrounded = playerData.value("isGrounded", true);
+                } else {
+                    // 玩家不在列表中，自动添加（可能是 playerJoin 消息丢失）
+                    RemotePlayer player;
+                    player.clientId = playerId;
+                    if (playerData.contains("position") && playerData["position"].is_array()) {
+                        player.position.x = playerData["position"][0].get<float>();
+                        player.position.y = playerData["position"][1].get<float>();
+                        player.position.z = playerData["position"][2].get<float>();
+                        player.targetPosition = player.position;
+                    }
+                    player.yaw = playerData.value("yaw", 0.0f);
+                    player.targetYaw = player.yaw;
+                    player.pitch = playerData.value("pitch", 0.0f);
+                    player.targetPitch = player.pitch;
+                    player.active = true;
+                    
+                    remotePlayers_[playerId] = player;
+                    std::cout << "[NetworkSystem] 从状态同步添加玩家: " << playerId << std::endl;
+                    if (onPlayerJoin_) {
+                        onPlayerJoin_(player);
+                    }
                 }
             }
         }
@@ -341,6 +386,17 @@ void NetworkSystem::interpolateRemotePlayers(float deltaTime) {
         glm::vec3 moveDir = player.position - player.lastPosition;
         float moveDistance = glm::length(moveDir);
         player.isMoving = moveDistance > 0.001f;
+        
+        // 跳跃状态：使用服务器同步的状态，或者通过 Y 坐标变化趋势判断
+        // 如果 Y 坐标在上升或下降（变化超过阈值），认为在空中
+        float yVelocity = player.position.y - player.lastPosition.y;
+        if (std::abs(yVelocity) > 0.01f) {
+            // Y 坐标有明显变化，在空中
+            player.isJumping = true;
+        } else if (player.isGrounded) {
+            // 服务器确认落地
+            player.isJumping = false;
+        }
         
         if (player.isMoving) {
             // 计算移动方向的角度

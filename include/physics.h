@@ -5,8 +5,14 @@
 #include <vulkan/vulkan.h>
 #include <vector>
 #include <memory>
+#include <functional>
 
 namespace vgame {
+
+/**
+ * @brief 地形高度查询函数类型
+ */
+using PhysicsTerrainQuery = std::function<float(float x, float z)>;
 
 class Physics {
 public:
@@ -24,9 +30,16 @@ public:
     void setGravity(float g) { gravity = g; }
     float getGravity() const { return gravity; }
     
-    // 设置地面高度
-    void setGroundHeight(float height) { groundHeight = height; }
-    float getGroundHeight() const { return groundHeight; }
+    // 设置默认地面高度（无地形时使用）
+    void setGroundHeight(float height) { defaultGroundHeight = height; }
+    float getGroundHeight() const { return defaultGroundHeight; }
+    
+    // 地形查询接口
+    void setTerrainQuery(PhysicsTerrainQuery query) { terrainQuery = std::move(query); }
+    void clearTerrainQuery() { terrainQuery = nullptr; }
+    
+    // 查询地形高度
+    float queryTerrainHeight(float x, float z) const;
     
     // 添加碰撞体
     void addCollisionBox(const glm::vec3& position, const glm::vec3& size);
@@ -42,7 +55,8 @@ private:
 
 private:
     float gravity;
-    float groundHeight;
+    float defaultGroundHeight;  // 默认地面高度（无地形时）
+    PhysicsTerrainQuery terrainQuery;  // 地形高度查询回调
     std::vector<std::pair<glm::vec3, glm::vec3>> collisionBoxes;  // position, size
 };
 

@@ -73,20 +73,20 @@ void ImGuiManager::init() {
     // 创建描述符池
     createDescriptorPool();
 
-    // 初始化 Vulkan 后端
+    // 初始化 Vulkan 后端 (新版 ImGui API)
     ImGui_ImplVulkan_InitInfo init_info = {};
     init_info.Instance = instance;
     init_info.PhysicalDevice = vulkanDevice->getPhysicalDevice();
     init_info.Device = vulkanDevice->getDevice();
-    init_info.QueueFamily = vulkanDevice->getGraphicsQueueFamily();  // 使用正确的队列族索引
+    init_info.QueueFamily = vulkanDevice->getGraphicsQueueFamily();
     init_info.Queue = vulkanDevice->getGraphicsQueue();
     init_info.PipelineCache = VK_NULL_HANDLE;
     init_info.DescriptorPool = descriptorPool;
-    init_info.MinImageCount = 2;
-    init_info.ImageCount = static_cast<uint32_t>(swapchain->getImageViews().size());
     init_info.RenderPass = mainRenderPass->getRenderPass();
     init_info.Subpass = 0;
-    init_info.MSAASamples = msaaSamples;  // 使用渲染器的 MSAA 设置
+    init_info.MinImageCount = 2;
+    init_info.ImageCount = static_cast<uint32_t>(swapchain->getImageViews().size());
+    init_info.MSAASamples = msaaSamples;
 
     if (!ImGui_ImplVulkan_Init(&init_info)) {
         throw std::runtime_error("Failed to initialize ImGui Vulkan backend");

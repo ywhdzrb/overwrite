@@ -22,9 +22,11 @@ Camera::Camera(int windowWidth, int windowHeight)
       windowHeight(windowHeight),
       velocity(0.0f),
       isJumping(false),
+      isGrounded_(true),
       jumpForce(5.5f),
       gravity(15.0f),
-      groundHeight(-1.5f),
+      defaultGroundHeight(-1.5f),
+      terrainQuery_(nullptr),
       freeCameraMode(false),
       freeCameraSpeed(15.0f),
       mode(Mode::ThirdPerson),  // 默认第三人称
@@ -33,6 +35,37 @@ Camera::Camera(int windowWidth, int windowHeight)
       thirdPersonHeight(2.0f) {
     updateCameraVectors();
     updateThirdPersonCamera();
+}
+
+float Camera::queryTerrainHeight(float x, float z) const {
+    float maxHeight = defaultGroundHeight;
+    
+    // 检查所有碰撞箱，找到该位置最高的站立面
+    for (const auto& box : collisionBoxes_) {
+        const glm::vec3& boxPos = box.first;
+        const glm::vec3& boxSize = box.second;
+        
+        // 检查 (x, z) 是否在碰撞箱的水平范围内
+        float halfSizeX = boxSize.x * 0.5f;
+        float halfSizeZ = boxSize.z * 0.5f;
+        
+        if (x >= boxPos.x - halfSizeX && x <= boxPos.x + halfSizeX &&
+            z >= boxPos.z - halfSizeZ && z <= boxPos.z + halfSizeZ) {
+            // 碰撞箱顶面高度
+            float boxTop = boxPos.y + boxSize.y * 0.5f;
+            if (boxTop > maxHeight) {
+                maxHeight = boxTop;
+            }
+        }
+    }
+    
+    // 如果有自定义地形查询，取两者最大值
+    if (terrainQuery_) {
+        float terrainH = terrainQuery_(x, z);
+        return std::max(maxHeight, terrainH);
+    }
+    
+    return maxHeight;
 }
 
 void Camera::toggleMode() {
@@ -121,9 +154,10 @@ void Camera::update(float deltaTime, bool moveForward, bool moveBackward,
         }
         if (shiftPressed) {
             targetPosition.y -= speed * deltaTime;
-            // 防止低于地面
-            if (targetPosition.y < groundHeight) {
-                targetPosition.y = groundHeight;
+            // 防止低于地形
+            float terrainHeight = queryTerrainHeight(targetPosition.x, targetPosition.z);
+            if (targetPosition.y < terrainHeight) {
+                targetPosition.y = terrainHeight;
             }
         }
         
@@ -131,22 +165,37 @@ void Camera::update(float deltaTime, bool moveForward, bool moveBackward,
         updateThirdPersonCamera();
     } else {
         // 第一人称模式
-        if (jump && !isJumping && position.y <= groundHeight + 0.1f) {
+        // 查询当前位置的地形高度
+        float terrainHeight = queryTerrainHeight(position.x, position.z);
+        
+        // 跳跃输入处理：仅在着地时允许跳跃
+        if (jump && isGrounded_ && !isJumping) {
             velocity.y = jumpForce;
             isJumping = true;
+            isGrounded_ = false;
         }
 
-        if (isJumping || position.y > groundHeight) {
+        // 空中物理：非着地状态应用重力
+        if (!isGrounded_) {
             velocity.y -= gravity * deltaTime;
             position.y += velocity.y * deltaTime;
 
-            if (position.y <= groundHeight) {
-                position.y = groundHeight;
+            // 着地检测
+            if (position.y <= terrainHeight) {
+                position.y = terrainHeight;
                 velocity.y = 0.0f;
                 isJumping = false;
+                isGrounded_ = true;
             }
         } else {
-            position.y = groundHeight;
+            // 着地状态检查
+            if (position.y < terrainHeight) {
+                // 位置低于地形，修正到地形高度
+                position.y = terrainHeight;
+            } else if (position.y > terrainHeight + 0.01f) {
+                // 位置高于地形（悬浮），触发掉落
+                isGrounded_ = false;
+            }
             velocity.y = 0.0f;
         }
         

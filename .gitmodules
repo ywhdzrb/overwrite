@@ -1,0 +1,33 @@
+# OverWrite 依赖库
+# 使用 git submodules 管理外部依赖
+# 版本锁定由 build.sh 处理
+
+# EnTT - ECS 库
+[submodule "external/entt"]
+	path = external/entt
+	url = https://github.com/skypjack/entt.git
+
+# nlohmann_json - JSON 库
+[submodule "external/nlohmann_json"]
+	path = external/nlohmann_json
+	url = https://github.com/nlohmann/json.git
+
+# ixwebsocket - WebSocket 库 (替代 websocketpp)
+[submodule "external/ixwebsocket"]
+	path = external/ixwebsocket
+	url = https://github.com/machinezone/IXWebSocket.git
+
+# ImGui - UI 库
+[submodule "external/imgui"]
+	path = external/imgui
+	url = https://github.com/ocornut/imgui.git
+
+# tinygltf - GLTF 模型加载
+[submodule "external/tinygltf"]
+	path = external/tinygltf
+	url = https://github.com/syoyo/tinygltf.git
+
+# tinyobjloader - OBJ 模型加载
+[submodule "external/tinyobjloader"]
+	path = external/tinyobjloader
+	url = https://github.com/tinyobjloader/tinyobjloader.git

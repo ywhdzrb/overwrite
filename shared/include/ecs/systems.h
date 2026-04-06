@@ -81,9 +81,22 @@ private:
 };
 
 /**
+ * @brief 地形高度查询函数类型
+ * @param x 世界坐标 X
+ * @param z 世界坐标 Z
+ * @return 该位置的地形高度（Y），如果没有地形返回默认地面高度
+ */
+using TerrainHeightQuery = std::function<float(float x, float z)>;
+
+/**
  * @brief 物理系统（共享）
  * 
  * 处理重力、碰撞等物理模拟
+ * 
+ * 设计说明：
+ * - 使用 isGrounded 状态控制重力应用，而非坐标比较
+ * - 支持地形高度查询接口，用于未来地形系统
+ * - groundHeight 是动态值，由地形系统更新
  */
 class PhysicsSystem {
 public:
@@ -95,13 +108,27 @@ public:
     void addCollisionBox(const glm::vec3& position, const glm::vec3& size);
     void clearCollisionBoxes();
     
+    // 地形查询接口
+    void setTerrainQuery(TerrainHeightQuery query) { terrainQuery_ = std::move(query); }
+    void clearTerrainQuery() { terrainQuery_ = nullptr; }
+    bool hasTerrainQuery() const { return terrainQuery_ != nullptr; }
+    
+    // 默认地面高度（无地形时使用）
+    void setDefaultGroundHeight(float height) { defaultGroundHeight_ = height; }
+    float getDefaultGroundHeight() const { return defaultGroundHeight_; }
+    
 private:
     World& world_;
     std::vector<std::pair<glm::vec3, glm::vec3>> collisionBoxes_;  // position, size
+    TerrainHeightQuery terrainQuery_;                               // 地形高度查询回调
+    float defaultGroundHeight_{-1.5f};                              // 默认地面高度
     
     bool checkGroundCollision(const glm::vec3& position, float height) const;
     bool checkAABBCollision(const glm::vec3& pos1, const glm::vec3& size1,
                            const glm::vec3& pos2, const glm::vec3& size2) const;
+    
+    // 查询地形高度
+    float queryTerrainHeight(float x, float z) const;
 };
 
 } // namespace ecs

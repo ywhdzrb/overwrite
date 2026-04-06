@@ -19,70 +19,102 @@ else()
     add_compile_options(-O3 -march=native)
 endif()
 
-# ==================== 依赖管理 (统一使用 FetchContent) ====================
-include(FetchContent)
-
-# EnTT - ECS 库
-FetchContent_Declare(
-    entt
-    GIT_REPOSITORY https://github.com/skypjack/entt.git
-    GIT_TAG v3.13.2
-)
-
-# nlohmann_json - JSON 库
-FetchContent_Declare(
-    nlohmann_json
-    GIT_REPOSITORY https://github.com/nlohmann/json.git
-    GIT_TAG v3.11.3
-)
-
-# websocketpp - WebSocket 库
-FetchContent_Declare(
-    websocketpp
-    GIT_REPOSITORY https://github.com/zaphoyd/websocketpp.git
-    GIT_TAG 0.8.2
-)
-
-# ImGui - UI 库
-FetchContent_Declare(
-    imgui
-    GIT_REPOSITORY https://github.com/ocornut/imgui.git
-    GIT_TAG v1.91.8
-)
-
-# tinygltf - GLTF 模型加载
-FetchContent_Declare(
-    tinygltf
-    GIT_REPOSITORY https://github.com/syoyo/tinygltf.git
-    GIT_TAG v2.9.3
-)
-
-# tinyobjloader - OBJ 模型加载
-FetchContent_Declare(
-    tinyobjloader
-    GIT_REPOSITORY https://github.com/tinyobjloader/tinyobjloader.git
-    GIT_TAG v2.0.0rc13
-)
-
-FetchContent_MakeAvailable(entt nlohmann_json websocketpp imgui tinygltf tinyobjloader)
+# ==================== 外部依赖路径 ====================
+# 外部依赖由 git submodules 管理，通过 build.sh 初始化
+# 运行 ./build.sh 会自动 checkout 到指定版本
+set(EXTERNAL_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external)
 
 # ==================== 系统库 ====================
 find_package(Vulkan REQUIRED)
 find_package(OpenSSL REQUIRED)
 find_package(glfw3 REQUIRED)
 find_package(glm REQUIRED)
+find_package(ZLIB REQUIRED)
 
-# ==================== ImGui 配置 ====================
-set(IMGUI_SOURCES
-    ${imgui_SOURCE_DIR}/imgui.cpp
-    ${imgui_SOURCE_DIR}/imgui_draw.cpp
-    ${imgui_SOURCE_DIR}/imgui_widgets.cpp
-    ${imgui_SOURCE_DIR}/imgui_tables.cpp
-    ${imgui_SOURCE_DIR}/backends/imgui_impl_vulkan.cpp
-    ${imgui_SOURCE_DIR}/backends/imgui_impl_glfw.cpp
+# ==================== EnTT (header-only) ====================
+add_library(EnTT INTERFACE)
+target_include_directories(EnTT INTERFACE ${EXTERNAL_DIR}/entt/single_include)
+
+# ==================== nlohmann_json (header-only) ====================
+add_library(nlohmann_json INTERFACE)
+target_include_directories(nlohmann_json INTERFACE ${EXTERNAL_DIR}/nlohmann_json/include)
+
+# ==================== ixwebsocket ====================
+set(IXWEBSOCKET_DIR ${EXTERNAL_DIR}/ixwebsocket/ixwebsocket)
+set(IXWEBSOCKET_SOURCES
+    ${IXWEBSOCKET_DIR}/IXWebSocket.cpp
+    ${IXWEBSOCKET_DIR}/IXWebSocketServer.cpp
+    ${IXWEBSOCKET_DIR}/IXWebSocketTransport.cpp
+    ${IXWEBSOCKET_DIR}/IXWebSocketHttpHeaders.cpp
+    ${IXWEBSOCKET_DIR}/IXWebSocketHandshake.cpp
+    ${IXWEBSOCKET_DIR}/IXWebSocketCloseConstants.cpp
+    ${IXWEBSOCKET_DIR}/IXWebSocketPerMessageDeflate.cpp
+    ${IXWEBSOCKET_DIR}/IXWebSocketPerMessageDeflateCodec.cpp
+    ${IXWEBSOCKET_DIR}/IXWebSocketPerMessageDeflateOptions.cpp
+    ${IXWEBSOCKET_DIR}/IXWebSocketProxyServer.cpp
+    ${IXWEBSOCKET_DIR}/IXSocket.cpp
+    ${IXWEBSOCKET_DIR}/IXSocketConnect.cpp
+    ${IXWEBSOCKET_DIR}/IXSocketFactory.cpp
+    ${IXWEBSOCKET_DIR}/IXSocketOpenSSL.cpp
+    ${IXWEBSOCKET_DIR}/IXSocketServer.cpp
+    ${IXWEBSOCKET_DIR}/IXSocketTLSOptions.cpp
+    ${IXWEBSOCKET_DIR}/IXUdpSocket.cpp
+    ${IXWEBSOCKET_DIR}/IXNetSystem.cpp
+    ${IXWEBSOCKET_DIR}/IXDNSLookup.cpp
+    ${IXWEBSOCKET_DIR}/IXUuid.cpp
+    ${IXWEBSOCKET_DIR}/IXSelectInterrupt.cpp
+    ${IXWEBSOCKET_DIR}/IXSelectInterruptPipe.cpp
+    ${IXWEBSOCKET_DIR}/IXSelectInterruptEvent.cpp
+    ${IXWEBSOCKET_DIR}/IXSelectInterruptFactory.cpp
+    ${IXWEBSOCKET_DIR}/IXStrCaseCompare.cpp
+    ${IXWEBSOCKET_DIR}/IXHttp.cpp
+    ${IXWEBSOCKET_DIR}/IXHttpClient.cpp
+    ${IXWEBSOCKET_DIR}/IXHttpServer.cpp
+    ${IXWEBSOCKET_DIR}/IXUrlParser.cpp
+    ${IXWEBSOCKET_DIR}/IXUserAgent.cpp
+    ${IXWEBSOCKET_DIR}/IXConnectionState.cpp
+    ${IXWEBSOCKET_DIR}/IXCancellationRequest.cpp
+    ${IXWEBSOCKET_DIR}/IXExponentialBackoff.cpp
+    ${IXWEBSOCKET_DIR}/IXSetThreadName.cpp
+    ${IXWEBSOCKET_DIR}/IXGzipCodec.cpp
+    ${IXWEBSOCKET_DIR}/IXGetFreePort.cpp
 )
 
-# stb_image.h 由 tinygltf 提供
+add_library(ixwebsocket STATIC ${IXWEBSOCKET_SOURCES})
+target_include_directories(ixwebsocket PUBLIC ${EXTERNAL_DIR}/ixwebsocket)
+target_link_libraries(ixwebsocket PUBLIC OpenSSL::SSL OpenSSL::Crypto Threads::Threads ZLIB::ZLIB)
+target_compile_definitions(ixwebsocket PUBLIC IXWEBSOCKET_USE_OPEN_SSL IXWEBSOCKET_USE_ZLIB)
+
+# ==================== ImGui ====================
+set(IMGUI_SOURCES
+    ${EXTERNAL_DIR}/imgui/imgui.cpp
+    ${EXTERNAL_DIR}/imgui/imgui_draw.cpp
+    ${EXTERNAL_DIR}/imgui/imgui_widgets.cpp
+    ${EXTERNAL_DIR}/imgui/imgui_tables.cpp
+    ${EXTERNAL_DIR}/imgui/backends/imgui_impl_vulkan.cpp
+    ${EXTERNAL_DIR}/imgui/backends/imgui_impl_glfw.cpp
+)
+
+add_library(imgui STATIC ${IMGUI_SOURCES})
+target_include_directories(imgui PUBLIC 
+    ${EXTERNAL_DIR}/imgui
+    ${EXTERNAL_DIR}/imgui/backends
+)
+target_link_libraries(imgui PUBLIC glfw Vulkan::Vulkan)
+
+# ==================== tinygltf (header-only, with stb_image) ====================
+set(STB_SOURCES
+    ${EXTERNAL_DIR}/tinygltf/tiny_gltf.cc
+)
+add_library(tinygltf STATIC ${STB_SOURCES})
+target_include_directories(tinygltf PUBLIC ${EXTERNAL_DIR}/tinygltf)
+
+# ==================== tinyobjloader (header-only with implementation) ====================
+set(TINYOBJ_SOURCES
+    ${EXTERNAL_DIR}/tinyobjloader/tiny_obj_loader.cc
+)
+add_library(tinyobjloader STATIC ${TINYOBJ_SOURCES})
+target_include_directories(tinyobjloader PUBLIC ${EXTERNAL_DIR}/tinyobjloader)
 
 # ==================== 共享库 (shared) ====================
 add_library(OverWriteShared STATIC
@@ -97,8 +129,8 @@ target_include_directories(OverWriteShared PUBLIC
 
 target_link_libraries(OverWriteShared PUBLIC
     glm::glm
-    EnTT::EnTT
-    nlohmann_json::nlohmann_json
+    EnTT
+    nlohmann_json
 )
 
 # ==================== 客户端库 (client) ====================
@@ -116,7 +148,7 @@ target_link_libraries(OverWriteClient PUBLIC
     OverWriteShared
     glm::glm
     glfw
-    nlohmann_json::nlohmann_json
+    nlohmann_json
     OpenSSL::SSL
     OpenSSL::Crypto
     Threads::Threads
@@ -133,13 +165,12 @@ target_include_directories(OverWriteServer PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/shared/include
 )
 
-target_include_directories(OverWriteServer PUBLIC
-    /usr/include
-)
-
 target_link_libraries(OverWriteServer PUBLIC
     OverWriteShared
-    nlohmann_json::nlohmann_json
+    ixwebsocket
+    nlohmann_json
+    OpenSSL::SSL
+    OpenSSL::Crypto
     Threads::Threads
 )
 
@@ -150,9 +181,9 @@ include_directories(
     ${CMAKE_CURRENT_SOURCE_DIR}/src
     ${CMAKE_CURRENT_SOURCE_DIR}/shared/include
     ${CMAKE_CURRENT_SOURCE_DIR}/client/include
-    ${tinygltf_SOURCE_DIR}
-    ${imgui_SOURCE_DIR}
-    ${imgui_SOURCE_DIR}/backends
+    ${EXTERNAL_DIR}/tinygltf
+    ${EXTERNAL_DIR}/imgui
+    ${EXTERNAL_DIR}/imgui/backends
 )
 
 # 源文件
@@ -184,11 +215,7 @@ set(SOURCES
     src/renderer/gltf_model.cpp
     src/utils/shader_compiler.cpp
     src/utils/logger.cpp
-    ${tinygltf_SOURCE_DIR}/tiny_gltf.cc
 )
-
-# 添加 ImGui 源文件
-list(APPEND SOURCES ${IMGUI_SOURCES})
 
 # 创建客户端可执行文件
 add_executable(${PROJECT_NAME} ${SOURCES})
@@ -199,7 +226,10 @@ target_link_libraries(${PROJECT_NAME}
     Vulkan::Vulkan
     glfw
     glm::glm
-    EnTT::EnTT
+    EnTT
+    imgui
+    tinygltf
+    tinyobjloader
 )
 
 # ==================== 服务器主程序 ====================
@@ -209,7 +239,7 @@ add_executable(OverWriteServerBin
 
 target_link_libraries(OverWriteServerBin
     OverWriteServer
-    nlohmann_json::nlohmann_json
+    nlohmann_json
 )
 
 set_target_properties(OverWriteServerBin PROPERTIES

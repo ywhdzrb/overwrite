@@ -75,17 +75,29 @@ void MovementSystem::clearCollisionBoxes() {
 }
 
 bool MovementSystem::checkCollision(const glm::vec3& position, const glm::vec3& playerSize) const {
+    // position.y 是脚底位置，玩家占据 [position.y, position.y + playerSize.y]
+    float playerBottom = position.y;
+    float playerTop = position.y + playerSize.y;
+    
     for (const auto& box : collisionBoxes_) {
         const glm::vec3& boxPos = box.first;
         const glm::vec3& boxSize = box.second;
         
-        // AABB 碰撞检测
-        if (position.x + playerSize.x / 2.0f > boxPos.x - boxSize.x / 2.0f &&
-            position.x - playerSize.x / 2.0f < boxPos.x + boxSize.x / 2.0f &&
-            position.y + playerSize.y > boxPos.y - boxSize.y / 2.0f &&
-            position.y - playerSize.y / 2.0f < boxPos.y + boxSize.y / 2.0f &&
-            position.z + playerSize.z / 2.0f > boxPos.z - boxSize.z / 2.0f &&
-            position.z - playerSize.z / 2.0f < boxPos.z + boxSize.z / 2.0f) {
+        // 碰撞箱占据 [boxPos.y - boxSize.y/2, boxPos.y + boxSize.y/2]
+        float boxBottom = boxPos.y - boxSize.y * 0.5f;
+        float boxTop = boxPos.y + boxSize.y * 0.5f;
+        
+        // Y 轴检测：只有当玩家在碰撞箱侧面高度范围内才算碰撞
+        // 排除"站在顶上"（playerBottom >= boxTop）和"从下面穿过"（playerTop <= boxBottom）
+        if (playerBottom >= boxTop - 0.01f || playerTop <= boxBottom + 0.01f) {
+            continue;  // 不算碰撞
+        }
+        
+        // X/Z 轴检测
+        if (position.x + playerSize.x * 0.5f > boxPos.x - boxSize.x * 0.5f &&
+            position.x - playerSize.x * 0.5f < boxPos.x + boxSize.x * 0.5f &&
+            position.z + playerSize.z * 0.5f > boxPos.z - boxSize.z * 0.5f &&
+            position.z - playerSize.z * 0.5f < boxPos.z + boxSize.z * 0.5f) {
             return true;
         }
     }
@@ -211,6 +223,37 @@ bool PhysicsSystem::checkAABBCollision(const glm::vec3& pos1, const glm::vec3& s
            (abs(pos1.z - pos2.z) < (size1.z + size2.z) * 0.5f);
 }
 
+float PhysicsSystem::queryTerrainHeight(float x, float z) const {
+    float maxHeight = defaultGroundHeight_;
+    
+    // 检查所有碰撞箱，找到该位置最高的站立面
+    for (const auto& box : collisionBoxes_) {
+        const glm::vec3& boxPos = box.first;
+        const glm::vec3& boxSize = box.second;
+        
+        // 检查 (x, z) 是否在碰撞箱的水平范围内
+        float halfSizeX = boxSize.x * 0.5f;
+        float halfSizeZ = boxSize.z * 0.5f;
+        
+        if (x >= boxPos.x - halfSizeX && x <= boxPos.x + halfSizeX &&
+            z >= boxPos.z - halfSizeZ && z <= boxPos.z + halfSizeZ) {
+            // 碰撞箱顶面高度
+            float boxTop = boxPos.y + boxSize.y * 0.5f;
+            if (boxTop > maxHeight) {
+                maxHeight = boxTop;
+            }
+        }
+    }
+    
+    // 如果有自定义地形查询，取两者最大值
+    if (terrainQuery_) {
+        float terrainH = terrainQuery_(x, z);
+        return std::max(maxHeight, terrainH);
+    }
+    
+    return maxHeight;
+}
+
 void PhysicsSystem::update(float deltaTime) {
     auto view = world_.registry().view<TransformComponent, PhysicsComponent>();
     
@@ -228,31 +271,44 @@ void PhysicsSystem::update(float deltaTime) {
             input = &world_.registry().get<InputStateComponent>(entity);
         }
         
-        if (velocity && physics.useGravity) {
-            // 处理跳跃输入
-            if (input && input->jump && !physics.isJumping && physics.isGrounded) {
-                velocity->linear.y = physics.jumpForce;
-                physics.isJumping = true;
+        if (!velocity || !physics.useGravity) continue;
+        
+        // 查询当前位置的地形高度
+        float terrainHeight = queryTerrainHeight(transform.position.x, transform.position.z);
+        physics.cachedTerrainHeight = terrainHeight;
+        physics.terrainCacheValid = true;
+        
+        // 跳跃输入处理：仅在着地时允许跳跃
+        if (input && input->jump && physics.isGrounded && !physics.isJumping) {
+            velocity->linear.y = physics.jumpForce;
+            physics.isJumping = true;
+            physics.isGrounded = false;
+        }
+        
+        // 空中物理：非着地状态应用重力
+        if (!physics.isGrounded) {
+            velocity->linear.y -= physics.gravity * deltaTime;
+            transform.position.y += velocity->linear.y * deltaTime;
+            
+            // 着地检测：位置低于地形高度
+            if (transform.position.y <= terrainHeight) {
+                transform.position.y = terrainHeight;
+                velocity->linear.y = 0.0f;
+                physics.isJumping = false;
+                physics.isGrounded = true;
+                physics.groundHeight = terrainHeight;  // 更新站立面高度
+            }
+        } else {
+            // 着地状态检查
+            if (transform.position.y < terrainHeight) {
+                // 位置低于地形，修正到地形高度
+                transform.position.y = terrainHeight;
+            } else if (transform.position.y > terrainHeight + 0.01f) {
+                // 位置高于地形（悬浮），触发掉落
                 physics.isGrounded = false;
             }
-            
-            // 应用重力
-            if (physics.isJumping || transform.position.y > physics.groundHeight) {
-                velocity->linear.y -= physics.gravity * deltaTime;
-                transform.position.y += velocity->linear.y * deltaTime;
-                
-                // 检查落地
-                if (transform.position.y <= physics.groundHeight) {
-                    transform.position.y = physics.groundHeight;
-                    velocity->linear.y = 0.0f;
-                    physics.isJumping = false;
-                    physics.isGrounded = true;
-                }
-            } else {
-                transform.position.y = physics.groundHeight;
-                velocity->linear.y = 0.0f;
-                physics.isGrounded = true;
-            }
+            velocity->linear.y = 0.0f;
+            physics.groundHeight = terrainHeight;
         }
     }
 }

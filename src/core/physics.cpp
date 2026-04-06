@@ -7,7 +7,8 @@ namespace vgame {
 
 Physics::Physics()
     : gravity(9.8f),
-      groundHeight(0.0f) {
+      defaultGroundHeight(0.0f),
+      terrainQuery(nullptr) {
 }
 
 void Physics::update(float deltaTime) {
@@ -15,8 +16,16 @@ void Physics::update(float deltaTime) {
     // 这里主要用于碰撞检测
 }
 
+float Physics::queryTerrainHeight(float x, float z) const {
+    if (terrainQuery) {
+        return terrainQuery(x, z);
+    }
+    return defaultGroundHeight;
+}
+
 bool Physics::checkGroundCollision(const glm::vec3& position, float height) const {
-    return position.y - height <= groundHeight;
+    float terrainHeight = queryTerrainHeight(position.x, position.z);
+    return position.y - height <= terrainHeight;
 }
 
 bool Physics::checkWallCollision(const glm::vec3& position, float radius) const {

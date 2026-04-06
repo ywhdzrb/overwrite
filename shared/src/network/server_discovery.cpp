@@ -3,6 +3,8 @@
 #include <iostream>
 #include <cstring>
 #include <algorithm>
+#include <ifaddrs.h>
+#include <net/if.h>
 
 #ifdef _WIN32
 #include <winsock2.h>
@@ -20,6 +22,52 @@ typedef int socklen_t;
 namespace vgame {
 
 using json = nlohmann::json;
+
+// 获取本机首选 IP 地址（优先返回非虚拟、非回环的局域网 IP）
+static std::string getPreferredLocalIP() {
+    std::string bestIP = "127.0.0.1";
+    
+    struct ifaddrs* ifaddr = nullptr;
+    if (getifaddrs(&ifaddr) == -1) {
+        return bestIP;
+    }
+    
+    for (struct ifaddrs* ifa = ifaddr; ifa != nullptr; ifa = ifa->ifa_next) {
+        if (ifa->ifa_addr == nullptr) continue;
+        
+        // 跳过回环接口
+        if (ifa->ifa_flags & IFF_LOOPBACK) continue;
+        
+        // 跳过未运行的接口
+        if (!(ifa->ifa_flags & IFF_RUNNING)) continue;
+        
+        // 只处理 IPv4
+        if (ifa->ifa_addr->sa_family == AF_INET) {
+            struct sockaddr_in* addr = (struct sockaddr_in*)ifa->ifa_addr;
+            std::string ip = inet_ntoa(addr->sin_addr);
+            
+            // 跳过虚拟网卡（198.18.x.x 是基准测试地址段）
+            if (ip.substr(0, 7) == "198.18.") continue;
+            
+            // 跳过 Docker 网络
+            if (ip.substr(0, 7) == "172.17.") continue;
+            
+            // 优先选择 192.168.x.x 或 10.x.x.x 这样的常见局域网地址
+            if (ip.substr(0, 8) == "192.168." || ip.substr(0, 3) == "10.") {
+                bestIP = ip;
+                break;  // 找到好的就退出
+            }
+            
+            // 其他地址也记录，但继续寻找更好的
+            if (bestIP == "127.0.0.1") {
+                bestIP = ip;
+            }
+        }
+    }
+    
+    freeifaddrs(ifaddr);
+    return bestIP;
+}
 
 // ==================== ServerDiscoveryBroadcaster ====================
 
@@ -117,6 +165,7 @@ void ServerDiscoveryBroadcaster::broadcastLoop() {
 std::string ServerDiscoveryBroadcaster::createBroadcastMessage() {
     json msg = {
         {"type", "overwrite_server"},
+        {"host", getPreferredLocalIP()},  // 主动包含服务器 IP
         {"port", gamePort_},
         {"name", serverName_},
         {"maxPlayers", maxPlayers_},
@@ -255,7 +304,8 @@ void ServerDiscoveryScanner::handleBroadcast(const std::string& message, const s
         }
         
         DiscoveredServer server;
-        server.host = senderIp;
+        // 优先使用消息中的 host，如果没有则使用发送者 IP
+        server.host = msg.value("host", senderIp);
         server.port = msg.value("port", 9002);
         server.name = msg.value("name", "Unknown Server");
         server.maxPlayers = msg.value("maxPlayers", 8);

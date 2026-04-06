@@ -3,26 +3,25 @@
 
 #include "server/server_world.h"
 #include "network/server_discovery.h"
-#include <websocketpp/config/asio_no_tls.hpp>
-#include <websocketpp/server.hpp>
+#include <ixwebsocket/IXWebSocketServer.h>
+#include <ixwebsocket/IXWebSocket.h>
 #include <nlohmann/json.hpp>
 #include <memory>
 #include <thread>
 #include <atomic>
 #include <functional>
+#include <unordered_map>
+#include <mutex>
 
 namespace vgame {
 namespace server {
 
-using WebSocketServer = websocketpp::server<websocketpp::config::asio>;
-using ConnectionHdl = websocketpp::connection_hdl;
-using MessagePtr = websocketpp::server<websocketpp::config::asio>::message_ptr;
 using json = nlohmann::json;
 
 /**
  * @brief WebSocket 游戏服务器
  * 
- * 处理客户端连接、消息路由、状态同步
+ * 使用 ixwebsocket 实现，处理客户端连接、消息路由、状态同步
  */
 class WebSocketGameServer {
 public:
@@ -55,27 +54,25 @@ public:
     ServerWorld& getWorld() { return world_; }
     
     // 获取连接数
-    size_t getConnectionCount() const { return connections_.size(); }
+    size_t getConnectionCount() const;
     
 private:
-    // WebSocket 回调
-    void onOpen(ConnectionHdl hdl);
-    void onClose(ConnectionHdl hdl);
-    void onMessage(ConnectionHdl hdl, MessagePtr msg);
+    // 连接信息
+    struct ConnectionInfo {
+        std::shared_ptr<ix::WebSocket> webSocket;
+        std::string clientId;
+    };
     
-    // 连接管理
-    std::string hdlToClientId(ConnectionHdl hdl) const;
-    ConnectionHdl clientIdToHdl(const std::string& clientId) const;
+    // 生成客户端 ID
+    std::string generateClientId() const;
     
-    WebSocketServer server_;
+    ix::WebSocketServer server_;
     ServerWorld world_;
     std::unique_ptr<ServerDiscoveryBroadcaster> discovery_;
-    std::thread serverThread_;
     std::atomic<bool> running_{false};
     
     // 连接映射
-    std::unordered_map<std::string, ConnectionHdl> connections_;
-    std::map<ConnectionHdl, std::string, std::owner_less<ConnectionHdl>> reverseConnections_;
+    std::unordered_map<std::string, ConnectionInfo> connections_;
     mutable std::mutex connectionsMutex_;
     
     // 回调

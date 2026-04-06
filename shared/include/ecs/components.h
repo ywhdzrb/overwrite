@@ -44,19 +44,28 @@ struct VelocityComponent {
 
 /**
  * @brief 物理组件（共享）
+ * 
+ * 地形系统设计说明：
+ * - groundHeight: 当前站立面的高度（动态更新，由地形系统/碰撞检测设置）
+ * - isGrounded: 是否着地（核心状态，决定是否应用重力）
+ * - 跳跃判定：仅在 isGrounded=true 时允许跳跃
  */
 struct PhysicsComponent {
     float gravity{15.0f};
-    float groundHeight{-1.5f};
+    float groundHeight{-1.5f};      // 当前站立面高度（由地形系统动态更新）
     float jumpForce{5.5f};
     
-    bool isJumping{false};
-    bool isGrounded{true};
+    bool isJumping{false};          // 是否正在跳跃（上升阶段）
+    bool isGrounded{true};          // 是否着地（核心状态）
     bool useGravity{true};
     
     // 碰撞体参数
     float colliderHeight{1.8f};
     float colliderRadius{0.3f};
+    
+    // 地形查询缓存（由地形系统填充）
+    float cachedTerrainHeight{-1.5f};  // 缓存的地形高度
+    bool terrainCacheValid{false};     // 缓存是否有效
 };
 
 /**

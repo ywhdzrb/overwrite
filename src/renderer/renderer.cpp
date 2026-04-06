@@ -257,10 +257,16 @@ void Renderer::initVulkan() {
     
     // 添加立方体碰撞体（大小为 5.0）
     physics->addCollisionBox(cubePos, glm::vec3(5.0f, 5.0f, 5.0f));
+    camera->addCollisionBox(cubePos, glm::vec3(5.0f, 5.0f, 5.0f));
     
-    // 同时添加到 ECS 移动系统
-    if (useECS && ecsClientWorld && ecsClientWorld->getMovementSystem()) {
-        ecsClientWorld->getMovementSystem()->addCollisionBox(cubePos, glm::vec3(5.0f, 5.0f, 5.0f));
+    // 同时添加到 ECS 系统
+    if (useECS && ecsClientWorld) {
+        if (ecsClientWorld->getMovementSystem()) {
+            ecsClientWorld->getMovementSystem()->addCollisionBox(cubePos, glm::vec3(5.0f, 5.0f, 5.0f));
+        }
+        if (ecsClientWorld->getPhysicsSystem()) {
+            ecsClientWorld->getPhysicsSystem()->addCollisionBox(cubePos, glm::vec3(5.0f, 5.0f, 5.0f));
+        }
     }
     
     // 初始化时间
@@ -903,7 +909,7 @@ void Renderer::updateGameLogic(float deltaTime) {
                     float renderYaw = player.isMoving ? player.moveYaw : player.yaw;
                     it->second.walkModel->setRotation(0.0f, renderYaw, 0.0f);
                     
-                    // 更新行走动画
+                    // 只有在移动时才播放行走动画，跳跃时保持之前的状态
                     if (player.isMoving) {
                         if (!it->second.walkModel->isAnimationPlaying()) {
                             it->second.walkModel->playAllAnimations(true, 1.0f);
@@ -1828,9 +1834,9 @@ void Renderer::renderDeveloperPanel() {
         physics->setGravity(gravity);
     }
     
-    float groundHeight = camera->getGroundHeight();
-    if (ImGui::SliderFloat("地面高度", &groundHeight, -10.0f, 10.0f)) {
-        camera->setGroundHeight(groundHeight);
+    float groundHeight = camera->getDefaultGroundHeight();
+    if (ImGui::SliderFloat("默认地面高度", &groundHeight, -10.0f, 10.0f)) {
+        camera->setDefaultGroundHeight(groundHeight);
         physics->setGroundHeight(groundHeight);
         // 同步到 ECS
         if (useECS && ecsClientWorld) {

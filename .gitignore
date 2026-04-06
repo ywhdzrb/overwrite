@@ -37,12 +37,8 @@ shaders/*.spv
 *.log
 *.d
 
-# Dependencies
-# external/  # 注释掉，允许git submodule
+# Dependencies (使用 git submodules 管理)
 third_party/
-
-# External libraries (核心文件已提交，其他文件忽略)
-external/tinygltf/
 
 # Assets cache
 assets/cache/

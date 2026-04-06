@@ -5,8 +5,15 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <vulkan/vulkan.h>
 #include <string>
+#include <functional>
+#include <vector>
 
 namespace vgame {
+
+/**
+ * @brief 地形高度查询函数类型（Camera 使用）
+ */
+using CameraTerrainQuery = std::function<float(float x, float z)>;
 
 class Camera {
 public:
@@ -94,13 +101,25 @@ public:
     void setGravity(float g) { gravity = g; }
     float getGravity() const { return gravity; }
     
-    // 设置地面高度
-    void setGroundHeight(float h) { groundHeight = h; }
-    float getGroundHeight() const { return groundHeight; }
+    // 设置默认地面高度（无地形时使用）
+    void setDefaultGroundHeight(float h) { defaultGroundHeight = h; }
+    float getDefaultGroundHeight() const { return defaultGroundHeight; }
     
     // 设置跳跃力
     void setJumpForce(float f) { jumpForce = f; }
     float getJumpForce() const { return jumpForce; }
+    
+    // 着地状态
+    bool isGrounded() const { return isGrounded_; }
+    void setGrounded(bool grounded) { isGrounded_ = grounded; }
+    
+    // 地形查询接口
+    void setTerrainQuery(CameraTerrainQuery query) { terrainQuery_ = std::move(query); }
+    void clearTerrainQuery() { terrainQuery_ = nullptr; }
+    
+    // 碰撞箱管理（用于地形高度查询）
+    void addCollisionBox(const glm::vec3& position, const glm::vec3& size) { collisionBoxes_.emplace_back(position, size); }
+    void clearCollisionBoxes() { collisionBoxes_.clear(); }
     
     // 设置跟踪目标（第三人称模式）
     void setTarget(const glm::vec3& target) { targetPosition = target; }
@@ -116,6 +135,9 @@ private:
     
     // 更新第三人称相机位置
     void updateThirdPersonCamera();
+    
+    // 查询地形高度
+    float queryTerrainHeight(float x, float z) const;
     
     // 摄像机属性
     glm::vec3 position;
@@ -140,9 +162,14 @@ private:
     // 物理相关
     glm::vec3 velocity;
     bool isJumping;
+    bool isGrounded_;               // 着地状态
     float jumpForce;
     float gravity;
-    float groundHeight;  // 地面高度
+    float defaultGroundHeight;      // 默认地面高度（无地形时）
+    
+    // 地形查询
+    CameraTerrainQuery terrainQuery_;
+    std::vector<std::pair<glm::vec3, glm::vec3>> collisionBoxes_;  // position, size
     
     // 自由视角模式
     bool freeCameraMode;
