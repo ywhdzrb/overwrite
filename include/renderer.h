@@ -7,6 +7,7 @@
 #include <vector>
 #include <string>
 #include <chrono>
+#include <unordered_map>
 
 #include "vulkan_instance.h"
 #include "vulkan_device.h"
@@ -34,6 +35,66 @@
 namespace vgame {
 
 constexpr uint32_t MAX_FRAMES_IN_FLIGHT = 2;
+
+/**
+ * @brief 模型配置结构
+ */
+struct ModelConfig {
+    std::string id;                      // 模型ID
+    std::string file;                    // 文件路径
+    bool enabled = true;                 // 是否启用
+    glm::vec3 position{0.0f};            // 位置
+    glm::vec3 rotation{0.0f};            // 旋转（欧拉角，度）
+    glm::vec3 scale{1.0f};               // 缩放
+    int subdivisionIterations = 0;       // 细分迭代次数
+    bool playAnimation = false;          // 是否播放动画
+    int animationIndex = 0;              // 动画索引
+    bool playAllAnimations = false;      // 是否播放所有动画
+    bool isPlayerModel = false;          // 是否是玩家模型
+    bool isPlayerWalkModel = false;      // 是否是玩家行走模型
+    std::string description;             // 描述
+};
+
+/**
+ * @brief 环境光配置结构
+ */
+struct AmbientConfig {
+    glm::vec3 color{0.1f, 0.1f, 0.1f};   // 环境光颜色
+    float intensity = 0.3f;               // 环境光强度
+};
+
+/**
+ * @brief 光源配置结构
+ */
+struct LightConfig {
+    std::string id;                      // 光源ID
+    std::string name;                    // 光源名称
+    std::string type;                    // 类型: "directional", "point", "spot"
+    bool enabled = true;                 // 是否启用
+    glm::vec3 position{0.0f};            // 位置（点光源、聚光灯）
+    glm::vec3 direction{0.0f, -1.0f, 0.0f}; // 方向（方向光、聚光灯）
+    glm::vec3 color{1.0f};               // 光源颜色
+    float intensity = 1.0f;              // 光照强度
+    // 衰减参数（点光源、聚光灯）
+    float constant = 1.0f;
+    float linear = 0.09f;
+    float quadratic = 0.032f;
+    // 聚光灯参数
+    float innerCutoff = 12.5f;           // 内切角（度）
+    float outerCutoff = 17.5f;           // 外切角（度）
+    // 阴影参数
+    bool shadowEnabled = false;
+    float shadowIntensity = 0.3f;
+};
+
+/**
+ * @brief 场景配置结构（包含所有配置）
+ */
+struct SceneConfig {
+    AmbientConfig ambient;
+    std::vector<LightConfig> lights;
+    std::vector<ModelConfig> models;
+};
 
 class Renderer {
 public:
@@ -94,6 +155,36 @@ private:
      * @brief 设置MSAA采样数
      */
     void setMsaaSamples(VkSampleCountFlagBits samples);
+    
+    /**
+     * @brief 加载模型配置文件
+     */
+    std::vector<ModelConfig> loadModelConfig(const std::string& configFile);
+    
+    /**
+     * @brief 根据配置加载模型
+     */
+    void loadModelsFromConfig(const std::vector<ModelConfig>& configs);
+    
+    /**
+     * @brief 为模型创建纹理描述符集
+     */
+    VkDescriptorSet createModelDescriptorSet(GLTFModel* model, const std::string& modelId);
+    
+    /**
+     * @brief 加载场景配置文件
+     */
+    SceneConfig loadSceneConfig(const std::string& configFile);
+    
+    /**
+     * @brief 根据配置加载光源
+     */
+    void loadLightsFromConfig(const SceneConfig& config);
+    
+    /**
+     * @brief 重新加载场景配置
+     */
+    void reloadSceneConfig();
 
     int windowWidth;
     int windowHeight;
@@ -102,7 +193,7 @@ private:
     
     // MSAA配置
     VkSampleCountFlagBits msaaSamples = VK_SAMPLE_COUNT_1_BIT;
-    VkSampleCountFlagBits maxMsaaSamples = VK_SAMPLE_COUNT_1_BIT;  // 设备支持的最大采样数
+    VkSampleCountFlagBits maxMsaaSamples = VK_SAMPLE_COUNT_1_BIT;
     VkImage colorImage = VK_NULL_HANDLE;
     VkDeviceMemory colorImageMemory = VK_NULL_HANDLE;
     VkImageView colorImageView = VK_NULL_HANDLE;
@@ -131,22 +222,30 @@ private:
     // 新增系统
     std::shared_ptr<TextureLoader> textureLoader;
     std::unique_ptr<LightManager> lightManager;
-    std::unique_ptr<GLTFModel> gltfModel;
-    std::unique_ptr<GLTFModel> gltfWalkModel;  // 行走动画模型
+    
+    // 动态加载的模型
+    std::unordered_map<std::string, std::unique_ptr<GLTFModel>> models;
+    std::unordered_map<std::string, VkDescriptorSet> modelDescriptorSets;
+    
+    // 玩家专用模型（保持兼容）
+    std::unique_ptr<GLTFModel> gltfModel;          // 玩家空闲
+    std::unique_ptr<GLTFModel> gltfWalkModel;      // 玩家行走
+    VkDescriptorSet gltfModelDescriptorSet = VK_NULL_HANDLE;
+    VkDescriptorSet gltfWalkModelDescriptorSet = VK_NULL_HANDLE;
     
     // 玩家动画状态
-    bool playerWasMoving = false;  // 上一帧是否在移动
+    bool playerWasMoving = false;
     
-    // 远程玩家模型（每个玩家有两个模型：空闲和行走）
+    // 远程玩家模型
     struct RemotePlayerModels {
-        std::unique_ptr<GLTFModel> idleModel;   // 空闲模型 (player.glb)
-        std::unique_ptr<GLTFModel> walkModel;   // 行走模型 (player_walk.glb)
-        bool wasMoving = false;                 // 上一帧是否在移动
+        std::unique_ptr<GLTFModel> idleModel;
+        std::unique_ptr<GLTFModel> walkModel;
+        bool wasMoving = false;
     };
     std::unordered_map<std::string, RemotePlayerModels> remotePlayerModels;
     
-    // ECS 系统（使用 ClientWorld 封装）
-    bool useECS{true};  // 是否使用 ECS 系统
+    // ECS 系统
+    bool useECS{true};
     std::unique_ptr<ecs::ClientWorld> ecsClientWorld;
 
     // 时间管理
@@ -164,10 +263,10 @@ private:
     bool wireframeMode = false;
     bool pauseGame = false;
     float timeScale = 1.0f;
-    float userMovementSpeed = 5.0f;  // 用户设置的移动速度（持久化）
-    float userSensitivity = 0.1f;     // 用户设置的鼠标灵敏度（持久化）
+    float userMovementSpeed = 5.0f;
+    float userSensitivity = 0.1f;
     
-    // 延迟 MSAA 更改（避免在 ImGui 渲染过程中重建交换链）
+    // 延迟 MSAA 更改
     bool pendingMsaaChange = false;
     VkSampleCountFlagBits pendingMsaaSamples = VK_SAMPLE_COUNT_1_BIT;
     
@@ -177,7 +276,7 @@ private:
     bool connectRequested = false;
     bool disconnectRequested = false;
     
-    // 按键状态（在update之前检测，避免状态被重置）
+    // 按键状态
     bool jumpInput = false;
     bool freeCameraToggle = false;
     bool shiftInput = false;

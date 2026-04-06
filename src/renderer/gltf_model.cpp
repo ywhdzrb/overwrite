@@ -413,6 +413,11 @@ size_t GLTFModel::processMesh(const tinygltf::Mesh& gltfMesh) {
             }
         }
         
+        // 应用细分（如果设置了细分迭代次数）
+        if (subdivisionIterations > 0) {
+            subdivideMesh(vertices, indices, subdivisionIterations);
+        }
+        
         // 创建网格
         auto mesh = std::make_unique<Mesh>(device, vertices, indices);
         
@@ -1056,6 +1061,108 @@ void GLTFModel::applyAnimation(int animationIndex, float time) {
         glm::mat4 S = glm::scale(glm::mat4(1.0f), transform.scale);
         node.transform = T * R * S;
     }
+}
+
+void GLTFModel::calculateNormals(std::vector<Vertex>& vertices, const std::vector<uint32_t>& indices) {
+    // 重置所有法线
+    for (auto& vertex : vertices) {
+        vertex.normal = glm::vec3(0.0f);
+    }
+    
+    // 累加每个面的法线到顶点
+    for (size_t i = 0; i < indices.size(); i += 3) {
+        uint32_t i0 = indices[i];
+        uint32_t i1 = indices[i + 1];
+        uint32_t i2 = indices[i + 2];
+        
+        glm::vec3 v0 = vertices[i0].pos;
+        glm::vec3 v1 = vertices[i1].pos;
+        glm::vec3 v2 = vertices[i2].pos;
+        
+        glm::vec3 edge1 = v1 - v0;
+        glm::vec3 edge2 = v2 - v0;
+        glm::vec3 normal = glm::cross(edge1, edge2);
+        
+        vertices[i0].normal += normal;
+        vertices[i1].normal += normal;
+        vertices[i2].normal += normal;
+    }
+    
+    // 归一化法线
+    for (auto& vertex : vertices) {
+        if (glm::length(vertex.normal) > 0.0f) {
+            vertex.normal = glm::normalize(vertex.normal);
+        } else {
+            vertex.normal = glm::vec3(0.0f, 1.0f, 0.0f);
+        }
+    }
+}
+
+void GLTFModel::subdivideMesh(std::vector<Vertex>& vertices, std::vector<uint32_t>& indices, int iterations) {
+    if (iterations <= 0 || indices.empty()) return;
+    
+    Logger::info("Subdividing mesh: " + std::to_string(vertices.size()) + " vertices, " + 
+                 std::to_string(indices.size() / 3) + " triangles, " + std::to_string(iterations) + " iterations");
+    
+    for (int iter = 0; iter < iterations; ++iter) {
+        // 边到新顶点的映射
+        struct EdgeKey {
+            uint32_t v0, v1;
+            bool operator==(const EdgeKey& other) const {
+                return (v0 == other.v0 && v1 == other.v1) || (v0 == other.v1 && v1 == other.v0);
+            }
+        };
+        struct EdgeKeyHash {
+            size_t operator()(const EdgeKey& k) const {
+                return static_cast<size_t>(std::min(k.v0, k.v1)) * 31ULL + static_cast<size_t>(std::max(k.v0, k.v1));
+            }
+        };
+        std::unordered_map<EdgeKey, uint32_t, EdgeKeyHash> edgeVertices;
+        
+        // 创建边中点
+        auto getEdgeVertex = [&](uint32_t v0, uint32_t v1) -> uint32_t {
+            EdgeKey key{std::min(v0, v1), std::max(v0, v1)};
+            auto it = edgeVertices.find(key);
+            if (it != edgeVertices.end()) return it->second;
+            
+            Vertex newVertex;
+            newVertex.pos = (vertices[v0].pos + vertices[v1].pos) * 0.5f;
+            newVertex.texCoord = (vertices[v0].texCoord + vertices[v1].texCoord) * 0.5f;
+            newVertex.color = (vertices[v0].color + vertices[v1].color) * 0.5f;
+            newVertex.normal = glm::vec3(0.0f);
+            
+            uint32_t newIndex = static_cast<uint32_t>(vertices.size());
+            vertices.push_back(newVertex);
+            edgeVertices[key] = newIndex;
+            return newIndex;
+        };
+        
+        // 细分每个三角形
+        std::vector<uint32_t> newIndices;
+        newIndices.reserve(indices.size() * 4);
+        
+        for (size_t i = 0; i < indices.size(); i += 3) {
+            uint32_t v0 = indices[i];
+            uint32_t v1 = indices[i + 1];
+            uint32_t v2 = indices[i + 2];
+            
+            uint32_t v01 = getEdgeVertex(v0, v1);
+            uint32_t v12 = getEdgeVertex(v1, v2);
+            uint32_t v20 = getEdgeVertex(v2, v0);
+            
+            newIndices.push_back(v0); newIndices.push_back(v01); newIndices.push_back(v20);
+            newIndices.push_back(v1); newIndices.push_back(v12); newIndices.push_back(v01);
+            newIndices.push_back(v2); newIndices.push_back(v20); newIndices.push_back(v12);
+            newIndices.push_back(v01); newIndices.push_back(v12); newIndices.push_back(v20);
+        }
+        
+        indices = std::move(newIndices);
+    }
+    
+    calculateNormals(vertices, indices);
+    
+    Logger::info("Subdivision complete: " + std::to_string(vertices.size()) + " vertices, " + 
+                 std::to_string(indices.size() / 3) + " triangles");
 }
 
 } // namespace vgame

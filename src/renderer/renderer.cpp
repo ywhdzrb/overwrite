@@ -4,6 +4,8 @@
 #include "renderer.h"
 #include "skybox_renderer.h"
 #include "logger.h"
+#include <nlohmann/json.hpp>
+#include <fstream>
 #include <iostream>
 #include <stdexcept>
 #include <set>
@@ -154,14 +156,6 @@ void Renderer::initVulkan() {
     
     // 初始化光源管理器
     lightManager = std::make_unique<LightManager>();
-    // 添加默认方向光（类似太阳光）- 纯白色
-    lightManager->addDirectionalLight("sun", glm::vec3(0.5f, -1.0f, 0.5f), glm::vec3(1.0f, 1.0f, 1.0f), 1.0f);
-    // 添加几个点光源 - 纯白色
-    lightManager->addPointLight("point1", glm::vec3(2.0f, 3.0f, 2.0f), glm::vec3(1.0f, 1.0f, 1.0f), 2.0f, 10.0f);
-    lightManager->addPointLight("point2", glm::vec3(-2.0f, 3.0f, -2.0f), glm::vec3(1.0f, 1.0f, 1.0f), 2.0f, 10.0f);
-    // 设置环境光为纯白色
-    lightManager->setAmbientColor(glm::vec3(0.5f, 0.5f, 0.5f));
-    lightManager->setAmbientIntensity(0.5f);
     
     // 初始化天空盒渲染器（在创建天空盒管线之前）
     skyboxRenderer = std::make_unique<SkyboxRenderer>(vulkanDevice);
@@ -207,44 +201,44 @@ void Renderer::initVulkan() {
     // 创建描述符池
     createDescriptorPool();
     
-    // 初始化GLTF模型（在创建描述符集之前）
-    gltfModel = std::make_unique<GLTFModel>(vulkanDevice, textureLoader);
-    // 尝试加载GLTF模型（如果有）
-    try {
-        if (gltfModel->loadFromFile("assets/models/player.glb")) {
-            gltfModel->setPosition(glm::vec3(0.0f, 0.0f, -5.0f));
-            gltfModel->setScale(glm::vec3(0.3f, 0.3f, 0.3f));
-            std::cout << "[Renderer] GLTF模型加载成功" << std::endl;
-            
-            // 如果模型有动画，播放第一个动画（通常是空闲动画）
-            if (gltfModel->getAnimationCount() > 0) {
-                std::cout << "[Renderer] 模型包含 " << gltfModel->getAnimationCount() << " 个动画" << std::endl;
-                gltfModel->playAnimation(0, true, 1.0f);
-            }
-        }
-    } catch (const std::runtime_error& e) {
-        std::cout << "[Renderer] GLTF模型加载失败: " << e.what() << std::endl;
+    // 从 JSON 配置文件加载场景（光源和模型）
+    SceneConfig sceneConfig = loadSceneConfig("assets/models/models.json");
+    
+    // 加载光源
+    if (!sceneConfig.lights.empty()) {
+        loadLightsFromConfig(sceneConfig);
+    } else {
+        // 如果配置文件中没有光源，使用默认配置
+        Logger::warning("使用默认光源配置");
+        lightManager->addDirectionalLight("sun", glm::vec3(0.5f, -1.0f, 0.5f), glm::vec3(1.0f, 1.0f, 1.0f), 1.0f);
+        lightManager->addPointLight("point1", glm::vec3(2.0f, 3.0f, 2.0f), glm::vec3(1.0f, 1.0f, 1.0f), 2.0f, 10.0f);
+        lightManager->addPointLight("point2", glm::vec3(-2.0f, 3.0f, -2.0f), glm::vec3(1.0f, 1.0f, 1.0f), 2.0f, 10.0f);
+        lightManager->setAmbientColor(glm::vec3(0.5f, 0.5f, 0.5f));
+        lightManager->setAmbientIntensity(0.5f);
     }
     
-    // 尝试加载行走动画模型
-    gltfWalkModel = std::make_unique<GLTFModel>(vulkanDevice, textureLoader);
-    try {
-        if (gltfWalkModel->loadFromFile("assets/models/player_walk.glb")) {
-            gltfWalkModel->setScale(glm::vec3(0.3f, 0.3f, 0.3f));
-            std::cout << "[Renderer] 行走动画模型加载成功" << std::endl;
-            
-            // 同时播放所有动画（多部件动画）
-            if (gltfWalkModel->getAnimationCount() > 0) {
-                std::cout << "[Renderer] 行走模型包含 " << gltfWalkModel->getAnimationCount() << " 个动画，同时播放" << std::endl;
-                gltfWalkModel->playAllAnimations(true, 1.0f);
+    // 加载模型
+    if (!sceneConfig.models.empty()) {
+        loadModelsFromConfig(sceneConfig.models);
+    } else {
+        // 如果配置文件中没有模型，使用默认配置
+        Logger::warning("使用默认模型配置");
+        std::vector<ModelConfig> defaultConfigs = {
+            {
+                "player_idle", "assets/models/player.glb", true,
+                glm::vec3(0.0f, 0.0f, -5.0f), glm::vec3(0.0f), glm::vec3(0.3f),
+                0, false, 0, false, true, false, "玩家空闲模型"
+            },
+            {
+                "player_walk", "assets/models/player_walk.glb", true,
+                glm::vec3(0.0f, 0.0f, -5.0f), glm::vec3(0.0f), glm::vec3(0.3f),
+                0, true, 0, true, false, true, "玩家行走模型"
             }
-        }
-    } catch (const std::runtime_error& e) {
-        std::cout << "[Renderer] 行走动画模型加载失败: " << e.what() << std::endl;
-        gltfWalkModel.reset();
+        };
+        loadModelsFromConfig(defaultConfigs);
     }
     
-    // 创建描述符集
+    // 创建描述符集（创建默认描述符集）
     createDescriptorSets();
     
     // 初始化 ImGui
@@ -852,6 +846,12 @@ void Renderer::updateGameLogic(float deltaTime) {
         if (gltfWalkModel) {
             gltfWalkModel->updateAnimation(deltaTime);
         }
+        // 更新动态加载的模型动画
+        for (auto& [id, model] : models) {
+            if (model) {
+                model->updateAnimation(deltaTime);
+            }
+        }
     }
     
     // 更新远程玩家模型
@@ -1022,7 +1022,7 @@ void Renderer::drawFrame() {
     // 更新光源 uniform buffer
     updateLightUniformBuffer();
     
-    // 绑定描述符集（纹理 + 光源）
+    // 绑定默认描述符集（用于地板、立方体等）
     vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
                            graphicsPipeline->getPipelineLayout(), 0, 1, &textureDescriptorSet, 0, nullptr);
     vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
@@ -1046,22 +1046,49 @@ void Renderer::drawFrame() {
     if (camera->getMode() == Camera::Mode::ThirdPerson) {
         // 根据移动状态选择模型
         GLTFModel* activeModel = nullptr;
+        VkDescriptorSet activeDescriptorSet = VK_NULL_HANDLE;
         if (playerWasMoving && gltfWalkModel && gltfWalkModel->getMeshCount() > 0) {
             activeModel = gltfWalkModel.get();
+            activeDescriptorSet = gltfWalkModelDescriptorSet;
         } else if (gltfModel && gltfModel->getMeshCount() > 0) {
             activeModel = gltfModel.get();
+            activeDescriptorSet = gltfModelDescriptorSet;
         }
         
         if (activeModel) {
+            // 绑定模型的纹理描述符集
+            if (activeDescriptorSet != VK_NULL_HANDLE) {
+                vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                       graphicsPipeline->getPipelineLayout(), 0, 1, &activeDescriptorSet, 0, nullptr);
+            }
             activeModel->render(commandBuffer, graphicsPipeline->getPipelineLayout(),
                               camera->getViewMatrix(), camera->getProjectionMatrix(),
                               activeModel->getModelMatrix());
         }
     } else if (gltfModel && gltfModel->getMeshCount() > 0) {
         // 非第三人称模式，渲染空闲模型
+        if (gltfModelDescriptorSet != VK_NULL_HANDLE) {
+            vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                   graphicsPipeline->getPipelineLayout(), 0, 1, &gltfModelDescriptorSet, 0, nullptr);
+        }
         gltfModel->render(commandBuffer, graphicsPipeline->getPipelineLayout(),
                         camera->getViewMatrix(), camera->getProjectionMatrix(),
                         gltfModel->getModelMatrix());
+    }
+    
+    // 渲染动态加载的模型
+    for (auto& [id, model] : models) {
+        if (model && model->getMeshCount() > 0) {
+            // 绑定模型的纹理描述符集
+            auto it = modelDescriptorSets.find(id);
+            if (it != modelDescriptorSets.end() && it->second != VK_NULL_HANDLE) {
+                vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                       graphicsPipeline->getPipelineLayout(), 0, 1, &it->second, 0, nullptr);
+            }
+            model->render(commandBuffer, graphicsPipeline->getPipelineLayout(),
+                        camera->getViewMatrix(), camera->getProjectionMatrix(),
+                        model->getModelMatrix());
+        }
     }
     
     // 渲染远程玩家模型
@@ -1221,6 +1248,10 @@ void Renderer::cleanup() {
     // 首先清理所有依赖 Vulkan 设备的资源（必须在 vulkanDevice 销毁之前）
     // 清理远程玩家模型
     remotePlayerModels.clear();
+    
+    // 清理动态加载的模型
+    models.clear();
+    modelDescriptorSets.clear();
     
     // 清理 GLTF 模型（包含 Vulkan 缓冲区）
     gltfWalkModel.reset();
@@ -1403,9 +1434,9 @@ void Renderer::createDescriptorPool() {
     // 描述符池大小
     std::array<VkDescriptorPoolSize, 2> poolSizes{};
     
-    // 纹理描述符
+    // 纹理描述符（多个模型需要多个纹理）
     poolSizes[0].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-    poolSizes[0].descriptorCount = 1;
+    poolSizes[0].descriptorCount = 10;  // 增加以支持多个模型
     
     // 光源 uniform buffer
     poolSizes[1].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
@@ -1415,7 +1446,7 @@ void Renderer::createDescriptorPool() {
     poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
     poolInfo.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
     poolInfo.pPoolSizes = poolSizes.data();
-    poolInfo.maxSets = 2;  // 2 个描述符集（纹理 + 光源）
+    poolInfo.maxSets = 20;  // 增加以支持多个模型
 
     if (vkCreateDescriptorPool(vulkanDevice->getDevice(), &poolInfo, nullptr, &descriptorPool) != VK_SUCCESS) {
         throw std::runtime_error("failed to create descriptor pool!");
@@ -1423,46 +1454,60 @@ void Renderer::createDescriptorPool() {
 }
 
 void Renderer::createDescriptorSets() {
-    // 1. 创建纹理描述符集
-    VkDescriptorSetAllocateInfo textureAllocInfo{};
-    textureAllocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-    textureAllocInfo.descriptorPool = descriptorPool;
-    textureAllocInfo.descriptorSetCount = 1;
-    textureAllocInfo.pSetLayouts = &textureDescriptorSetLayout;
+    // 为玩家模型创建纹理描述符集（如果还没有）
+    auto createIfNotExists = [this](GLTFModel* model, VkDescriptorSet& descriptorSet, const std::string& modelName) {
+        if (descriptorSet != VK_NULL_HANDLE) return;  // 已经创建过
+        
+        if (!model || model->getMeshCount() == 0) return;
+        
+        VkDescriptorSetAllocateInfo allocInfo{};
+        allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+        allocInfo.descriptorPool = descriptorPool;
+        allocInfo.descriptorSetCount = 1;
+        allocInfo.pSetLayouts = &textureDescriptorSetLayout;
 
-    if (vkAllocateDescriptorSets(vulkanDevice->getDevice(), &textureAllocInfo, &textureDescriptorSet) != VK_SUCCESS) {
-        throw std::runtime_error("failed to allocate texture descriptor set!");
-    }
+        if (vkAllocateDescriptorSets(vulkanDevice->getDevice(), &allocInfo, &descriptorSet) != VK_SUCCESS) {
+            Logger::warning("无法为 " + modelName + " 分配纹理描述符集");
+            return;
+        }
 
-    Logger::info("Texture descriptor set allocated successfully");
-    
-    // 使用 GLTF 模型的纹理更新描述符集
-    if (gltfModel && gltfModel->getMeshCount() > 0) {
-        std::shared_ptr<Texture> gltfTexture = gltfModel->getFirstTexture();
-        if (gltfTexture) {
-            Logger::info("Updating texture descriptor set with GLTF texture");
-            
+        std::shared_ptr<Texture> texture = model->getFirstTexture();
+        if (texture) {
             VkDescriptorImageInfo imageInfo{};
             imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-            imageInfo.imageView = gltfTexture->getImageView();
-            imageInfo.sampler = gltfTexture->getSampler();
+            imageInfo.imageView = texture->getImageView();
+            imageInfo.sampler = texture->getSampler();
 
-            VkWriteDescriptorSet textureDescriptorWrite{};
-            textureDescriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-            textureDescriptorWrite.dstSet = textureDescriptorSet;
-            textureDescriptorWrite.dstBinding = 0;
-            textureDescriptorWrite.dstArrayElement = 0;
-            textureDescriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-            textureDescriptorWrite.descriptorCount = 1;
-            textureDescriptorWrite.pImageInfo = &imageInfo;
+            VkWriteDescriptorSet descriptorWrite{};
+            descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            descriptorWrite.dstSet = descriptorSet;
+            descriptorWrite.dstBinding = 0;
+            descriptorWrite.dstArrayElement = 0;
+            descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+            descriptorWrite.descriptorCount = 1;
+            descriptorWrite.pImageInfo = &imageInfo;
 
-            vkUpdateDescriptorSets(vulkanDevice->getDevice(), 1, &textureDescriptorWrite, 0, nullptr);
-            Logger::info("Texture descriptor set updated successfully");
-        } else {
-            Logger::warning("GLTF model has no textures, using default");
+            vkUpdateDescriptorSets(vulkanDevice->getDevice(), 1, &descriptorWrite, 0, nullptr);
+            Logger::info("为 " + modelName + " 创建纹理描述符集");
         }
-    } else {
-        Logger::warning("No GLTF model loaded, using default texture");
+    };
+
+    // 为玩家模型创建描述符集
+    createIfNotExists(gltfModel.get(), gltfModelDescriptorSet, "gltfModel");
+    createIfNotExists(gltfWalkModel.get(), gltfWalkModelDescriptorSet, "gltfWalkModel");
+    
+    // 保留默认纹理描述符集（用于地板等）
+    if (textureDescriptorSet == VK_NULL_HANDLE) {
+        VkDescriptorSetAllocateInfo textureAllocInfo{};
+        textureAllocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+        textureAllocInfo.descriptorPool = descriptorPool;
+        textureAllocInfo.descriptorSetCount = 1;
+        textureAllocInfo.pSetLayouts = &textureDescriptorSetLayout;
+
+        if (vkAllocateDescriptorSets(vulkanDevice->getDevice(), &textureAllocInfo, &textureDescriptorSet) != VK_SUCCESS) {
+            throw std::runtime_error("failed to allocate default texture descriptor set!");
+        }
+        Logger::info("Default texture descriptor set allocated");
     }
 
     // 2. 创建光源 uniform buffer（std140 布局）
@@ -1648,182 +1693,274 @@ void Renderer::renderDeveloperPanel() {
     
     ImGui::End();
     
-    // ==================== 光源管理窗口 ====================
+    // ==================== 场景管理窗口 ====================
     ImGui::SetNextWindowPos(ImVec2(320, 30), ImGuiCond_FirstUseEver);
-    ImGui::SetNextWindowSize(ImVec2(350, 400), ImGuiCond_FirstUseEver);
-    ImGui::Begin("光源管理", nullptr, ImGuiWindowFlags_None);
+    ImGui::SetNextWindowSize(ImVec2(380, 600), ImGuiCond_FirstUseEver);
+    ImGui::Begin("场景管理", nullptr, ImGuiWindowFlags_None);
     
-    // 环境光设置
-    glm::vec3 ambient = lightManager->getAmbientColor();
-    float ambientIntensity = lightManager->getAmbientIntensity();
-    
-    ImGui::Text("环境光");
-    if (ImGui::ColorEdit3("颜色##ambient", &ambient.x)) {
-        lightManager->setAmbientColor(ambient);
-    }
-    if (ImGui::SliderFloat("强度##ambient", &ambientIntensity, 0.0f, 2.0f)) {
-        lightManager->setAmbientIntensity(ambientIntensity);
-    }
-    
-    ImGui::Separator();
-    ImGui::Text("光源列表 (%zu/%d)", lightManager->getLightCount(), LightManager::getMaxLights());
-    
-    // 显示所有光源
-    const auto& lights = lightManager->getLights();
-    static int selectedLight = -1;
-    
-    for (size_t i = 0; i < lights.size(); i++) {
-        const Light* light = lights[i].get();
-        if (!light) continue;
+    // ==================== 环境光 ====================
+    if (ImGui::CollapsingHeader("环境光", ImGuiTreeNodeFlags_DefaultOpen)) {
+        glm::vec3 ambient = lightManager->getAmbientColor();
+        float ambientIntensity = lightManager->getAmbientIntensity();
         
-        bool selected = (selectedLight == (int)i);
-        std::string label = light->getName() + " (" + 
-            std::string(light->getType() == LightType::DIRECTIONAL ? "方向光" :
-                       light->getType() == LightType::POINT ? "点光源" : "聚光灯") + ")";
-        
-        if (ImGui::Selectable(label.c_str(), selected)) {
-            selectedLight = i;
+        if (ImGui::ColorEdit3("颜色##ambient", &ambient.x)) {
+            lightManager->setAmbientColor(ambient);
         }
-        
-        // 右键菜单
-        if (ImGui::BeginPopupContextItem()) {
-            if (ImGui::MenuItem("删除")) {
-                lightManager->removeLight(lightManager->getNextLightId() - lights.size() + i);
-                if (selectedLight >= (int)lights.size()) selectedLight = -1;
-            }
-            ImGui::EndPopup();
+        if (ImGui::SliderFloat("强度##ambient", &ambientIntensity, 0.0f, 2.0f)) {
+            lightManager->setAmbientIntensity(ambientIntensity);
         }
     }
     
-    // 编辑选中的光源
-    if (selectedLight >= 0 && selectedLight < (int)lights.size()) {
-        Light* light = lightManager->getLight(lightManager->getNextLightId() - lights.size() + selectedLight);
-        if (light) {
-            ImGui::Separator();
-            ImGui::Text("编辑: %s", light->getName().c_str());
+    // ==================== 光源管理 ====================
+    if (ImGui::CollapsingHeader("光源", ImGuiTreeNodeFlags_DefaultOpen)) {
+        ImGui::Text("光源列表 (%zu/%d)", lightManager->getLightCount(), LightManager::getMaxLights());
+        
+        const auto& lights = lightManager->getLights();
+        static int selectedLight = -1;
+        
+        // 光源列表
+        for (size_t i = 0; i < lights.size(); i++) {
+            const Light* light = lights[i].get();
+            if (!light) continue;
             
-            bool enabled = light->isEnabled();
-            if (ImGui::Checkbox("启用", &enabled)) {
-                light->setEnabled(enabled);
+            bool selected = (selectedLight == (int)i);
+            std::string label = light->getName() + " (" + 
+                std::string(light->getType() == LightType::DIRECTIONAL ? "方向光" :
+                           light->getType() == LightType::POINT ? "点光源" : "聚光灯") + ")";
+            
+            if (ImGui::Selectable(label.c_str(), selected)) {
+                selectedLight = i;
             }
             
-            glm::vec3 color = light->getColor();
-            if (ImGui::ColorEdit3("颜色", &color.x)) {
-                light->setColor(color);
-            }
-            
-            float intensity = light->getIntensity();
-            if (ImGui::SliderFloat("强度", &intensity, 0.0f, 10.0f)) {
-                light->setIntensity(intensity);
-            }
-            
-            if (light->getType() != LightType::DIRECTIONAL) {
-                glm::vec3 pos = light->getPosition();
-                if (ImGui::DragFloat3("位置", &pos.x, 0.1f)) {
-                    light->setPosition(pos);
+            // 右键菜单
+            if (ImGui::BeginPopupContextItem()) {
+                if (ImGui::MenuItem("删除")) {
+                    lightManager->removeLight(lightManager->getNextLightId() - lights.size() + i);
+                    if (selectedLight >= (int)lights.size()) selectedLight = -1;
                 }
+                ImGui::EndPopup();
             }
-            
-            if (light->getType() == LightType::DIRECTIONAL || light->getType() == LightType::SPOT) {
-                glm::vec3 dir = light->getDirection();
-                if (ImGui::DragFloat3("方向", &dir.x, 0.1f)) {
-                    light->setDirection(dir);
+        }
+        
+        // 编辑选中的光源
+        if (selectedLight >= 0 && selectedLight < (int)lights.size()) {
+            Light* light = lightManager->getLight(lightManager->getNextLightId() - lights.size() + selectedLight);
+            if (light) {
+                ImGui::Separator();
+                ImGui::Indent();
+                
+                ImGui::TextColored(ImVec4(0.8f, 0.8f, 0.2f, 1.0f), "%s", light->getName().c_str());
+                
+                bool enabled = light->isEnabled();
+                if (ImGui::Checkbox("启用##light", &enabled)) {
+                    light->setEnabled(enabled);
                 }
-            }
-            
-            if (light->getType() == LightType::POINT || light->getType() == LightType::SPOT) {
-                if (ImGui::CollapsingHeader("衰减参数")) {
-                    float constant = light->getConstant();
-                    float linear = light->getLinear();
-                    float quadratic = light->getQuadratic();
+                ImGui::SameLine();
+                
+                const char* typeStr = light->getType() == LightType::DIRECTIONAL ? "方向光" :
+                                     light->getType() == LightType::POINT ? "点光源" : "聚光灯";
+                ImGui::TextColored(ImVec4(0.5f, 0.8f, 0.5f, 1.0f), "[%s]", typeStr);
+                
+                glm::vec3 color = light->getColor();
+                if (ImGui::ColorEdit3("颜色##light", &color.x)) {
+                    light->setColor(color);
+                }
+                
+                float intensity = light->getIntensity();
+                if (ImGui::SliderFloat("强度##light", &intensity, 0.0f, 10.0f)) {
+                    light->setIntensity(intensity);
+                }
+                
+                if (light->getType() != LightType::DIRECTIONAL) {
+                    glm::vec3 pos = light->getPosition();
+                    if (ImGui::DragFloat3("位置##light", &pos.x, 0.1f)) {
+                        light->setPosition(pos);
+                    }
+                }
+                
+                if (light->getType() == LightType::DIRECTIONAL || light->getType() == LightType::SPOT) {
+                    glm::vec3 dir = light->getDirection();
+                    if (ImGui::DragFloat3("方向##light", &dir.x, 0.1f)) {
+                        light->setDirection(dir);
+                    }
+                }
+                
+                if (light->getType() == LightType::POINT || light->getType() == LightType::SPOT) {
+                    if (ImGui::TreeNode("衰减参数")) {
+                        float constant = light->getConstant();
+                        float linear = light->getLinear();
+                        float quadratic = light->getQuadratic();
+                        
+                        if (ImGui::SliderFloat("常数项##atten", &constant, 0.0f, 2.0f)) {
+                            light->setConstant(constant);
+                        }
+                        if (ImGui::SliderFloat("线性项##atten", &linear, 0.0f, 1.0f)) {
+                            light->setLinear(linear);
+                        }
+                        if (ImGui::SliderFloat("二次项##atten", &quadratic, 0.0f, 1.0f)) {
+                            light->setQuadratic(quadratic);
+                        }
+                        ImGui::TreePop();
+                    }
+                }
+                
+                if (light->getType() == LightType::SPOT) {
+                    if (ImGui::TreeNode("聚光灯参数")) {
+                        float innerCutoff = light->getInnerCutoff();
+                        float outerCutoff = light->getOuterCutoff();
+                        
+                        if (ImGui::SliderFloat("内切角", &innerCutoff, 0.0f, 90.0f)) {
+                            light->setInnerCutoff(innerCutoff);
+                        }
+                        if (ImGui::SliderFloat("外切角", &outerCutoff, 0.0f, 90.0f)) {
+                            light->setOuterCutoff(outerCutoff);
+                        }
+                        ImGui::TreePop();
+                    }
+                }
+                
+                if (ImGui::TreeNode("阴影参数")) {
+                    bool shadowEnabled = light->isShadowEnabled();
+                    if (ImGui::Checkbox("启用阴影", &shadowEnabled)) {
+                        light->setShadowEnabled(shadowEnabled);
+                    }
                     
-                    if (ImGui::SliderFloat("常数项", &constant, 0.0f, 2.0f)) {
-                        light->setConstant(constant);
+                    float shadowIntensity = light->getShadowIntensity();
+                    if (ImGui::SliderFloat("阴影强度", &shadowIntensity, 0.0f, 1.0f)) {
+                        light->setShadowIntensity(shadowIntensity);
                     }
-                    if (ImGui::SliderFloat("线性项", &linear, 0.0f, 1.0f)) {
-                        light->setLinear(linear);
-                    }
-                    if (ImGui::SliderFloat("二次项", &quadratic, 0.0f, 1.0f)) {
-                        light->setQuadratic(quadratic);
+                    ImGui::TreePop();
+                }
+                
+                ImGui::Unindent();
+            }
+        }
+        
+        // 添加光源按钮
+        ImGui::Separator();
+        if (ImGui::Button("添加方向光")) {
+            lightManager->addDirectionalLight("dir_light_" + std::to_string(lightManager->getLightCount()),
+                                              glm::vec3(0.0f, -1.0f, 0.0f));
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("添加点光源")) {
+            lightManager->addPointLight("point_light_" + std::to_string(lightManager->getLightCount()),
+                                       camera->getPosition() + camera->getFront() * 3.0f);
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("添加聚光灯")) {
+            lightManager->addSpotLight("spot_light_" + std::to_string(lightManager->getLightCount()),
+                                      camera->getPosition(), camera->getFront());
+        }
+    }
+    
+    // ==================== 模型管理 ====================
+    if (ImGui::CollapsingHeader("模型", ImGuiTreeNodeFlags_DefaultOpen)) {
+        // OBJ 模型控制
+        if (modelRenderer) {
+            if (ImGui::TreeNode("OBJ 模型")) {
+                static glm::vec3 modelPos(0.0f, 0.0f, -10.0f);
+                static glm::vec3 modelRot(0.0f, 180.0f, 0.0f);
+                static glm::vec3 modelScale(1.0f, 1.0f, 1.0f);
+                
+                if (ImGui::DragFloat3("位置##obj", &modelPos.x, 0.1f)) {
+                    modelRenderer->setPosition(modelPos);
+                }
+                if (ImGui::DragFloat3("旋转##obj", &modelRot.x, 1.0f)) {
+                    modelRenderer->setRotation(modelRot.x, modelRot.y, modelRot.z);
+                }
+                if (ImGui::DragFloat3("缩放##obj", &modelScale.x, 0.01f)) {
+                    modelRenderer->setScale(modelScale);
+                }
+                ImGui::TreePop();
+            }
+        }
+        
+        // 玩家模型控制
+        if (gltfModel && gltfModel->getMeshCount() > 0) {
+            if (ImGui::TreeNode("玩家模型 (GLTF)")) {
+                glm::vec3 pos = gltfModel->getPosition();
+                glm::vec3 rot = gltfModel->getRotation();
+                glm::vec3 scale = gltfModel->getScale();
+                
+                if (ImGui::DragFloat3("位置##player", &pos.x, 0.1f)) {
+                    gltfModel->setPosition(pos);
+                }
+                if (ImGui::DragFloat3("旋转##player", &rot.x, 1.0f)) {
+                    gltfModel->setRotation(rot.x, rot.y, rot.z);
+                }
+                if (ImGui::DragFloat3("缩放##player", &scale.x, 0.01f)) {
+                    gltfModel->setScale(scale);
+                }
+                
+                ImGui::Text("网格数: %zu", gltfModel->getMeshCount());
+                ImGui::Text("动画数: %zu", gltfModel->getAnimationCount());
+                ImGui::TreePop();
+            }
+        }
+        
+        // 动态加载的模型
+        if (!models.empty()) {
+            if (ImGui::TreeNode("场景模型")) {
+                for (auto& [id, model] : models) {
+                    if (ImGui::TreeNode(id.c_str())) {
+                        glm::vec3 pos = model->getPosition();
+                        glm::vec3 rot = model->getRotation();
+                        glm::vec3 scale = model->getScale();
+                        
+                        if (ImGui::DragFloat3(("位置##" + id).c_str(), &pos.x, 0.1f)) {
+                            model->setPosition(pos);
+                        }
+                        if (ImGui::DragFloat3(("旋转##" + id).c_str(), &rot.x, 1.0f)) {
+                            model->setRotation(rot.x, rot.y, rot.z);
+                        }
+                        if (ImGui::DragFloat3(("缩放##" + id).c_str(), &scale.x, 0.01f)) {
+                            model->setScale(scale);
+                        }
+                        
+                        ImGui::Text("网格数: %zu", model->getMeshCount());
+                        
+                        if (model->getAnimationCount() > 0) {
+                            ImGui::Text("动画数: %zu", model->getAnimationCount());
+                            bool playing = model->isAnimationPlaying();
+                            if (ImGui::Checkbox(("播放##" + id).c_str(), &playing)) {
+                                if (playing) {
+                                    model->playAllAnimations(true);
+                                } else {
+                                    model->stopAnimation();
+                                }
+                            }
+                        }
+                        ImGui::TreePop();
                     }
                 }
+                ImGui::TreePop();
+            }
+        }
+        
+        // 立方体控制
+        if (cubeRenderer) {
+            if (ImGui::TreeNode("立方体")) {
+                static glm::vec3 cubePos(0.0f, 0.0f, -1.0f);
+                
+                if (ImGui::DragFloat3("位置##cube", &cubePos.x, 0.1f)) {
+                    cubeRenderer->setPosition(cubePos);
+                }
+                ImGui::TreePop();
             }
         }
     }
     
+    // 从配置文件重新加载
     ImGui::Separator();
-    // 添加新光源按钮
-    if (ImGui::Button("添加方向光")) {
-        lightManager->addDirectionalLight("dir_light_" + std::to_string(lightManager->getLightCount()),
-                                          glm::vec3(0.0f, -1.0f, 0.0f));
+    if (ImGui::Button("从 JSON 重新加载配置")) {
+        reloadSceneConfig();
     }
-    ImGui::SameLine();
-    if (ImGui::Button("添加点光源")) {
-        lightManager->addPointLight("point_light_" + std::to_string(lightManager->getLightCount()),
-                                   camera->getPosition() + camera->getFront() * 3.0f);
-    }
+    ImGui::TextColored(ImVec4(0.6f, 0.6f, 0.6f, 1.0f), "配置文件: assets/models/models.json");
+    ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.5f, 1.0f), "修改仅在内存中生效");
     
     ImGui::End();
-    
-    // ==================== 模型控制窗口 ====================
-    ImGui::SetNextWindowPos(ImVec2(320, 440), ImGuiCond_FirstUseEver);
-    ImGui::SetNextWindowSize(ImVec2(350, 250), ImGuiCond_FirstUseEver);
-    ImGui::Begin("模型控制", nullptr, ImGuiWindowFlags_None);
-    
-    // OBJ 模型控制
-    if (modelRenderer) {
-        if (ImGui::CollapsingHeader("OBJ 模型", ImGuiTreeNodeFlags_DefaultOpen)) {
-            static glm::vec3 modelPos(0.0f, 0.0f, -10.0f);
-            static glm::vec3 modelRot(0.0f, 180.0f, 0.0f);
-            static glm::vec3 modelScale(1.0f, 1.0f, 1.0f);
-            
-            if (ImGui::DragFloat3("位置##obj", &modelPos.x, 0.1f)) {
-                modelRenderer->setPosition(modelPos);
-            }
-            if (ImGui::DragFloat3("旋转##obj", &modelRot.x, 1.0f)) {
-                modelRenderer->setRotation(modelRot.x, modelRot.y, modelRot.z);
-            }
-            if (ImGui::DragFloat3("缩放##obj", &modelScale.x, 0.01f)) {
-                modelRenderer->setScale(modelScale);
-            }
-        }
-    }
-    
-    // GLTF 模型控制
-    if (gltfModel && gltfModel->getMeshCount() > 0) {
-        if (ImGui::CollapsingHeader("GLTF 模型", ImGuiTreeNodeFlags_DefaultOpen)) {
-            static glm::vec3 gltfPos(0.0f, 0.0f, -5.0f);
-            static glm::vec3 gltfRot(0.0f, 0.0f, 0.0f);
-            static glm::vec3 gltfScale(1.0f, 1.0f, 1.0f);
-            
-            if (ImGui::DragFloat3("位置##gltf", &gltfPos.x, 0.1f)) {
-                gltfModel->setPosition(gltfPos);
-            }
-            if (ImGui::DragFloat3("旋转##gltf", &gltfRot.x, 1.0f)) {
-                gltfModel->setRotation(gltfRot.x, gltfRot.y, gltfRot.z);
-            }
-            if (ImGui::DragFloat3("缩放##gltf", &gltfScale.x, 0.01f)) {
-                gltfModel->setScale(gltfScale);
-            }
-            
-            ImGui::Text("网格数: %zu", gltfModel->getMeshCount());
-        }
-    }
-    
-    // 立方体控制
-    if (cubeRenderer) {
-        if (ImGui::CollapsingHeader("立方体")) {
-            static glm::vec3 cubePos(0.0f, 0.0f, -1.0f);
-            
-            if (ImGui::DragFloat3("位置##cube", &cubePos.x, 0.1f)) {
-                cubeRenderer->setPosition(cubePos);
-            }
-        }
-    }
-    
-    ImGui::End();
-    
-    // ==================== 物理设置窗口 ====================
+        // ==================== 物理设置窗口 ====================
     ImGui::SetNextWindowPos(ImVec2(680, 30), ImGuiCond_FirstUseEver);
     ImGui::SetNextWindowSize(ImVec2(280, 220), ImGuiCond_FirstUseEver);
     ImGui::Begin("物理设置", nullptr, ImGuiWindowFlags_None);
@@ -2031,13 +2168,298 @@ void Renderer::renderDeveloperPanel() {
     
     ImGui::End();
     
-    ImGui::PopStyleColor();
+
+ ImGui::PopStyleColor();
     ImGui::PopStyleVar();
 }
 
 void Renderer::framebufferResizeCallback(GLFWwindow* window, int width, int height) {
     auto renderer = reinterpret_cast<Renderer*>(glfwGetWindowUserPointer(window));
     renderer->framebufferResized = true;
+}
+
+// ==================== 场景配置加载 ====================
+
+SceneConfig Renderer::loadSceneConfig(const std::string& configFile) {
+    SceneConfig sceneConfig;
+    
+    try {
+        std::ifstream file(configFile);
+        if (!file.is_open()) {
+            Logger::warning("无法打开场景配置文件: " + configFile);
+            return sceneConfig;
+        }
+        
+        nlohmann::json j;
+        file >> j;
+        
+        // 加载环境光配置
+        if (j.contains("ambient")) {
+            const auto& ambient = j["ambient"];
+            if (ambient.contains("color")) {
+                auto c = ambient["color"];
+                sceneConfig.ambient.color = glm::vec3(c[0], c[1], c[2]);
+            }
+            sceneConfig.ambient.intensity = ambient.value("intensity", 0.3f);
+        }
+        
+        // 加载光源配置
+        if (j.contains("lights") && j["lights"].is_array()) {
+            for (const auto& item : j["lights"]) {
+                LightConfig config;
+                config.id = item.value("id", "");
+                config.name = item.value("name", "");
+                config.type = item.value("type", "point");
+                config.enabled = item.value("enabled", true);
+                
+                if (item.contains("position")) {
+                    auto pos = item["position"];
+                    config.position = glm::vec3(pos[0], pos[1], pos[2]);
+                }
+                if (item.contains("direction")) {
+                    auto dir = item["direction"];
+                    config.direction = glm::vec3(dir[0], dir[1], dir[2]);
+                }
+                if (item.contains("color")) {
+                    auto c = item["color"];
+                    config.color = glm::vec3(c[0], c[1], c[2]);
+                }
+                
+                config.intensity = item.value("intensity", 1.0f);
+                config.constant = item.value("constant", 1.0f);
+                config.linear = item.value("linear", 0.09f);
+                config.quadratic = item.value("quadratic", 0.032f);
+                config.innerCutoff = item.value("innerCutoff", 12.5f);
+                config.outerCutoff = item.value("outerCutoff", 17.5f);
+                config.shadowEnabled = item.value("shadowEnabled", false);
+                config.shadowIntensity = item.value("shadowIntensity", 0.3f);
+                
+                sceneConfig.lights.push_back(config);
+            }
+        }
+        
+        // 加载模型配置
+        if (j.contains("models") && j["models"].is_array()) {
+            for (const auto& item : j["models"]) {
+                ModelConfig config;
+                config.id = item.value("id", "");
+                config.file = item.value("file", "");
+                config.enabled = item.value("enabled", true);
+                
+                if (item.contains("position")) {
+                    auto pos = item["position"];
+                    config.position = glm::vec3(pos[0], pos[1], pos[2]);
+                }
+                if (item.contains("rotation")) {
+                    auto rot = item["rotation"];
+                    config.rotation = glm::vec3(rot[0], rot[1], rot[2]);
+                }
+                if (item.contains("scale")) {
+                    auto sc = item["scale"];
+                    config.scale = glm::vec3(sc[0], sc[1], sc[2]);
+                }
+                
+                config.subdivisionIterations = item.value("subdivisionIterations", 0);
+                config.playAnimation = item.value("playAnimation", false);
+                config.animationIndex = item.value("animationIndex", 0);
+                config.playAllAnimations = item.value("playAllAnimations", false);
+                config.isPlayerModel = item.value("isPlayerModel", false);
+                config.isPlayerWalkModel = item.value("isPlayerWalkModel", false);
+                config.description = item.value("description", "");
+                
+                sceneConfig.models.push_back(config);
+            }
+        }
+        
+        Logger::info("从 " + configFile + " 加载了 " + 
+            std::to_string(sceneConfig.lights.size()) + " 个光源和 " +
+            std::to_string(sceneConfig.models.size()) + " 个模型配置");
+    } catch (const std::exception& e) {
+        Logger::error("加载场景配置失败: " + std::string(e.what()));
+    }
+    
+    return sceneConfig;
+}
+
+void Renderer::loadLightsFromConfig(const SceneConfig& config) {
+    // 设置环境光
+    lightManager->setAmbientColor(config.ambient.color);
+    lightManager->setAmbientIntensity(config.ambient.intensity);
+    
+    // 清除现有光源
+    lightManager->clear();
+    
+    // 加载光源
+    for (const auto& lightConfig : config.lights) {
+        if (!lightConfig.enabled) {
+            continue;
+        }
+        
+        int lightId = -1;
+        
+        if (lightConfig.type == "directional") {
+            lightId = lightManager->addDirectionalLight(
+                lightConfig.name.empty() ? lightConfig.id : lightConfig.name,
+                lightConfig.direction,
+                lightConfig.color,
+                lightConfig.intensity
+            );
+        } else if (lightConfig.type == "point") {
+            lightId = lightManager->addPointLight(
+                lightConfig.name.empty() ? lightConfig.id : lightConfig.name,
+                lightConfig.position,
+                lightConfig.color,
+                lightConfig.intensity,
+                10.0f  // 默认范围
+            );
+            // 设置衰减参数
+            if (Light* light = lightManager->getLight(lightId)) {
+                light->setConstant(lightConfig.constant);
+                light->setLinear(lightConfig.linear);
+                light->setQuadratic(lightConfig.quadratic);
+            }
+        } else if (lightConfig.type == "spot") {
+            lightId = lightManager->addSpotLight(
+                lightConfig.name.empty() ? lightConfig.id : lightConfig.name,
+                lightConfig.position,
+                lightConfig.direction,
+                lightConfig.color,
+                lightConfig.intensity,
+                lightConfig.innerCutoff,
+                lightConfig.outerCutoff,
+                10.0f  // 默认范围
+            );
+            // 设置衰减参数
+            if (Light* light = lightManager->getLight(lightId)) {
+                light->setConstant(lightConfig.constant);
+                light->setLinear(lightConfig.linear);
+                light->setQuadratic(lightConfig.quadratic);
+                light->setShadowEnabled(lightConfig.shadowEnabled);
+                light->setShadowIntensity(lightConfig.shadowIntensity);
+            }
+        }
+        
+        if (lightId >= 0 && lightConfig.type == "directional") {
+            if (Light* light = lightManager->getLight(lightId)) {
+                light->setShadowEnabled(lightConfig.shadowEnabled);
+                light->setShadowIntensity(lightConfig.shadowIntensity);
+            }
+        }
+    }
+    
+    Logger::info("加载了 " + std::to_string(lightManager->getLightCount()) + " 个光源");
+}
+
+void Renderer::reloadSceneConfig() {
+    Logger::info("重新加载场景配置...");
+    
+    SceneConfig config = loadSceneConfig("assets/models/models.json");
+    
+    // 重新加载光源
+    if (!config.lights.empty()) {
+        loadLightsFromConfig(config);
+    }
+    
+    // 注意：模型重新加载较复杂，暂时只重新加载光源
+    // 模型重新加载需要清理现有模型资源
+    
+    Logger::info("场景配置重新加载完成");
+}
+
+std::vector<ModelConfig> Renderer::loadModelConfig(const std::string& configFile) {
+    SceneConfig sceneConfig = loadSceneConfig(configFile);
+    return sceneConfig.models;
+}
+
+VkDescriptorSet Renderer::createModelDescriptorSet(GLTFModel* model, const std::string& modelId) {
+    VkDescriptorSetAllocateInfo allocInfo{};
+    allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+    allocInfo.descriptorPool = descriptorPool;
+    allocInfo.descriptorSetCount = 1;
+    allocInfo.pSetLayouts = &textureDescriptorSetLayout;
+
+    VkDescriptorSet descriptorSet;
+    if (vkAllocateDescriptorSets(vulkanDevice->getDevice(), &allocInfo, &descriptorSet) != VK_SUCCESS) {
+        Logger::warning("无法为模型 " + modelId + " 分配纹理描述符集");
+        return VK_NULL_HANDLE;
+    }
+
+    // 获取模型纹理
+    std::shared_ptr<Texture> texture = model->getFirstTexture();
+    if (texture) {
+        VkDescriptorImageInfo imageInfo{};
+        imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        imageInfo.imageView = texture->getImageView();
+        imageInfo.sampler = texture->getSampler();
+
+        VkWriteDescriptorSet descriptorWrite{};
+        descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        descriptorWrite.dstSet = descriptorSet;
+        descriptorWrite.dstBinding = 0;
+        descriptorWrite.dstArrayElement = 0;
+        descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        descriptorWrite.descriptorCount = 1;
+        descriptorWrite.pImageInfo = &imageInfo;
+
+        vkUpdateDescriptorSets(vulkanDevice->getDevice(), 1, &descriptorWrite, 0, nullptr);
+        Logger::info("为模型 " + modelId + " 创建纹理描述符集成功");
+    } else {
+        Logger::warning("模型 " + modelId + " 没有纹理，使用默认");
+    }
+    
+    return descriptorSet;
+}
+
+void Renderer::loadModelsFromConfig(const std::vector<ModelConfig>& configs) {
+    for (const auto& config : configs) {
+        if (!config.enabled) {
+            Logger::info("模型 " + config.id + " 已禁用，跳过");
+            continue;
+        }
+        
+        // 创建模型
+        auto model = std::make_unique<GLTFModel>(vulkanDevice, textureLoader);
+        model->setPosition(config.position);
+        model->setRotation(config.rotation.x, config.rotation.y, config.rotation.z);
+        model->setScale(config.scale);
+        
+        if (config.subdivisionIterations > 0) {
+            model->setSubdivisionIterations(config.subdivisionIterations);
+        }
+        
+        // 加载模型文件
+        if (!model->loadFromFile(config.file)) {
+            Logger::error("加载模型失败: " + config.file);
+            continue;
+        }
+        
+        // 创建纹理描述符集
+        VkDescriptorSet descriptorSet = createModelDescriptorSet(model.get(), config.id);
+        
+        // 处理特殊模型
+        if (config.isPlayerModel) {
+            gltfModel = std::move(model);
+            gltfModelDescriptorSet = descriptorSet;
+            Logger::info("玩家模型已加载: " + config.file);
+        } else if (config.isPlayerWalkModel) {
+            gltfWalkModel = std::move(model);
+            gltfWalkModelDescriptorSet = descriptorSet;
+            Logger::info("玩家行走模型已加载: " + config.file);
+        } else {
+            // 普通模型存入 map
+            models[config.id] = std::move(model);
+            modelDescriptorSets[config.id] = descriptorSet;
+            
+            // 播放动画
+            if (config.playAllAnimations && model->getAnimationCount() > 0) {
+                model->playAllAnimations(true, 1.0f);
+            } else if (config.playAnimation && model->getAnimationCount() > config.animationIndex) {
+                model->playAnimation(config.animationIndex, true, 1.0f);
+            }
+            
+            Logger::info("模型 " + config.id + " 已加载");
+        }
+    }
 }
 
 } // namespace vgame

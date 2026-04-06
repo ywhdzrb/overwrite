@@ -221,6 +221,17 @@ public:
      * @brief 获取模型缩放
      */
     const glm::vec3& getScale() const { return scale; }
+    
+    /**
+     * @brief 设置细分迭代次数
+     * @param iterations 细分迭代次数（每个三角形变成4^iterations个）
+     */
+    void setSubdivisionIterations(int iterations) { subdivisionIterations = iterations; }
+    
+    /**
+     * @brief 获取细分迭代次数
+     */
+    int getSubdivisionIterations() const { return subdivisionIterations; }
 
     /**
      * @brief 获取模型变换矩阵
@@ -410,6 +421,21 @@ private:
      * @return 关键帧索引和插值因子
      */
     std::pair<size_t, float> findKeyframeIndex(const std::vector<float>& times, float time) const;
+    
+    /**
+     * @brief 对网格进行Loop细分
+     * @param vertices 顶点数组
+     * @param indices 索引数组
+     * @param iterations 细分迭代次数
+     */
+    void subdivideMesh(std::vector<Vertex>& vertices, std::vector<uint32_t>& indices, int iterations = 1);
+    
+    /**
+     * @brief 计算顶点法线
+     * @param vertices 顶点数组
+     * @param indices 索引数组
+     */
+    void calculateNormals(std::vector<Vertex>& vertices, const std::vector<uint32_t>& indices);
 
 private:
     std::shared_ptr<VulkanDevice> device;           // Vulkan 设备
@@ -471,6 +497,9 @@ private:
     glm::vec3 position;
     glm::vec3 rotation;
     glm::vec3 scale;
+    
+    // 细分参数
+    int subdivisionIterations = 0;  // 细分迭代次数
 
     // 包围盒
     std::pair<glm::vec3, glm::vec3> boundingBox;
