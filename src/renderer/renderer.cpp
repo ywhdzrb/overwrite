@@ -171,16 +171,6 @@ void Renderer::initVulkan() {
     // 初始化模型渲染器
     modelRenderer = std::make_unique<ModelRenderer>(vulkanDevice, textureLoader);
     modelRenderer->create();
-    // 加载 OBJ 模型
-    try {
-        modelRenderer->loadModel("assets/models/洛茜.obj");
-        modelRenderer->setPosition(glm::vec3(0.0f, 0.0f, -10.0f));
-        modelRenderer->setScale(glm::vec3(1.0f, 1.0f, 1.0f));
-        modelRenderer->setRotation(0.0f, 180.0f, 0.0f);  // 旋转180度，使正面朝向相机
-        std::cout << "[Renderer] OBJ 模型加载成功" << std::endl;
-    } catch (const std::runtime_error& e) {
-        std::cout << "[Renderer] OBJ 模型加载失败: " << e.what() << std::endl;
-    }
     
     // 创建天空盒管线（需要天空盒渲染器的描述符集布局）
     skyboxPipeline = std::make_shared<VulkanPipeline>(
