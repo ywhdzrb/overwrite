@@ -5,6 +5,7 @@
 #include <glm/glm.hpp>
 #include <memory>
 #include <vector>
+#include "i_renderer.h"
 #include "vulkan_device.h"
 #include "model.h"
 #include "mesh.h"
@@ -13,14 +14,20 @@
 
 namespace vgame {
 
-class ModelRenderer {
+class ModelRenderer : public IRenderer {
 public:
     ModelRenderer(std::shared_ptr<VulkanDevice> device,
                   std::shared_ptr<TextureLoader> textureLoader);
-    ~ModelRenderer();
+    ~ModelRenderer() override;
 
-    void create();
-    void cleanup();
+    // IRenderer 接口实现
+    void create() override;
+    void cleanup() override;
+    void render(VkCommandBuffer commandBuffer, VkPipelineLayout pipelineLayout,
+                const glm::mat4& viewMatrix, const glm::mat4& projectionMatrix) override;
+    std::string getName() const override { return "ModelRenderer"; }
+    bool isCreated() const override { return created_; }
+    
     void loadModel(const std::string& filename);
     void setPosition(const glm::vec3& pos);
     void setScale(const glm::vec3& scale);
@@ -50,10 +57,7 @@ public:
      */
     bool isUsingTexture() const { return useTexture; }
 
-    void render(VkCommandBuffer commandBuffer, VkPipelineLayout pipelineLayout,
-                const glm::mat4& viewMatrix, const glm::mat4& projectionMatrix);
-
-private:
+protected:
     struct PushConstants {
         glm::mat4 model;
         glm::mat4 view;

@@ -202,6 +202,8 @@ set(SOURCES
     src/core/physics.cpp
     src/core/light.cpp
     src/core/light_manager.cpp
+    src/core/resource_manager.cpp
+    src/core/scene_manager.cpp
     src/renderer/renderer.cpp
     src/renderer/model.cpp
     src/renderer/mesh.cpp
@@ -215,6 +217,7 @@ set(SOURCES
     src/renderer/gltf_model.cpp
     src/utils/shader_compiler.cpp
     src/utils/logger.cpp
+    src/utils/scene_config.cpp
 )
 
 # 创建客户端可执行文件

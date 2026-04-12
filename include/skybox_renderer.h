@@ -6,19 +6,21 @@
 #include <memory>
 #include <vector>
 #include <string>
+#include "i_renderer.h"
 
 namespace vgame {
 
 class VulkanDevice;
 class VulkanPipeline;
 
-class SkyboxRenderer {
+class SkyboxRenderer : public IRenderer {
 public:
-    SkyboxRenderer(std::shared_ptr<VulkanDevice> device);
-    ~SkyboxRenderer();
+    explicit SkyboxRenderer(std::shared_ptr<VulkanDevice> device);
+    ~SkyboxRenderer() override;
     
-    void create();
-    void cleanup();
+    // IRenderer 接口实现
+    void create() override;
+    void cleanup() override;
     
     // 从 6 张纹理文件加载立方体贴图
     // 顺序: 右, 左, 上, 下, 前, 后
@@ -29,7 +31,10 @@ public:
     
     // 渲染天空盒
     void render(VkCommandBuffer commandBuffer, VkPipelineLayout pipelineLayout,
-                const glm::mat4& viewMatrix, const glm::mat4& projectionMatrix);
+                const glm::mat4& viewMatrix, const glm::mat4& projectionMatrix) override;
+    
+    std::string getName() const override { return "SkyboxRenderer"; }
+    bool isCreated() const override { return created_; }
     
     struct PushConstants {
         glm::mat4 view;
@@ -53,7 +58,7 @@ private:
     void cleanupCubemap();
     void cleanupDescriptors();
 
-private:
+protected:
     std::shared_ptr<VulkanDevice> device;
     
     // 立方体网格

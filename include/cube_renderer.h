@@ -4,22 +4,25 @@
 #include <vulkan/vulkan.h>
 #include <glm/glm.hpp>
 #include <memory>
+#include "i_renderer.h"
 
 namespace vgame {
 
 class VulkanDevice;
 class VulkanCommandBuffer;
 
-class CubeRenderer {
+class CubeRenderer : public IRenderer {
 public:
-    CubeRenderer(std::shared_ptr<VulkanDevice> device);
-    ~CubeRenderer();
+    explicit CubeRenderer(std::shared_ptr<VulkanDevice> device);
+    ~CubeRenderer() override;
     
-    void create();
-    void cleanup();
-    
+    // IRenderer 接口实现
+    void create() override;
+    void cleanup() override;
     void render(VkCommandBuffer commandBuffer, VkPipelineLayout pipelineLayout,
-                const glm::mat4& viewMatrix, const glm::mat4& projectionMatrix);
+                const glm::mat4& viewMatrix, const glm::mat4& projectionMatrix) override;
+    std::string getName() const override { return "CubeRenderer"; }
+    bool isCreated() const override { return created_; }
     
     void setPosition(const glm::vec3& position);
     
@@ -43,7 +46,7 @@ private:
     void createIndexBuffer();
     void cleanupBuffers();
 
-private:
+protected:
     std::shared_ptr<VulkanDevice> device;
     
     VkBuffer vertexBuffer;
