@@ -1,5 +1,6 @@
 #include "server/server_world.h"
 #include "ecs/components.h"
+#include "terrain_query.h"
 #include <iostream>
 
 namespace vgame {
@@ -10,6 +11,8 @@ ServerWorld::ServerWorld()
     , movementSystem_(*this)
     , physicsSystem_(*this)
     , lastUpdateTime_(std::chrono::high_resolution_clock::now()) {
+    // 设置地形高度查询
+    physicsSystem_.setTerrainQuery(TerrainQuery::getHeight);
     std::cout << "[ServerWorld] 服务器世界初始化完成" << std::endl;
 }
 

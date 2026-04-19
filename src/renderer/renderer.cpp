@@ -151,6 +151,9 @@ void Renderer::initVulkan() {
     terrainRenderer = std::make_unique<TerrainRenderer>(vulkanDevice);
     terrainRenderer->create();
     
+    // 初始更新地形区块
+    terrainRenderer->update(glm::vec3(0.0f, 0.0f, 5.0f));
+    
     // 设置地形碰撞查询
     auto terrainHeightQuery = [this](float x, float z) -> float {
         return terrainRenderer->getHeight(x, z);
@@ -709,6 +712,10 @@ void Renderer::updateGameLogic(float deltaTime) {
         
         // 使用 ClientWorld 统一更新所有系统
         ecsClientWorld->updateClientSystems(deltaTime);
+        
+        // 更新地形区块
+        auto& transform = ecsClientWorld->registry().get<ecs::TransformComponent>(player);
+        terrainRenderer->update(transform.position);
         
         // 获取输入状态
         auto* input = ecsClientWorld->registry().try_get<ecs::InputStateComponent>(player);

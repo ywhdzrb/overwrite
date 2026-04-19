@@ -121,6 +121,7 @@ add_library(OverWriteShared STATIC
     shared/src/ecs/components.cpp
     shared/src/ecs/systems.cpp
     shared/src/network/server_discovery.cpp
+    shared/src/terrain_query.cpp
 )
 
 target_include_directories(OverWriteShared PUBLIC

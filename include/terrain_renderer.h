@@ -1,27 +1,41 @@
-#ifndef TERRAIN_RENDERER_H
-#define TERRAIN_RENDERER_H
+#ifndef TERRAIN_CHUNK_H
+#define TERRAIN_CHUNK_H
 
 #include <vulkan/vulkan.h>
 #include <glm/glm.hpp>
 #include <memory>
+#include <unordered_map>
 #include <vector>
-#include "i_renderer.h"
 
 namespace vgame {
 
 class VulkanDevice;
 
-class TerrainRenderer : public IRenderer {
+struct TerrainChunk {
+    int chunkX;
+    int chunkZ;
+    VkBuffer vertexBuffer;
+    VkDeviceMemory vertexBufferMemory;
+    VkBuffer indexBuffer;
+    VkDeviceMemory indexBufferMemory;
+    uint32_t indexCount;
+    bool isValid;
+};
+
+class TerrainRenderer {
 public:
     explicit TerrainRenderer(std::shared_ptr<VulkanDevice> device);
-    ~TerrainRenderer() override;
+    ~TerrainRenderer();
 
-    void create() override;
-    void cleanup() override;
+    void create();
+    void cleanup();
     void render(VkCommandBuffer commandBuffer, VkPipelineLayout pipelineLayout,
-                const glm::mat4& viewMatrix, const glm::mat4& projectionMatrix) override;
-    std::string getName() const override { return "TerrainRenderer"; }
-    bool isCreated() const override { return created_; }
+                const glm::mat4& viewMatrix, const glm::mat4& projectionMatrix);
+    std::string getName() const { return "TerrainRenderer"; }
+    bool isCreated() const { return created_; }
+    
+    void update(const glm::vec3& playerPos);
+    float getHeight(float x, float z);
     
     struct PushConstants {
         glm::mat4 model;
@@ -34,37 +48,42 @@ public:
         float _pad0;
     };
 
-float getHeight(float x, float z);
-    
 private:
-    float perlinNoise(float x, float z);
-    float fbm(float x, float z, int octaves = 4);
-    void createTerrainVertexBuffer();
-    void createTerrainIndexBuffer();
-    void cleanupBuffers();
+    struct ChunkKey {
+        int x, z;
+        
+        bool operator==(const ChunkKey& other) const {
+            return x == other.x && z == other.z;
+        }
+    };
+    
+    struct ChunkKeyHash {
+        size_t operator()(const ChunkKey& key) const {
+            return std::hash<int>()(key.x * 1000 + key.z);
+        }
+    };
 
-protected:
+    float perlinNoise(float x, float z);
+    float fbm(float x, float z, int octaves);
+    void generateChunk(int chunkX, int chunkZ);
+    void cleanupChunk(TerrainChunk& chunk);
+
     std::shared_ptr<VulkanDevice> device;
     
-    VkBuffer vertexBuffer;
-    VkDeviceMemory vertexBufferMemory;
-    VkBuffer indexBuffer;
-    VkDeviceMemory indexBufferMemory;
-    uint32_t indexCount;
+    std::unordered_map<ChunkKey, TerrainChunk, ChunkKeyHash> chunks;
     
-    glm::vec3 centerPos;
-    float size;
+    float chunkSize;
+    int renderRadius;
     float noiseScale;
     float heightScale;
-    glm::vec3 terrainColor;  // 地形颜色控制参数
+    float baseHeight;
+    glm::vec3 terrainColor;
+    
+    bool created_;
     
     std::vector<int> perm;
-    
-    static constexpr int gridSize = 16;
-    static constexpr int segmentsPerTile = 2;
-    static constexpr int totalSegments = gridSize * segmentsPerTile;
 };
 
 } // namespace vgame
 
-#endif // TERRAIN_RENDERER_H
+#endif // TERRAIN_CHUNK_H
