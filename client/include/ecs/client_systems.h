@@ -115,6 +115,13 @@ public:
     // 创建带相机组件的玩家
     entt::entity createClientPlayer(int viewportWidth, int viewportHeight);
     
+    // 地形查询
+    void setTerrainQuery(TerrainHeightQuery query) {
+        if (physicsSystem_) {
+            physicsSystem_->setTerrainQuery(std::move(query));
+        }
+    }
+    
 private:
     std::unique_ptr<InputSystem> inputSystem_;
     std::unique_ptr<CameraSystem> cameraSystem_;

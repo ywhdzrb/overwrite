@@ -155,65 +155,10 @@ void Camera::update(float deltaTime, bool moveForward, bool moveBackward,
         }
         if (shiftPressed) {
             targetPosition.y -= speed * deltaTime;
-            // 防止低于地形
-            float terrainHeight = queryTerrainHeight(targetPosition.x, targetPosition.z);
-            if (targetPosition.y < terrainHeight) {
-                targetPosition.y = terrainHeight;
-            }
         }
         
         // 更新相机位置
         updateThirdPersonCamera();
-    } else {
-        // 第一人称模式
-        // 查询当前位置的地形高度
-        float terrainHeight = queryTerrainHeight(position.x, position.z);
-        
-        // 跳跃输入处理：仅在着地时允许跳跃
-        if (jump && isGrounded_ && !isJumping) {
-            velocity.y = jumpForce;
-            isJumping = true;
-            isGrounded_ = false;
-        }
-
-        // 空中物理：非着地状态应用重力
-        if (!isGrounded_) {
-            velocity.y -= gravity * deltaTime;
-            position.y += velocity.y * deltaTime;
-
-            // 着地检测
-            if (position.y <= terrainHeight) {
-                position.y = terrainHeight;
-                velocity.y = 0.0f;
-                isJumping = false;
-                isGrounded_ = true;
-            }
-        } else {
-            // 着地状态检查
-            if (position.y < terrainHeight) {
-                // 位置低于地形，修正到地形高度
-                position.y = terrainHeight;
-            } else if (position.y > terrainHeight + 0.01f) {
-                // 位置高于地形（悬浮），触发掉落
-                isGrounded_ = false;
-            }
-            velocity.y = 0.0f;
-        }
-        
-        // 水平移动
-        glm::vec3 horizontalVelocity(0.0f);
-        
-        if (moveForward) horizontalVelocity += front;
-        if (moveBackward) horizontalVelocity -= front;
-        if (moveLeft) horizontalVelocity -= right;
-        if (moveRight) horizontalVelocity += right;
-        
-        if (glm::length(horizontalVelocity) > 0.0f) {
-            horizontalVelocity = glm::normalize(horizontalVelocity) * movementSpeed;
-        }
-        
-        position.x += horizontalVelocity.x * deltaTime;
-        position.z += horizontalVelocity.z * deltaTime;
     }
 }
 

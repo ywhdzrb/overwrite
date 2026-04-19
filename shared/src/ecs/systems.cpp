@@ -25,7 +25,7 @@ entt::entity World::createPlayer() {
     
     // 添加变换组件
     auto& transform = registry_.emplace<TransformComponent>(entity);
-    transform.position = glm::vec3(0.0f, 1.5f, 5.0f);
+    transform.position = glm::vec3(0.0f, 0.9f, 5.0f);
     transform.yaw = -90.0f;  // 初始朝向 -Z 轴
     transform.pitch = 0.0f;
     
@@ -288,23 +288,31 @@ void PhysicsSystem::update(float deltaTime) {
         // 空中物理：非着地状态应用重力
         if (!physics.isGrounded) {
             velocity->linear.y -= physics.gravity * deltaTime;
+            float oldY = transform.position.y;
             transform.position.y += velocity->linear.y * deltaTime;
             
-            // 着地检测：位置低于地形高度
-            if (transform.position.y <= terrainHeight) {
-                transform.position.y = terrainHeight;
+            // 脚底位置
+            float footY = transform.position.y - physics.colliderHeight * 0.5f;
+            
+            // 检测脚是否穿过地形
+            if (footY <= terrainHeight) {
+                // 脚到达地形表面
+                transform.position.y = terrainHeight + physics.colliderHeight * 0.5f;
                 velocity->linear.y = 0.0f;
                 physics.isJumping = false;
                 physics.isGrounded = true;
-                physics.groundHeight = terrainHeight;  // 更新站立面高度
+                physics.groundHeight = terrainHeight;
             }
         } else {
-            // 着地状态检查
-            if (transform.position.y < terrainHeight) {
-                // 位置低于地形，修正到地形高度
-                transform.position.y = terrainHeight;
-            } else if (transform.position.y > terrainHeight + 0.01f) {
-                // 位置高于地形（悬浮），触发掉落
+            float footY = transform.position.y - physics.colliderHeight * 0.5f;
+            float targetY = terrainHeight + physics.colliderHeight * 0.5f;
+            
+            // 如果脚低于地形，修正位置
+            if (footY < terrainHeight) {
+                transform.position.y = targetY;
+                physics.groundHeight = terrainHeight;
+            } else if (footY > terrainHeight + 0.1f) {
+                // 脚离地超过0.1f，开始下落
                 physics.isGrounded = false;
             }
             velocity->linear.y = 0.0f;

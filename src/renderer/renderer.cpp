@@ -148,6 +148,21 @@ void Renderer::initVulkan() {
     
     floorRenderer = std::make_unique<FloorRenderer>(vulkanDevice);
     floorRenderer->create();
+    terrainRenderer = std::make_unique<TerrainRenderer>(vulkanDevice);
+    terrainRenderer->create();
+    
+    // 设置地形碰撞查询
+    auto terrainHeightQuery = [this](float x, float z) -> float {
+        return terrainRenderer->getHeight(x, z);
+    };
+    camera->setTerrainQuery(terrainHeightQuery);
+    physics->setTerrainQuery(terrainHeightQuery);
+    
+    // 设置 ECS 物理系统的地形查询
+    if (ecsClientWorld) {
+        ecsClientWorld->setTerrainQuery(terrainHeightQuery);
+    }
+    
     cubeRenderer = std::make_unique<CubeRenderer>(vulkanDevice);
     cubeRenderer->create();
     
@@ -1025,6 +1040,10 @@ void Renderer::drawFrame() {
     floorRenderer->render(commandBuffer, graphicsPipeline->getPipelineLayout(),
                          camera->getViewMatrix(), camera->getProjectionMatrix());
     
+    // 渲染地形 (位置 10, 0.9, 1, 大小 1x1, 柏林噪声高度图)
+    terrainRenderer->render(commandBuffer, graphicsPipeline->getPipelineLayout(),
+                          camera->getViewMatrix(), camera->getProjectionMatrix());
+    
     // 渲染立方体
     cubeRenderer->render(commandBuffer, graphicsPipeline->getPipelineLayout(),
                         camera->getViewMatrix(), camera->getProjectionMatrix());
@@ -1277,6 +1296,7 @@ void Renderer::cleanup() {
     modelRenderer.reset();
     skyboxRenderer.reset();
     floorRenderer.reset();
+    terrainRenderer.reset();
     physics.reset();
     input.reset();
     camera.reset();
