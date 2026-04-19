@@ -59,23 +59,4 @@ sudo apt install vulkan-sdk libglfw3-dev libglm-dev cmake build-essential
 ./build.sh run
 ```
 
-## 许可证
 
-本项目采用**双许可证**模式：
-
-- **代码**（`.cpp`, `.h`, `.glsl` 等）：[GNU GPL v3](./LICENSE-CODE)
-- **美术资产**（`.glb`, `.png`, `.blend` 等）：[CC BY-NC-SA 4.0](./LICENSE-ART)
-
-简单来说：
-- 可自由使用、修改、分享
-- 必须注明原作者
-- 禁止商用
-- 修改后需以相同许可证发布
-
----
-
-<div align="center">
-
-**玩家不是消费者，而是世界的居民和共同作者。**
-
-</div>
