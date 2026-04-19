@@ -440,3 +440,68 @@ void renderFrame() {
     vkCmdEndRenderPass(...);
 }
 ```
+
+---
+
+## TerrainRenderer
+
+动态地形渲染器，使用柏林噪声生成高度图，支持区块动态加载和卸载。
+
+### 类定义
+
+```cpp
+class TerrainRenderer {
+public:
+    explicit TerrainRenderer(std::shared_ptr<VulkanDevice> device);
+    ~TerrainRenderer();
+
+    void create();
+    void cleanup();
+    void render(VkCommandBuffer commandBuffer, VkPipelineLayout pipelineLayout,
+                const glm::mat4& viewMatrix, const glm::mat4& projectionMatrix);
+    
+    void update(const glm::vec3& playerPos);  // 更新地形区块
+    float getHeight(float x, float z);          // 获取地形高度
+};
+```
+
+### 参数
+
+| 参数 | 默认值 | 说明 |
+|------|-------|------|
+| chunkSize | 16.0f | 区块大小 |
+| renderRadius | 10 | 渲染半径（区块数） |
+| noiseScale | 0.3f | 噪声缩放因子 |
+| heightScale | 1.5f | 高度缩放因子 |
+| baseHeight | 0.0f | 基准高度 |
+
+### 使用方法
+
+```cpp
+// 初始化
+terrainRenderer = std::make_unique<TerrainRenderer>(vulkanDevice);
+terrainRenderer->create();
+
+// 每帧更新（基于玩家位置）
+terrainRenderer->update(playerPosition);
+
+// 渲染
+terrainRenderer->render(commandBuffer, pipelineLayout, viewMatrix, projMatrix);
+
+// 地形高度查询
+auto terrainQuery = [this](float x, float z) -> float {
+    return terrainRenderer->getHeight(x, z);
+};
+physicsSystem->setTerrainQuery(terrainQuery);
+```
+
+---
+
+### TerrainQuery (服务端)
+
+服务端使用的地形高度查询，与客户端使用相同的噪声算法。
+
+```cpp
+// 使用方法
+physicsSystem_->setTerrainQuery(TerrainQuery::getHeight);
+```
