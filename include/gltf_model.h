@@ -189,6 +189,25 @@ public:
      * @brief 获取材质数量
      */
     size_t getMaterialCount() const { return materials.size(); }
+    
+    /**
+     * @brief 为每个 mesh 创建独立的纹理描述符集（调用者传递描述符池）
+     * @param descriptorSetLayout 描述符集布局
+     * @param descriptorPool 描述符池（由渲染器提供）
+     */
+    void createMeshDescriptorSets(VkDescriptorSetLayout descriptorSetLayout, VkDescriptorPool descriptorPool);
+    
+    /**
+     * @brief 清理 mesh 描述符集
+     * @param device Vulkan 设备
+     */
+    void cleanupDescriptorSets(VkDevice device);
+    
+    /**
+     * @brief 设置要隐藏的节点/网格名称（用于跳过渲染）
+     * @param hiddenNames 节点名称列表
+     */
+    void setHiddenNodeNames(const std::vector<std::string>& hiddenNames);
 
     /**
      * @brief 设置模型位置
@@ -441,6 +460,8 @@ private:
     std::shared_ptr<VulkanDevice> device;           // Vulkan 设备
     std::shared_ptr<TextureLoader> textureLoader;   // 纹理加载器
 
+    VkDescriptorPool descriptorPool = VK_NULL_HANDLE;  // 渲染器传入的描述符池
+
     std::string name;                               // 模型名称
     std::string directory;                          // 模型文件所在目录
 
@@ -452,6 +473,7 @@ private:
         size_t materialIndex;
         glm::vec3 minBounds;
         glm::vec3 maxBounds;
+        VkDescriptorSet descriptorSet = VK_NULL_HANDLE;  // 每个 mesh 独立的纹理描述符集
     };
     std::vector<MeshData> meshes;                   // 网格列表
 
@@ -471,9 +493,14 @@ private:
 
     // 纹理缓存
     std::map<int, std::shared_ptr<Texture>> textureCache;
+    
+    // 要隐藏的节点名称集合（用于跳过渲染）
+    // 支持精确匹配和前缀匹配（如 "leaf." 匹配 "leaf.001"）
+    std::vector<std::string> hiddenNodeNames;
 
     // 节点数据
     struct NodeData {
+        std::string name;
         size_t meshIndex;
         glm::mat4 transform;
         glm::mat4 inverseBindMatrix;  // 蒙皮用逆绑定矩阵

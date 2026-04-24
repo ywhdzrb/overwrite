@@ -81,6 +81,7 @@ bool GLTFModel::loadFromFile(const std::string& filename) {
         NodeData nodeData;
         nodeData.meshIndex = -1;
         nodeData.transform = glm::mat4(1.0f);
+        nodeData.name = gltfNode.name;
         
         // 解析节点变换
         if (!gltfNode.matrix.empty()) {
@@ -169,6 +170,61 @@ void GLTFModel::cleanup() {
     Logger::info("GLTFModel cleaned up");
 }
 
+void GLTFModel::createMeshDescriptorSets(VkDescriptorSetLayout descriptorSetLayout, VkDescriptorPool pool) {
+    descriptorPool = pool;
+    
+    for (auto& meshData : meshes) {
+        if (meshData.descriptorSet != VK_NULL_HANDLE) continue;
+        
+        if (meshData.materialIndex >= materials.size()) continue;
+        
+        const auto& material = materials[meshData.materialIndex];
+        if (!material.useBaseColorTexture) continue;
+        
+        VkDescriptorSetAllocateInfo allocInfo{};
+        allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+        allocInfo.descriptorPool = descriptorPool;
+        allocInfo.descriptorSetCount = 1;
+        allocInfo.pSetLayouts = &descriptorSetLayout;
+        
+        if (vkAllocateDescriptorSets(device->getDevice(), &allocInfo, &meshData.descriptorSet) != VK_SUCCESS) {
+            Logger::warning("无法为 mesh 分配描述符集");
+            continue;
+        }
+        
+        VkDescriptorImageInfo imageInfo{};
+        imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        imageInfo.imageView = material.baseColorTexture->getImageView();
+        imageInfo.sampler = material.baseColorTexture->getSampler();
+        
+        VkWriteDescriptorSet descriptorWrite{};
+        descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        descriptorWrite.dstSet = meshData.descriptorSet;
+        descriptorWrite.dstBinding = 0;
+        descriptorWrite.dstArrayElement = 0;
+        descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        descriptorWrite.descriptorCount = 1;
+        descriptorWrite.pImageInfo = &imageInfo;
+        
+        vkUpdateDescriptorSets(device->getDevice(), 1, &descriptorWrite, 0, nullptr);
+    }
+    
+    Logger::info("为 " + std::to_string(meshes.size()) + " 个 mesh 创建描述符集");
+}
+
+void GLTFModel::cleanupDescriptorSets(VkDevice device) {
+    for (auto& meshData : meshes) {
+        if (meshData.descriptorSet != VK_NULL_HANDLE) {
+            vkFreeDescriptorSets(device, descriptorPool, 1, &meshData.descriptorSet);
+            meshData.descriptorSet = VK_NULL_HANDLE;
+        }
+    }
+}
+
+void GLTFModel::setHiddenNodeNames(const std::vector<std::string>& names) {
+    hiddenNodeNames = names;
+}
+
 void GLTFModel::render(VkCommandBuffer commandBuffer,
                        VkPipelineLayout pipelineLayout,
                        const glm::mat4& viewMatrix,
@@ -203,11 +259,24 @@ void GLTFModel::renderNode(VkCommandBuffer commandBuffer,
     
     const auto& node = nodes[nodeIndex];
     
-    // 计算节点的变换矩阵
+    // 计算节点的变换矩阵（提前计算，供隐藏节点跳过时子节点使用）
     glm::mat4 nodeMatrix = parentMatrix * node.transform;
     
+    // 跳过隐藏的节点（只跳过当前节点的网格渲染，但仍然渲染子节点）
+    // 支持前缀匹配（如 "leaf." 匹配 "leaf.001", "leaf.002" 等）
+    bool isHidden = false;
+    if (!node.name.empty()) {
+        for (const auto& hiddenName : hiddenNodeNames) {
+            if (node.name == hiddenName || 
+                (hiddenName.back() == '.' && node.name.find(hiddenName) == 0)) {
+                isHidden = true;
+                break;
+            }
+        }
+    }
+    
     // 如果节点有网格，渲染网格
-    if (node.meshIndex < meshes.size()) {
+    if (node.meshIndex < meshes.size() && !isHidden) {
         const auto& meshData = meshes[node.meshIndex];
         
         if (meshData.mesh) {
@@ -240,6 +309,12 @@ void GLTFModel::renderNode(VkCommandBuffer commandBuffer,
             vkCmdPushConstants(commandBuffer, pipelineLayout,
                              VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
                              0, sizeof(PushConstants), &pushConstants);
+            
+            // 绑定每个 mesh 独立的纹理描述符集
+            if (meshData.descriptorSet != VK_NULL_HANDLE) {
+                vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                        pipelineLayout, 0, 1, &meshData.descriptorSet, 0, nullptr);
+            }
             
             // 绑定并绘制网格
             meshData.mesh->bind(commandBuffer);

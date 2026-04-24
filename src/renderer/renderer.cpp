@@ -1513,7 +1513,7 @@ void Renderer::createDescriptorPool() {
     poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
     poolInfo.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
     poolInfo.pPoolSizes = poolSizes.data();
-    poolInfo.maxSets = 20;  // 增加以支持多个模型
+    poolInfo.maxSets = 512;  // 支持多模型 + 每个 mesh 的独立描述符集（tree.glb 有 302 个 mesh）
 
     if (vkCreateDescriptorPool(vulkanDevice->getDevice(), &poolInfo, nullptr, &descriptorPool) != VK_SUCCESS) {
         throw std::runtime_error("failed to create descriptor pool!");
@@ -2334,6 +2334,12 @@ SceneConfig Renderer::loadSceneConfig(const std::string& configFile) {
                 config.isPlayerWalkModel = item.value("isPlayerWalkModel", false);
                 config.description = item.value("description", "");
                 
+                if (item.contains("hiddenMeshNames")) {
+                    for (const auto& h : item["hiddenMeshNames"]) {
+                        config.hiddenMeshNames.push_back(h.get<std::string>());
+                    }
+                }
+                
                 sceneConfig.models.push_back(config);
             }
         }
@@ -2500,7 +2506,15 @@ void Renderer::loadModelsFromConfig(const std::vector<ModelConfig>& configs) {
             continue;
         }
         
-        // 创建纹理描述符集
+        // 为每个 mesh 创建独立的纹理描述符集
+        model->createMeshDescriptorSets(textureDescriptorSetLayout, descriptorPool);
+        
+        // 设置隐藏的节点名称
+        if (!config.hiddenMeshNames.empty()) {
+            model->setHiddenNodeNames(config.hiddenMeshNames);
+        }
+        
+        // 创建纹理描述符集（用于没有材质的 mesh 的回退）
         VkDescriptorSet descriptorSet = createModelDescriptorSet(model.get(), config.id);
         
         // 处理特殊模型

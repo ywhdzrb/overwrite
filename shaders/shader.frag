@@ -136,13 +136,20 @@ vec3 calculateSpotLight(Light light, vec3 normal, vec3 viewDir, vec3 fragPositio
 
 void main() {
     vec3 albedo;
+    float alpha = 1.0;
 
     // 采样纹理或使用顶点颜色
     if (pushConstants.hasTexture == 1) {
         vec4 texColor = texture(texSampler, fragTexCoord);
         albedo = texColor.rgb;
+        alpha = texColor.a;
     } else {
         albedo = fragColor;
+    }
+
+    // 丢弃完全透明的像素
+    if (alpha < 0.1) {
+        discard;
     }
 
     // 归一化法线
@@ -169,5 +176,5 @@ void main() {
         }
     }
 
-    outColor = vec4(result, 1.0);
+    outColor = vec4(result, alpha);
 }
