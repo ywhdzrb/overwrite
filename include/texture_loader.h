@@ -7,7 +7,7 @@
 #include "texture.h"
 #include "vulkan_device.h"
 
-namespace vgame {
+namespace owengine {
 
 /**
  * @brief 纹理加载器类
@@ -189,6 +189,6 @@ private:
     bool generateMipmaps = true;
 };
 
-} // namespace vgame
+} // namespace owengine
 
 #endif // TEXTURE_LOADER_H

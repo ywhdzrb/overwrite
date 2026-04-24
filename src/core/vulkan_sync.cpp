@@ -4,7 +4,7 @@
 #include "vulkan_device.h"
 #include <stdexcept>
 
-namespace vgame {
+namespace owengine {
 
 // VulkanSync构造函数
 VulkanSync::VulkanSync(std::shared_ptr<VulkanDevice> device)
@@ -58,4 +58,4 @@ void VulkanSync::cleanup() {
     inFlightFences.clear();
 }
 
-} // namespace vgame
+} // namespace owengine

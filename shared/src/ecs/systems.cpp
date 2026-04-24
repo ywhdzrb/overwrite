@@ -1,9 +1,21 @@
 // 共享 ECS 系统实现
+//
+// 更新顺序（client_systems.cpp 中定义）：
+//   1. MovementSystem::update() — 输入驱动的位置更新 + 斜坡投影
+//   2. PhysicsSystem::update() — 重力/着地/跳跃 + 地形高度查询
+//
+// 斜坡运动设计：MovementSystem 将水平输入投影到坡面上（v_proj = v - n*(v·n)），
+// 产生带 Y 分量的三维速度，直接更新 position.xyz 使角色沿地形轮廓平滑移动。
+// PhysicsSystem 仅在容差范围内做微小修正（足部穿透/悬空 < 0.1f）。
+// 两者配合避免了 "水平移动 → Y 不变 → 物理弹回" 的锯齿形卡顿。
 #include "ecs/systems.h"
+#include "logger.h"
 #include <iostream>
 #include <algorithm>
+#include <sstream>
+#include <iomanip>
 
-namespace vgame {
+namespace owengine {
 namespace ecs {
 
 // ==================== World 实现 ====================
@@ -26,7 +38,7 @@ entt::entity World::createPlayer() {
     // 添加变换组件
     auto& transform = registry_.emplace<TransformComponent>(entity);
     transform.position = glm::vec3(0.0f, 0.9f, 5.0f);
-    transform.yaw = -90.0f;  // 初始朝向 -Z 轴
+    transform.yaw = 0.0f;  // 初始朝向 -Z 轴（屏幕内方向）
     transform.pitch = 0.0f;
     
     // 添加速度组件
@@ -140,7 +152,7 @@ void MovementSystem::update(float deltaTime) {
         
         // 处理鼠标旋转
         if (input.mouseDeltaX != 0.0f || input.mouseDeltaY != 0.0f) {
-            transform.yaw -= input.mouseDeltaX * controller.mouseSensitivity;  // 左移向右转，右移向左转
+            transform.yaw += input.mouseDeltaX * controller.mouseSensitivity;  // 右移右转，左移左转
             transform.pitch += input.mouseDeltaY * controller.mouseSensitivity;  // 上移向上看，下移向下看
             
             // 限制俯仰角
@@ -164,6 +176,8 @@ void MovementSystem::update(float deltaTime) {
             right.y = 0.0f;
             right = glm::normalize(right);
             
+
+            
             if (input.moveForward) horizontalVelocity += front;
             if (input.moveBackward) horizontalVelocity -= front;
             if (input.moveLeft) horizontalVelocity -= right;
@@ -171,14 +185,36 @@ void MovementSystem::update(float deltaTime) {
             
             if (glm::length(horizontalVelocity) > 0.0f) {
                 horizontalVelocity = glm::normalize(horizontalVelocity) * speed;
+                
+                // 获取物理组件（用于空中控制和坡度处理）
+                if (world_.registry().all_of<PhysicsComponent>(entity)) {
+                    const auto& physics = world_.registry().get<PhysicsComponent>(entity);
+                    
+                    // 空中控制：如果不在着地状态，降低控制力
+                    if (!physics.isGrounded) {
+                        horizontalVelocity *= controller.airControlFactor;
+                    }
+                    // 坡度处理：如果着地且地面不是水平的，将移动向量投影到斜坡面。
+                    // 公式：v_proj = v - n * (v·n)，其中 n 为 PhysicsSystem 上一帧计算的 groundNormal。
+                    // 投影后的速度产生 Y 分量，使角色沿坡面平滑运动，避免水平移动导致穿透/悬空。
+                    else if (glm::dot(physics.groundNormal, glm::vec3(0.0f, 1.0f, 0.0f)) < 0.999f) {
+                        // 投影到地面平面：v_proj = v - n * (v·n)
+                        glm::vec3 projected = horizontalVelocity - physics.groundNormal * glm::dot(horizontalVelocity, physics.groundNormal);
+                        // 重新归一化以保持速度大小，同时保留坡度产生的 Y 分量
+                        if (glm::length(projected) > 0.001f) {
+                            horizontalVelocity = glm::normalize(projected) * speed;
+                        }
+                    }
+                }
             }
             
             // 保存旧位置
             glm::vec3 oldPos = transform.position;
             glm::vec3 playerSize(0.6f, 1.8f, 0.6f);  // 玩家碰撞体大小
             
-            // 更新位置
+            // 更新位置（含坡度投影的 Y 分量，使角色沿坡面平滑运动）
             transform.position.x += horizontalVelocity.x * deltaTime;
+            transform.position.y += horizontalVelocity.y * deltaTime;
             transform.position.z += horizontalVelocity.z * deltaTime;
             
             // 碰撞检测
@@ -224,6 +260,13 @@ bool PhysicsSystem::checkAABBCollision(const glm::vec3& pos1, const glm::vec3& s
 }
 
 float PhysicsSystem::queryTerrainHeight(float x, float z) const {
+    // 检查单条目缓存（同一帧内相同坐标避免重复计算）
+    if (cachedQueryValid_ && cachedQueryX_ == x && cachedQueryZ_ == z) {
+        return cachedQueryHeight_;
+    }
+    
+    cachedQueryValid_ = false;  // 暂时关闭缓存，在统一出口处重新缓存
+    
     float maxHeight = defaultGroundHeight_;
     
     // 检查所有碰撞箱，找到该位置最高的站立面
@@ -247,14 +290,55 @@ float PhysicsSystem::queryTerrainHeight(float x, float z) const {
     
     // 如果有自定义地形查询，取两者最大值
     if (terrainQuery_) {
-        float terrainH = terrainQuery_(x, z);
-        return std::max(maxHeight, terrainH);
+        try {
+            float terrainH = terrainQuery_(x, z);
+            maxHeight = std::max(maxHeight, terrainH);
+        } catch (...) {
+            // 地形查询失败，返回碰撞箱高度
+            Logger::warning("[PhysicsSystem] Terrain query failed at (" + 
+                         std::to_string(x) + ", " + std::to_string(z) + ")");
+        }
     }
     
+    // 缓存结果（统一出口）
+    cachedQueryX_ = x;
+    cachedQueryZ_ = z;
+    cachedQueryHeight_ = maxHeight;
+    cachedQueryValid_ = true;
     return maxHeight;
 }
 
+glm::vec3 PhysicsSystem::computeTerrainNormal(float x, float z, float centerHeight) const {
+    const float eps = 0.1f;
+    
+    // 如果没有地形查询，返回上向量
+    if (!terrainQuery_) {
+        Logger::debug("[PhysicsSystem] computeTerrainNormal: terrainQuery_ is null, returning up vector");
+        return glm::vec3(0.0f, 1.0f, 0.0f);
+    }
+    
+    // 使用中心差分计算梯度（复用已传入的 centerHeight，免重复查询）
+    float heightXPlus = queryTerrainHeight(x + eps, z);
+    float heightXMinus = queryTerrainHeight(x - eps, z);
+    float heightZPlus = queryTerrainHeight(x, z + eps);
+    float heightZMinus = queryTerrainHeight(x, z - eps);
+    
+    // 计算偏导数（用传入的 centerHeight 替代中心查询结果）
+    float dhdx = (heightXPlus - heightXMinus) / (2.0f * eps);
+    float dhdz = (heightZPlus - heightZMinus) / (2.0f * eps);
+    
+    // 法向量 = normalize(-dh/dx, 1, -dh/dz)
+    return glm::normalize(glm::vec3(-dhdx, 1.0f, -dhdz));
+}
+
+float PhysicsSystem::getTerrainHeight(float x, float z) const {
+    return queryTerrainHeight(x, z);
+}
+
 void PhysicsSystem::update(float deltaTime) {
+    // 重置每帧高度缓存
+    cachedQueryValid_ = false;
+    
     auto view = world_.registry().view<TransformComponent, PhysicsComponent>();
     
     for (auto entity : view) {
@@ -302,6 +386,7 @@ void PhysicsSystem::update(float deltaTime) {
                 physics.isJumping = false;
                 physics.isGrounded = true;
                 physics.groundHeight = terrainHeight;
+                physics.groundNormal = computeTerrainNormal(transform.position.x, transform.position.z, terrainHeight);
             }
         } else {
             float footY = transform.position.y - physics.colliderHeight * 0.5f;
@@ -310,16 +395,22 @@ void PhysicsSystem::update(float deltaTime) {
             // 如果脚低于地形，修正位置
             if (footY < terrainHeight) {
                 transform.position.y = targetY;
+                velocity->linear.y = 0.0f;
                 physics.groundHeight = terrainHeight;
+                physics.groundNormal = computeTerrainNormal(transform.position.x, transform.position.z, terrainHeight);
             } else if (footY > terrainHeight + 0.1f) {
                 // 脚离地超过0.1f，开始下落
                 physics.isGrounded = false;
+                physics.groundNormal = glm::vec3(0.0f, 1.0f, 0.0f);
+            } else {
+                // 玩家在地面上（在容差范围内）
+                velocity->linear.y = 0.0f;
+                physics.groundHeight = terrainHeight;
+                physics.groundNormal = computeTerrainNormal(transform.position.x, transform.position.z, terrainHeight);
             }
-            velocity->linear.y = 0.0f;
-            physics.groundHeight = terrainHeight;
         }
     }
 }
 
 } // namespace ecs
-} // namespace vgame
+} // namespace owengine

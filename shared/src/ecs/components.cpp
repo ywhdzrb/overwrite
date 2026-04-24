@@ -2,15 +2,15 @@
 #include "ecs/components.h"
 #include <glm/gtc/matrix_transform.hpp>
 
-namespace vgame {
+namespace owengine {
 namespace ecs {
 
 glm::vec3 TransformComponent::getFront() const {
-    // 基于欧拉角计算前向量
+    // 基于欧拉角计算前向量 (yaw=0 时朝向 -Z 轴，即屏幕内)
     glm::vec3 front;
-    front.x = cos(glm::radians(yaw)) * cos(glm::radians(pitch));
+    front.x = sin(glm::radians(yaw)) * cos(glm::radians(pitch));
     front.y = sin(glm::radians(pitch));
-    front.z = sin(glm::radians(yaw)) * cos(glm::radians(pitch));
+    front.z = -cos(glm::radians(yaw)) * cos(glm::radians(pitch));
     return glm::normalize(front);
 }
 
@@ -35,4 +35,4 @@ glm::mat4 TransformComponent::getModelMatrix() const {
 }
 
 } // namespace ecs
-} // namespace vgame
+} // namespace owengine

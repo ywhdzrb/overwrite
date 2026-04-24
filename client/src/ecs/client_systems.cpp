@@ -4,7 +4,7 @@
 #include <iostream>
 #include <cstring>
 
-namespace vgame {
+namespace owengine {
 namespace ecs {
 
 // ==================== CameraComponent 实现 ====================
@@ -193,6 +193,7 @@ void ClientWorld::initClientSystems(GLFWwindow* window, int viewportWidth, int v
     
     inputSystem_ = std::make_unique<InputSystem>(*this, window);
     cameraSystem_ = std::make_unique<CameraSystem>(*this);
+    cameraControllerSystem_ = std::make_unique<CameraControllerSystem>(*this);
     movementSystem_ = std::make_unique<MovementSystem>(*this);
     physicsSystem_ = std::make_unique<PhysicsSystem>(*this);
     
@@ -215,7 +216,12 @@ void ClientWorld::updateClientSystems(float deltaTime) {
     // 更新物理
     physicsSystem_->update(deltaTime);
     
-    // 更新相机
+    // 更新相机控制器（处理相机移动和方向）
+    if (cameraControllerSystem_) {
+        cameraControllerSystem_->update(deltaTime);
+    }
+    
+    // 更新相机（更新矩阵）
     cameraSystem_->update(deltaTime);
     
     // 连接到服务器后发送输入（在所有系统更新之后）
@@ -301,22 +307,58 @@ std::vector<DiscoveredServer> ClientWorld::getDiscoveredServers() {
 
 entt::entity ClientWorld::createClientPlayer(int viewportWidth, int viewportHeight) {
     // 创建基础玩家（使用共享方法）
-    auto entity = createPlayer();
+    auto playerEntity = createPlayer();
     
-    // 添加客户端专用组件
-    auto& camera = registry().emplace<CameraComponent>(entity);
+    // 创建独立的相机实体
+    auto cameraEntity = createEntity();
+    
+    // 添加相机变换组件
+    auto& cameraTransform = registry().emplace<TransformComponent>(cameraEntity);
+    // 初始相机位置与玩家相同（第一人称）
+    auto& playerTransform = registry().get<TransformComponent>(playerEntity);
+    cameraTransform.position = playerTransform.position;
+    cameraTransform.yaw = playerTransform.yaw;
+    cameraTransform.pitch = playerTransform.pitch;
+    cameraTransform.updateRotationFromEuler();
+    
+    // 添加相机组件
+    auto& camera = registry().emplace<CameraComponent>(cameraEntity);
     camera.viewportWidth = viewportWidth;
     camera.viewportHeight = viewportHeight;
     
-    registry().emplace<CameraControllerComponent>(entity);
+    // 添加相机控制器组件
+    registry().emplace<CameraControllerComponent>(cameraEntity);
     
     // 设置为主相机
-    setMainCamera(entity);
+    setMainCamera(cameraEntity);
     
-    std::cout << "[ClientWorld] 客户端玩家实体创建成功" << std::endl;
+    std::cout << "[ClientWorld] 客户端玩家实体创建成功（玩家实体: " << static_cast<uint32_t>(playerEntity) 
+              << ", 相机实体: " << static_cast<uint32_t>(cameraEntity) << ")" << std::endl;
     
-    return entity;
+    return playerEntity;
+}
+
+void ClientWorld::adjustPlayerToTerrain() {
+    auto player = getPlayer();
+    if (!registry().valid(player)) return;
+    
+    auto* physics = registry().try_get<PhysicsComponent>(player);
+    auto* transform = registry().try_get<TransformComponent>(player);
+    if (!physics || !transform) return;
+    
+    // 只有物理系统有地形查询时才调整
+    if (!physicsSystem_ || !physicsSystem_->hasTerrainQuery()) return;
+    
+    float terrainHeight = physicsSystem_->getTerrainHeight(transform->position.x, transform->position.z);
+    float targetY = terrainHeight + physics->colliderHeight * 0.5f;
+    transform->position.y = targetY;
+    physics->groundHeight = terrainHeight;
+    physics->groundNormal = glm::vec3(0.0f, 1.0f, 0.0f); // 默认上向量，物理系统会重新计算
+    physics->isGrounded = true;
+    physics->isJumping = false;
+    
+    std::cout << "[ClientWorld] 调整玩家位置到地形高度: " << terrainHeight << std::endl;
 }
 
 } // namespace ecs
-} // namespace vgame
+} // namespace owengine

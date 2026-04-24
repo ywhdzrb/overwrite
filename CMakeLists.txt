@@ -122,10 +122,12 @@ add_library(OverWriteShared STATIC
     shared/src/ecs/systems.cpp
     shared/src/network/server_discovery.cpp
     shared/src/terrain_query.cpp
+    src/utils/logger.cpp
 )
 
 target_include_directories(OverWriteShared PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/shared/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
 
 target_link_libraries(OverWriteShared PUBLIC
@@ -137,6 +139,7 @@ target_link_libraries(OverWriteShared PUBLIC
 # ==================== 客户端库 (client) ====================
 add_library(OverWriteClient STATIC
     client/src/ecs/client_systems.cpp
+    client/src/ecs/camera_controller_system.cpp
     client/src/network/network_system.cpp
 )
 

@@ -7,7 +7,7 @@
 #include <algorithm>
 #include <limits>
 
-namespace vgame {
+namespace owengine {
 
 // VulkanDevice构造函数
 VulkanDevice::VulkanDevice(VkPhysicalDevice physicalDevice, VkDevice device, VkSurfaceKHR surface)
@@ -345,4 +345,4 @@ void VulkanDevice::cleanupDepthResources() {
     }
 }
 
-} // namespace vgame
+} // namespace owengine

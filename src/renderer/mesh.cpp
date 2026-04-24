@@ -5,7 +5,7 @@
 #include <stdexcept>
 #include <cstring>
 
-namespace vgame {
+namespace owengine {
 
 // Mesh构造函数
 // 创建网格并初始化顶点和索引缓冲区
@@ -187,4 +187,4 @@ void Mesh::cleanup() {
     }
 }
 
-} // namespace vgame
+} // namespace owengine

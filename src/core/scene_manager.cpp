@@ -6,7 +6,7 @@
 #include "logger.h"
 #include <algorithm>
 
-namespace vgame {
+namespace owengine {
 
 SceneManager::SceneManager(std::shared_ptr<VulkanDevice> device)
     : device_(device)
@@ -193,4 +193,4 @@ void SceneManager::reloadConfig(const std::string& configPath) {
     loadFromConfig(config);
 }
 
-} // namespace vgame
+} // namespace owengine

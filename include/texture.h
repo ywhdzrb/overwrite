@@ -5,7 +5,7 @@
 #include <string>
 #include <memory>
 
-namespace vgame {
+namespace owengine {
 
 /**
  * @brief 纹理类，封装 Vulkan 纹理资源
@@ -171,6 +171,6 @@ private:
     float maxAnisotropy;                          // 最大各向异性级别
 };
 
-} // namespace vgame
+} // namespace owengine
 
 #endif // TEXTURE_H

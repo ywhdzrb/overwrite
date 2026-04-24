@@ -9,7 +9,7 @@
 
 #include "vulkan_device.h"
 
-namespace vgame {
+namespace owengine {
 
 struct Vertex {
     glm::vec3 pos;
@@ -26,13 +26,13 @@ struct Vertex {
     static std::array<VkVertexInputAttributeDescription, 4> getAttributeDescriptions();
 };
 
-} // namespace vgame
+} // namespace owengine
 
 // Vertex结构体的hash函数，放在std命名空间
 namespace std {
     template<>
-    struct hash<vgame::Vertex> {
-        size_t operator()(vgame::Vertex const& vertex) const {
+    struct hash<owengine::Vertex> {
+        size_t operator()(owengine::Vertex const& vertex) const {
             size_t h = 0;
             // 简单的hash算法
             h ^= std::hash<float>()(vertex.pos.x) + 0x9e3779b9 + (h << 6) + (h >> 2);
@@ -51,7 +51,7 @@ namespace std {
     };
 }
 
-namespace vgame {
+namespace owengine {
 
 class Model {
 public:
@@ -74,6 +74,6 @@ private:
     std::vector<uint32_t> indices;
 };
 
-} // namespace vgame
+} // namespace owengine
 
 #endif // MODEL_H

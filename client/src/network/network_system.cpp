@@ -5,7 +5,7 @@
 #include <queue>
 #include <mutex>
 
-namespace vgame {
+namespace owengine {
 namespace client {
 
 // WebSocket 客户端类型定义
@@ -411,4 +411,4 @@ void NetworkSystem::interpolateRemotePlayers(float deltaTime) {
 }
 
 } // namespace client
-} // namespace vgame
+} // namespace owengine

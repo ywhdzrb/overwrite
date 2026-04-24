@@ -5,7 +5,7 @@
 #include <string>
 #include <vector>
 
-namespace vgame {
+namespace owengine {
 
 /**
  * @brief 环境光配置结构
@@ -96,6 +96,6 @@ public:
     static std::vector<ModelConfig> loadModels(const std::string& filePath);
 };
 
-} // namespace vgame
+} // namespace owengine
 
 #endif // SCENE_CONFIG_H

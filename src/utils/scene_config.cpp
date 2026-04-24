@@ -4,7 +4,7 @@
 #include <fstream>
 #include <stdexcept>
 
-namespace vgame {
+namespace owengine {
 
 using json = nlohmann::json;
 
@@ -193,4 +193,4 @@ std::vector<ModelConfig> SceneConfigLoader::loadModels(const std::string& filePa
     return load(filePath).models;
 }
 
-} // namespace vgame
+} // namespace owengine

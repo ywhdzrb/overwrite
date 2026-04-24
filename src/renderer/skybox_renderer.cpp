@@ -11,7 +11,7 @@
 // 注意：STB_IMAGE_IMPLEMENTATION 由 tinygltf.cc 提供
 #include "stb_image.h"
 
-namespace vgame {
+namespace owengine {
 
 SkyboxRenderer::SkyboxRenderer(std::shared_ptr<VulkanDevice> device)
     : device(device),
@@ -664,4 +664,4 @@ void SkyboxRenderer::cleanupDescriptors() {
     }
 }
 
-} // namespace vgame
+} // namespace owengine

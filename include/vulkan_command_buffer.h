@@ -6,7 +6,7 @@
 #include <vector>
 #include <memory>
 
-namespace vgame {
+namespace owengine {
 
 class VulkanDevice;
 
@@ -42,6 +42,6 @@ private:
     std::vector<VkCommandBuffer> commandBuffers;
 };
 
-} // namespace vgame
+} // namespace owengine
 
 #endif // VULKAN_COMMAND_BUFFER_H

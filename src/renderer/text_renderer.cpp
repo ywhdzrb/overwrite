@@ -3,7 +3,7 @@
 #include <cstring>
 #include <iostream>
 
-namespace vgame {
+namespace owengine {
 
 // 简单的 16x16 数字纹理（0-9 和冒号）
 // 每个数字占 16x16 像素，使用 1 位表示前景/背景
@@ -404,4 +404,4 @@ void TextRenderer::copyBuffer(VkBuffer src, VkBuffer dst, VkDeviceSize size) {
     vulkanDevice->endSingleTimeCommands(commandBuffer);
 }
 
-} // namespace vgame
+} // namespace owengine

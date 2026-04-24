@@ -8,7 +8,7 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
-namespace vgame {
+namespace owengine {
 
 CubeRenderer::CubeRenderer(std::shared_ptr<VulkanDevice> device)
     : device(device),
@@ -236,4 +236,4 @@ void CubeRenderer::render(VkCommandBuffer commandBuffer, VkPipelineLayout pipeli
     vkCmdDrawIndexed(commandBuffer, indexCount, 1, 0, 0, 0);
 }
 
-} // namespace vgame
+} // namespace owengine

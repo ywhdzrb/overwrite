@@ -12,7 +12,7 @@
 #include "texture.h"
 #include "texture_loader.h"
 
-namespace vgame {
+namespace owengine {
 
 class ModelRenderer : public IRenderer {
 public:
@@ -82,6 +82,6 @@ protected:
     bool useTexture;
 };
 
-} // namespace vgame
+} // namespace owengine
 
 #endif // MODEL_RENDERER_H

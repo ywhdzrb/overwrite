@@ -13,7 +13,7 @@
 #include <limits>
 #include <thread>
 
-namespace vgame {
+namespace owengine {
 
 // Renderer构造函数
 Renderer::Renderer(int width, int height, const std::string& title)
@@ -105,7 +105,7 @@ void Renderer::initVulkan() {
         swapchain->getExtent(),
         "shaders/shader.vert.spv",
         "shaders/shader.frag.spv",
-        vgame::VertexFormat::POSITION_COLOR,
+        owengine::VertexFormat::POSITION_COLOR,
         descriptorSetLayouts,
         msaaSamples
     );
@@ -148,15 +148,21 @@ void Renderer::initVulkan() {
     
     floorRenderer = std::make_unique<FloorRenderer>(vulkanDevice);
     floorRenderer->create();
-    terrainRenderer = std::make_unique<TerrainRenderer>(vulkanDevice);
+    terrainRenderer = std::make_shared<TerrainRenderer>(vulkanDevice);
     terrainRenderer->create();
     
     // 初始更新地形区块
     terrainRenderer->update(glm::vec3(0.0f, 0.0f, 5.0f));
     
     // 设置地形碰撞查询
-    auto terrainHeightQuery = [this](float x, float z) -> float {
-        return terrainRenderer->getHeight(x, z);
+    auto weakTerrain = std::weak_ptr<TerrainRenderer>(terrainRenderer);
+    auto terrainHeightQuery = [weakTerrain](float x, float z) -> float {
+        auto terrain = weakTerrain.lock();
+        if (!terrain) {
+            // 地形渲染器已销毁，返回默认地面高度
+            return 0.0f;
+        }
+        return terrain->getHeight(x, z);
     };
     camera->setTerrainQuery(terrainHeightQuery);
     physics->setTerrainQuery(terrainHeightQuery);
@@ -706,8 +712,14 @@ void Renderer::updateGameLogic(float deltaTime) {
             controller.mouseSensitivity = userSensitivity;
             
             // 先同步相机方向（在更新系统之前，确保发送正确的方向）
-            controller.moveFront = camera->getFront();
-            controller.moveRight = camera->getRight();
+            // 优先使用 CameraControllerSystem，否则回退到旧的 Camera 类
+            if (ecsClientWorld->getCameraControllerSystem()) {
+                controller.moveFront = ecsClientWorld->getCameraControllerSystem()->getCameraFront();
+                controller.moveRight = ecsClientWorld->getCameraControllerSystem()->getCameraRight();
+            } else {
+                controller.moveFront = camera->getFront();
+                controller.moveRight = camera->getRight();
+            }
         }
         
         // 使用 ClientWorld 统一更新所有系统
@@ -739,9 +751,9 @@ void Renderer::updateGameLogic(float deltaTime) {
                           input->shiftHeld, input->spaceHeld);
         } else {
             // 非自由视角模式下，从 ECS 同步到旧相机系统（用于渲染）
-            if (ecsClientWorld->registry().valid(ecsClientWorld->getMainCamera())) {
-                auto& transform = ecsClientWorld->registry().get<ecs::TransformComponent>(ecsClientWorld->getMainCamera());
-                auto& controller = ecsClientWorld->registry().get<ecs::MovementControllerComponent>(ecsClientWorld->getMainCamera());
+            auto mainCam = ecsClientWorld->getMainCamera();
+            if (ecsClientWorld->registry().valid(mainCam)) {
+                auto& transform = ecsClientWorld->registry().get<ecs::TransformComponent>(mainCam);
                 
                 // 第三人称模式：设置目标位置，第一人称：设置相机位置
                 if (camera->getMode() == Camera::Mode::ThirdPerson) {
@@ -749,9 +761,21 @@ void Renderer::updateGameLogic(float deltaTime) {
                 } else {
                     camera->setPosition(transform.position);
                 }
-                camera->setYawPitch(transform.yaw, transform.pitch);
-                camera->setMovementSpeed(controller.movementSpeed);
-                camera->setMouseSensitivity(controller.mouseSensitivity);
+                // 转换 yaw 到旧 Camera 坐标系（旧Camera yaw=0→+X, 新ECS yaw=0→-Z）
+                camera->setYawPitch(180.0f - transform.yaw, transform.pitch);
+                
+                // 从玩家实体获取移动速度/灵敏度（相机实体没有 MovementControllerComponent）
+                float moveSpeed = userMovementSpeed;
+                float sensitivity = userSensitivity;
+                auto playerEnt = ecsClientWorld->getPlayer();
+                if (ecsClientWorld->registry().valid(playerEnt)) {
+                    if (auto* pc = ecsClientWorld->registry().try_get<ecs::MovementControllerComponent>(playerEnt)) {
+                        moveSpeed = pc->movementSpeed;
+                        sensitivity = pc->mouseSensitivity;
+                    }
+                }
+                camera->setMovementSpeed(moveSpeed);
+                camera->setMouseSensitivity(sensitivity);
             }
         }
     } else {
@@ -1297,12 +1321,18 @@ void Renderer::cleanup() {
     imguiManager.reset();
     
     // 清理 ECS 客户端世界
+    if (ecsClientWorld && ecsClientWorld->getPhysicsSystem()) {
+        ecsClientWorld->getPhysicsSystem()->clearTerrainQuery();
+    }
     ecsClientWorld.reset();
     
     cubeRenderer.reset();
     modelRenderer.reset();
     skyboxRenderer.reset();
     floorRenderer.reset();
+    // 清除地形查询回调，防止悬空指针
+    if (camera) camera->clearTerrainQuery();
+    if (physics) physics->clearTerrainQuery();
     terrainRenderer.reset();
     physics.reset();
     input.reset();
@@ -2499,4 +2529,4 @@ void Renderer::loadModelsFromConfig(const std::vector<ModelConfig>& configs) {
     }
 }
 
-} // namespace vgame
+} // namespace owengine

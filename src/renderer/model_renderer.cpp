@@ -7,7 +7,7 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
-namespace vgame {
+namespace owengine {
 
 ModelRenderer::ModelRenderer(std::shared_ptr<VulkanDevice> device,
                              std::shared_ptr<TextureLoader> textureLoader)
@@ -93,4 +93,4 @@ void ModelRenderer::render(VkCommandBuffer commandBuffer, VkPipelineLayout pipel
     mesh->draw(commandBuffer);
 }
 
-} // namespace vgame
+} // namespace owengine

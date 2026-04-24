@@ -21,7 +21,7 @@
 #define SOCKET_ERROR -1
 #endif
 
-namespace vgame {
+namespace owengine {
 
 /**
  * @brief 服务器发现广播器（服务端）
@@ -102,6 +102,6 @@ private:
     static constexpr int STALE_TIMEOUT_MS = 3000;
 };
 
-} // namespace vgame
+} // namespace owengine
 
 #endif // SERVER_DISCOVERY_H

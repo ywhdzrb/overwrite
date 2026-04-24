@@ -4,7 +4,7 @@
 #include <string>
 #include <vector>
 
-namespace vgame {
+namespace owengine {
 
 class ShaderCompiler {
 public:
@@ -12,6 +12,6 @@ public:
     static bool compileToSpirV(const std::string& sourceFile, const std::string& outputFile, const std::string& stage);
 };
 
-} // namespace vgame
+} // namespace owengine
 
 #endif // SHADER_COMPILER_H

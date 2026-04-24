@@ -5,7 +5,7 @@
 #include <glm/gtc/quaternion.hpp>
 #include <string>
 
-namespace vgame {
+namespace owengine {
 namespace ecs {
 
 // 前向声明共享组件
@@ -96,6 +96,6 @@ struct LightComponent {
 };
 
 } // namespace ecs
-} // namespace vgame
+} // namespace owengine
 
 #endif // CLIENT_ECS_COMPONENTS_H

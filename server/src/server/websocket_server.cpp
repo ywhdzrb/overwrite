@@ -4,7 +4,7 @@
 #include <iomanip>
 #include <random>
 
-namespace vgame {
+namespace owengine {
 namespace server {
 
 WebSocketGameServer::WebSocketGameServer(uint16_t port)
@@ -305,4 +305,4 @@ std::string WebSocketGameServer::generateClientId() const {
 }
 
 } // namespace server
-} // namespace vgame
+} // namespace owengine

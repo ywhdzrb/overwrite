@@ -5,7 +5,7 @@
 #include <memory>
 #include <vector>
 
-namespace vgame {
+namespace owengine {
 
 class VulkanDevice;
 
@@ -53,6 +53,6 @@ private:
 
 }; // end of class VulkanPipeline
 
-} // namespace vgame
+} // namespace owengine
 
 #endif // VULKAN_PIPELINE_H

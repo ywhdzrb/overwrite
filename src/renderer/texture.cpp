@@ -7,7 +7,7 @@
 #include <cstring>
 #include <cmath>
 
-namespace vgame {
+namespace owengine {
 
 Texture::Texture(std::shared_ptr<VulkanDevice> device, 
                  uint32_t width, 
@@ -414,4 +414,4 @@ void Texture::copyBufferToImage(VkBuffer buffer, VkDeviceSize bufferSize,
     device->endSingleTimeCommands(commandBuffer);
 }
 
-} // namespace vgame
+} // namespace owengine

@@ -6,7 +6,7 @@
 #include <vector>
 #include <memory>
 
-namespace vgame {
+namespace owengine {
 
 class VulkanDevice;
 
@@ -42,6 +42,6 @@ private:
     VkExtent2D swapchainExtent;
 };
 
-} // namespace vgame
+} // namespace owengine
 
 #endif // VULKAN_SWAPCHAIN_H

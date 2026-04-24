@@ -6,7 +6,7 @@
 #include <cmath>
 
 
-namespace vgame {
+namespace owengine {
 
 Input::Input(GLFWwindow* window)
     : window(window),
@@ -254,4 +254,4 @@ void Input::scrollCallback(GLFWwindow* window, double xoffset, double yoffset) {
     }
 }
 
-} // namespace vgame
+} // namespace owengine

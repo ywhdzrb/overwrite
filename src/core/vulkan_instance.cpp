@@ -9,7 +9,7 @@
 #include <algorithm>
 #include <cstring>
 
-namespace vgame {
+namespace owengine {
 
 // Vulkan调试回调函数
 // 用于接收和显示Vulkan验证层的调试消息
@@ -340,4 +340,4 @@ void VulkanInstance::populateDebugMessengerCreateInfo(VkDebugUtilsMessengerCreat
     createInfo.pfnUserCallback = debugCallback;
 }
 
-} // namespace vgame
+} // namespace owengine

@@ -7,7 +7,7 @@
 #include <string>
 #include <functional>
 
-namespace vgame {
+namespace owengine {
 
 class VulkanDevice;
 class TextureLoader;
@@ -153,6 +153,6 @@ private:
     std::unordered_map<std::string, std::shared_ptr<Texture>> textures_;
 };
 
-} // namespace vgame
+} // namespace owengine
 
 #endif // RESOURCE_MANAGER_H

@@ -3,7 +3,7 @@
 
 #include <glm/glm.hpp>
 
-namespace vgame {
+namespace owengine {
 
 class TerrainQuery {
 public:
@@ -18,6 +18,6 @@ private:
     static float grad(int h, float x, float y);
 };
 
-} // namespace vgame
+} // namespace owengine
 
 #endif // TERRAIN_QUERY_H

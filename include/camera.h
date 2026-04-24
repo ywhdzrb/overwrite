@@ -9,7 +9,7 @@
 #include <vector>
 #include <array>
 
-namespace vgame {
+namespace owengine {
 
 /**
  * @brief 视锥体平面
@@ -238,6 +238,6 @@ private:
     Frustum frustum;
 };
 
-} // namespace vgame
+} // namespace owengine
 
 #endif // CAMERA_H

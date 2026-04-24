@@ -5,7 +5,7 @@
 #include <vector>
 #include <memory>
 
-namespace vgame {
+namespace owengine {
 
 class VulkanDevice;
 
@@ -34,6 +34,6 @@ private:
     size_t maxFramesInFlight;
 };
 
-} // namespace vgame
+} // namespace owengine
 
 #endif // VULKAN_SYNC_H

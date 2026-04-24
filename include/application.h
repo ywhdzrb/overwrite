@@ -10,7 +10,7 @@
 #include <chrono>
 #include <string>
 
-namespace vgame {
+namespace owengine {
 
 namespace ecs {
 class ClientWorld;
@@ -144,6 +144,6 @@ private:
     bool initialized_ = false;
 };
 
-} // namespace vgame
+} // namespace owengine
 
 #endif // APPLICATION_H

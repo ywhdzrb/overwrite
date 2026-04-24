@@ -5,7 +5,7 @@
 #include <iostream>
 #include <stdexcept>
 
-namespace vgame {
+namespace owengine {
 
 // 主函数：程序的入口点
 int main() {
@@ -36,9 +36,9 @@ int main() {
     return EXIT_SUCCESS;  // 返回成功状态码
 }
 
-} // namespace vgame
+} // namespace owengine
 
 // 全局主函数，调用命名空间中的main函数
 int main() {
-    return vgame::main();
+    return owengine::main();
 }

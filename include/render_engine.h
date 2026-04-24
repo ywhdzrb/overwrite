@@ -6,7 +6,7 @@
 #include <memory>
 #include <functional>
 
-namespace vgame {
+namespace owengine {
 
 class VulkanInstance;
 class VulkanDevice;
@@ -162,6 +162,6 @@ private:
     RenderCallback renderCallback_;
 };
 
-} // namespace vgame
+} // namespace owengine
 
 #endif // RENDER_ENGINE_H

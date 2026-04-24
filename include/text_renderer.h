@@ -9,7 +9,7 @@
 
 #include "vulkan_device.h"
 
-namespace vgame {
+namespace owengine {
 
 class TextRenderer {
 public:
@@ -62,6 +62,6 @@ private:
     static constexpr uint32_t CHAR_HEIGHT = 16;
 };
 
-} // namespace vgame
+} // namespace owengine
 
 #endif // TEXT_RENDERER_H

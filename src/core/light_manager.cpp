@@ -3,7 +3,7 @@
 #include "logger.h"
 #include <algorithm>
 
-namespace vgame {
+namespace owengine {
 
 LightManager::LightManager()
     : nextLightId(0),
@@ -249,4 +249,4 @@ bool LightManager::canAddMoreLights() const {
     return lights.size() < static_cast<size_t>(getMaxLights());
 }
 
-} // namespace vgame
+} // namespace owengine

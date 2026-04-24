@@ -6,7 +6,7 @@
 #include <iostream>
 
 
-namespace vgame {
+namespace owengine {
 
 Camera::Camera(int windowWidth, int windowHeight)
     : position(0.0f, 1.5f, 5.0f),
@@ -299,4 +299,4 @@ bool Frustum::isAABBInside(const glm::vec3& min, const glm::vec3& max) const {
     return true;
 }
 
-} // namespace vgame
+} // namespace owengine

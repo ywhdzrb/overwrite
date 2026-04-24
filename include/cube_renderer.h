@@ -6,7 +6,7 @@
 #include <memory>
 #include "i_renderer.h"
 
-namespace vgame {
+namespace owengine {
 
 class VulkanDevice;
 class VulkanCommandBuffer;
@@ -58,6 +58,6 @@ protected:
     glm::vec3 position;
 };
 
-} // namespace vgame
+} // namespace owengine
 
 #endif // CUBE_RENDERER_H

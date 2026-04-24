@@ -4,7 +4,7 @@
 #include "vulkan_device.h"
 #include <stdexcept>
 
-namespace vgame {
+namespace owengine {
 
 // VulkanCommandBuffer构造函数
 VulkanCommandBuffer::VulkanCommandBuffer(std::shared_ptr<VulkanDevice> device, VkRenderPass renderPass,
@@ -89,4 +89,4 @@ void VulkanCommandBuffer::record(size_t imageIndex, VkFramebuffer framebuffer, V
     }
 }
 
-} // namespace vgame
+} // namespace owengine

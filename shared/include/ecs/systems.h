@@ -7,7 +7,7 @@
 #include <glm/glm.hpp>
 #include "ecs/components.h"
 
-namespace vgame {
+namespace owengine {
 namespace ecs {
 
 /**
@@ -91,12 +91,20 @@ using TerrainHeightQuery = std::function<float(float x, float z)>;
 /**
  * @brief 物理系统（共享）
  * 
- * 处理重力、碰撞等物理模拟
+ * 处理重力、碰撞等物理模拟。
+ * 更新顺序：MovementSystem → PhysicsSystem
  * 
  * 设计说明：
  * - 使用 isGrounded 状态控制重力应用，而非坐标比较
- * - 支持地形高度查询接口，用于未来地形系统
- * - groundHeight 是动态值，由地形系统更新
+ * - 支持地形高度查询接口（通过 setTerrainQuery 注入地形系统委托）
+ * - groundHeight 和 groundNormal 由地形/碰撞检测动态更新
+ * - MovementSystem 负责沿坡面的平滑运动（投影水平输入到坡面），
+ *   PhysicsSystem 负责重力、着地检测和容差范围内的微小修正
+ * 
+ * 性能优化：
+ * - queryTerrainHeight / computeTerrainNormal：每帧单条目坐标缓存，
+ *   避免同一帧内对同一坐标的重复 Perlin 噪声查询（中心点复用 4 次邻居查询 → 减少 1 次）
+ * - computeTerrainNormal 接受预计算的 centerHeight 参数，消除中心点重复查询
  */
 class PhysicsSystem {
 public:
@@ -104,16 +112,17 @@ public:
     
     void update(float deltaTime);
     
-    // 碰撞体管理
+    // 碰撞体管理（用于建筑等 AABB 碰撞）
     void addCollisionBox(const glm::vec3& position, const glm::vec3& size);
     void clearCollisionBoxes();
     
-    // 地形查询接口
+    // 地形查询接口：注入外部高度查询委托（如 TerrainRenderer::getHeight）
     void setTerrainQuery(TerrainHeightQuery query) { terrainQuery_ = std::move(query); }
     void clearTerrainQuery() { terrainQuery_ = nullptr; }
     bool hasTerrainQuery() const { return terrainQuery_ != nullptr; }
+    float getTerrainHeight(float x, float z) const;
     
-    // 默认地面高度（无地形时使用）
+    // 默认地面高度（无地形注入时使用的平坦地面）
     void setDefaultGroundHeight(float height) { defaultGroundHeight_ = height; }
     float getDefaultGroundHeight() const { return defaultGroundHeight_; }
     
@@ -127,11 +136,20 @@ private:
     bool checkAABBCollision(const glm::vec3& pos1, const glm::vec3& size1,
                            const glm::vec3& pos2, const glm::vec3& size2) const;
     
-    // 查询地形高度
+    // 查询地形高度（内部含单帧缓存，同一帧同一坐标只计算一次）
     float queryTerrainHeight(float x, float z) const;
+    // 用中心差分法计算地形表面法向量。centerHeight 由调用方预查询，避免中心点重复计算。
+    glm::vec3 computeTerrainNormal(float x, float z, float centerHeight) const;
+
+    // 每帧单条目高度缓存：同一帧内重复查询相同坐标时直接返回。
+    // mutable：逻辑上不改变对象状态，仅用于性能优化缓存。
+    mutable bool cachedQueryValid_{false};
+    mutable float cachedQueryX_{0.0f};
+    mutable float cachedQueryZ_{0.0f};
+    mutable float cachedQueryHeight_{0.0f};
 };
 
 } // namespace ecs
-} // namespace vgame
+} // namespace owengine
 
 #endif // SHARED_ECS_SYSTEMS_H

@@ -7,7 +7,7 @@
 #include <map>
 #include <glm/glm.hpp>
 
-namespace vgame {
+namespace owengine {
 
 /**
  * @brief 光源管理器类
@@ -251,6 +251,6 @@ private:
     float ambientIntensity;        // 环境光强度
 };
 
-} // namespace vgame
+} // namespace owengine
 
 #endif // LIGHT_MANAGER_H

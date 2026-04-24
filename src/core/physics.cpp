@@ -3,7 +3,7 @@
 #include "physics.h"
 #include <algorithm>
 
-namespace vgame {
+namespace owengine {
 
 Physics::Physics()
     : gravity(9.8f),
@@ -65,4 +65,4 @@ bool Physics::checkAABBCollision(const glm::vec3& pos1, const glm::vec3& size1,
             pos1.z + size1.z / 2.0f > pos2.z - size2.z / 2.0f);
 }
 
-} // namespace vgame
+} // namespace owengine

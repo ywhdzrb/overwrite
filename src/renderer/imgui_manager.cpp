@@ -5,7 +5,7 @@
 #include <iostream>
 #include <cmath>
 
-namespace vgame {
+namespace owengine {
 
 ImGuiManager::ImGuiManager(std::shared_ptr<VulkanDevice> device,
                            std::shared_ptr<VulkanSwapchain> swapchain,
@@ -162,4 +162,4 @@ void ImGuiManager::onResize() {
     ImGui_ImplVulkan_SetMinImageCount(static_cast<uint32_t>(swapchain->getImageViews().size()));
 }
 
-} // namespace vgame
+} // namespace owengine

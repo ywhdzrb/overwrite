@@ -16,7 +16,7 @@
 // 包含 tinygltf 头文件
 #include "tiny_gltf.h"
 
-namespace vgame {
+namespace owengine {
 
 /**
  * @brief GLTF 模型类
@@ -505,6 +505,6 @@ private:
     std::pair<glm::vec3, glm::vec3> boundingBox;
 };
 
-} // namespace vgame
+} // namespace owengine
 
 #endif // GLTF_MODEL_H

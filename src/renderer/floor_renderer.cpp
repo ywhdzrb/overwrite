@@ -6,7 +6,7 @@
 #include <cstring>
 #include <iostream>
 
-namespace vgame {
+namespace owengine {
 
 FloorRenderer::FloorRenderer(std::shared_ptr<VulkanDevice> device)
     : device(device),
@@ -176,4 +176,4 @@ void FloorRenderer::render(VkCommandBuffer commandBuffer, VkPipelineLayout pipel
     vkCmdDrawIndexed(commandBuffer, indexCount, 1, 0, 0, 0);
 }
 
-} // namespace vgame
+} // namespace owengine

@@ -8,7 +8,7 @@
 #include <array>
 #include <glm/glm.hpp>
 
-namespace vgame {
+namespace owengine {
 
 // VulkanPipeline构造函数
 VulkanPipeline::VulkanPipeline(std::shared_ptr<VulkanDevice> device, VkRenderPass renderPass,
@@ -296,4 +296,4 @@ std::vector<char> VulkanPipeline::readFile(const std::string& filename) {
     return buffer;
 }
 
-} // namespace vgame
+} // namespace owengine

@@ -8,7 +8,7 @@
 #include <chrono>
 #include <vector>
 
-namespace vgame {
+namespace owengine {
 namespace server {
 
 /**
@@ -95,6 +95,6 @@ private:
 };
 
 } // namespace server
-} // namespace vgame
+} // namespace owengine
 
 #endif // SERVER_WORLD_H

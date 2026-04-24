@@ -8,7 +8,7 @@
 #include "vulkan_device.h"
 #include "model.h"
 
-namespace vgame {
+namespace owengine {
 
 class Mesh {
 public:
@@ -38,6 +38,6 @@ private:
     uint32_t indexCount;
 };
 
-} // namespace vgame
+} // namespace owengine
 
 #endif // MESH_H

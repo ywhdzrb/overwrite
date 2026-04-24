@@ -4,7 +4,7 @@
 #include <vulkan/vulkan.h>
 #include <memory>
 
-namespace vgame {
+namespace owengine {
 
 class VulkanDevice;
 
@@ -31,6 +31,6 @@ private:
     VkRenderPass renderPass = VK_NULL_HANDLE;
 };
 
-} // namespace vgame
+} // namespace owengine
 
 #endif // VULKAN_RENDER_PASS_H

@@ -445,7 +445,20 @@ void renderFrame() {
 
 ## TerrainRenderer
 
-动态地形渲染器，使用柏林噪声生成高度图，支持区块动态加载和卸载。
+动态地形渲染器，使用 Perlin 噪声（4-octave FBM）生成高度图，支持异步区块加载和卸载。
+
+### 架构：异步生成管线
+
+为消除区块边界跨越时的卡顿，`update()` 将原先的同步批量生成改为四阶段异步管线：
+
+1. **Phase 1 — 消费已完成任务**：轮询 `std::future`，将后台线程计算好的网格通过 `uploadChunk()` 上传到 Vulkan
+2. **Phase 2 — 扫描候选区块**：在 `generationRadius` 范围内查找缺失区块，去重（已存在/已排队）
+3. **Phase 3 — 启动异步任务**：按玩家距离排序，每帧最多启动 `maxChunksPerFrame` 个 `std::async`
+4. **Phase 4 — 卸载旧区块**：移除 `renderRadius + 2` 范围外的区块
+
+计算与上传分离：
+- `computeChunkMesh()` — 纯 CPU 网格生成（噪声采样 + 顶点/索引），无 Vulkan 调用，在 `std::async` 后台线程安全执行
+- `uploadChunk()` — Vulkan 缓冲创建 + 数据上传，必须在主线程调用
 
 ### 类定义
 
@@ -460,8 +473,14 @@ public:
     void render(VkCommandBuffer commandBuffer, VkPipelineLayout pipelineLayout,
                 const glm::mat4& viewMatrix, const glm::mat4& projectionMatrix);
     
-    void update(const glm::vec3& playerPos);  // 更新地形区块
-    float getHeight(float x, float z);          // 获取地形高度
+    void update(const glm::vec3& playerPos);  // 异步区块更新管线
+    float getHeight(float x, float z) const;   // 获取地形高度（线程安全，仅读取）
+
+private:
+    // 纯 CPU 网格生成（线程安全，在 std::async 后台线程中执行）
+    ChunkMesh computeChunkMesh(int chunkX, int chunkZ) const;
+    // 将已计算的网格数据上传到 Vulkan（必须在主线程调用）
+    void uploadChunk(const ChunkMesh& mesh);
 };
 ```
 
@@ -469,11 +488,25 @@ public:
 
 | 参数 | 默认值 | 说明 |
 |------|-------|------|
-| chunkSize | 16.0f | 区块大小 |
-| renderRadius | 10 | 渲染半径（区块数） |
-| noiseScale | 0.3f | 噪声缩放因子 |
-| heightScale | 1.5f | 高度缩放因子 |
+| chunkSize | 16.0f | 区块边长（世界单位） |
+| renderRadius | 10 | 渲染/卸载边界（卸载范围 = renderRadius + 2） |
+| generationRadius | 13 | 预生成扫描半径（renderRadius + 3，提前生成边界外区块） |
+| maxChunksPerFrame | 4 | 每帧异步任务上限，削去区块生成峰值 |
+| noiseScale | 0.08f | 噪声缩放因子 |
+| heightScale | 5.0f | 高度缩放因子 |
 | baseHeight | 0.0f | 基准高度 |
+
+### 性能数据
+
+- **原先**：跨越区块边界时单帧同步生成 ~314 个区块 → ~30,000 次 FBM 调用 + Vulkan 分配
+- **现在**：每帧最多启动 4 个异步任务，多数区块在后台静默完成。初始场景约 3-4 秒渐进加载完毕。
+- **高度查询**：`getHeight()` 标记 `const`，构造函数一次性初始化排列表后永不修改，支持从作业线程安全调用
+
+### 线程安全
+
+- 构造函数初始化 `perm` 排列表并设置 `permInitialized = true`，阻止 `initPerm()` 重复运行
+- `perlinNoise()` / `fbm()` / `getHeight()` / `computeChunkMesh()` 均为 `const`，仅读取成员数据
+- `perm` 向量在构造函数后永不修改，可安全并发读取
 
 ### 使用方法
 

@@ -5,7 +5,7 @@
 #include <iomanip>
 #include <ctime>
 
-namespace vgame {
+namespace owengine {
 
 // 记录日志
 // 根据日志级别输出带有时间戳的消息
@@ -52,4 +52,4 @@ std::string Logger::getCurrentTime() {
     return ss.str();
 }
 
-} // namespace vgame
+} // namespace owengine

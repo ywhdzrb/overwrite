@@ -7,7 +7,7 @@
 #include <memory>
 #include <functional>
 
-namespace vgame {
+namespace owengine {
 
 /**
  * @brief 地形高度查询函数类型
@@ -60,6 +60,6 @@ private:
     std::vector<std::pair<glm::vec3, glm::vec3>> collisionBoxes;  // position, size
 };
 
-} // namespace vgame
+} // namespace owengine
 
 #endif // PHYSICS_H

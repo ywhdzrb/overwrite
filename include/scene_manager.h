@@ -10,7 +10,7 @@
 #include <unordered_map>
 #include <functional>
 
-namespace vgame {
+namespace owengine {
 
 class Camera;
 class Physics;
@@ -178,6 +178,6 @@ private:
     std::unique_ptr<ResourceManager> resourceManager_;
 };
 
-} // namespace vgame
+} // namespace owengine
 
 #endif // SCENE_MANAGER_H

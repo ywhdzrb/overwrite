@@ -8,7 +8,7 @@
 #include <algorithm>
 #include <cmath>
 
-namespace vgame {
+namespace owengine {
 
 TextureLoader::TextureLoader(std::shared_ptr<VulkanDevice> device)
     : device(device) {
@@ -271,4 +271,4 @@ std::string TextureLoader::normalizePath(const std::string& path) const {
     return normalized;
 }
 
-} // namespace vgame
+} // namespace owengine

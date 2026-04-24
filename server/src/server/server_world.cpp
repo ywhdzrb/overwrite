@@ -3,7 +3,7 @@
 #include "terrain_query.h"
 #include <iostream>
 
-namespace vgame {
+namespace owengine {
 namespace server {
 
 ServerWorld::ServerWorld() 
@@ -125,4 +125,4 @@ void ServerWorld::setPlayerPosition(const std::string& clientId, const glm::vec3
 }
 
 } // namespace server
-} // namespace vgame
+} // namespace owengine

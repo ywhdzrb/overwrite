@@ -11,7 +11,7 @@
 #include <glm/glm.hpp>
 #include <nlohmann/json.hpp>
 
-namespace vgame {
+namespace owengine {
 namespace client {
 
 using json = nlohmann::json;
@@ -135,6 +135,6 @@ private:
 };
 
 } // namespace client
-} // namespace vgame
+} // namespace owengine
 
 #endif // CLIENT_NETWORK_SYSTEM_H

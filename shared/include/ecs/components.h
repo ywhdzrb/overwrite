@@ -6,7 +6,7 @@
 #include <string>
 #include <cstdint>
 
-namespace vgame {
+namespace owengine {
 namespace ecs {
 
 /**
@@ -53,6 +53,7 @@ struct VelocityComponent {
 struct PhysicsComponent {
     float gravity{15.0f};
     float groundHeight{-1.5f};      // 当前站立面高度（由地形系统动态更新）
+    glm::vec3 groundNormal{0.0f, 1.0f, 0.0f};  // 地面法向量（由地形系统计算）
     float jumpForce{5.5f};
     
     bool isJumping{false};          // 是否正在跳跃（上升阶段）
@@ -123,6 +124,9 @@ struct MovementControllerComponent {
     // 第三人称模式下的移动方向（由相机同步）
     glm::vec3 moveFront{0.0f, 0.0f, -1.0f};
     glm::vec3 moveRight{1.0f, 0.0f, 0.0f};
+    
+    // 空中控制参数
+    float airControlFactor{0.2f};  // 空中移动控制系数 (0.0-1.0)
 };
 
 /**
@@ -155,6 +159,6 @@ struct EntityTypeComponent {
 };
 
 } // namespace ecs
-} // namespace vgame
+} // namespace owengine
 
 #endif // SHARED_ECS_COMPONENTS_H

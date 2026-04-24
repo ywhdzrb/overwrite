@@ -15,7 +15,7 @@
 // STB Image 用于解码嵌入纹理（由 tinygltf.cc 提供 STB_IMAGE_IMPLEMENTATION）
 #include "stb_image.h"
 
-namespace vgame {
+namespace owengine {
 
 GLTFModel::GLTFModel(std::shared_ptr<VulkanDevice> device,
                      std::shared_ptr<TextureLoader> textureLoader)
@@ -1165,4 +1165,4 @@ void GLTFModel::subdivideMesh(std::vector<Vertex>& vertices, std::vector<uint32_
                  std::to_string(indices.size() / 3) + " triangles");
 }
 
-} // namespace vgame
+} // namespace owengine

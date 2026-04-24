@@ -5,7 +5,7 @@
 #include <string>
 #include <array>
 
-namespace vgame {
+namespace owengine {
 
 /**
  * @brief 光源类型枚举
@@ -332,6 +332,6 @@ struct ShaderLight {
  */
 using ShaderLightArray = std::array<ShaderLight, 16>;
 
-} // namespace vgame
+} // namespace owengine
 
 #endif // LIGHT_H

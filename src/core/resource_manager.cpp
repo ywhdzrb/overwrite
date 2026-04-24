@@ -5,7 +5,7 @@
 #include "logger.h"
 #include <stdexcept>
 
-namespace vgame {
+namespace owengine {
 
 ResourceManager::ResourceManager(std::shared_ptr<VulkanDevice> device)
     : device_(device)
@@ -143,4 +143,4 @@ void ResourceManager::cleanupAll() {
     Logger::info("所有资源已清理");
 }
 
-} // namespace vgame
+} // namespace owengine

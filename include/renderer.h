@@ -35,7 +35,7 @@
 // ECS 系统
 #include "ecs/ecs.h"
 
-namespace vgame {
+namespace owengine {
 
 constexpr uint32_t MAX_FRAMES_IN_FLIGHT = 2;
 
@@ -159,7 +159,7 @@ private:
     std::unique_ptr<Input> input;
     std::unique_ptr<Physics> physics;
     std::unique_ptr<FloorRenderer> floorRenderer;
-    std::unique_ptr<TerrainRenderer> terrainRenderer;
+    std::shared_ptr<TerrainRenderer> terrainRenderer;
     std::unique_ptr<CubeRenderer> cubeRenderer;
     std::unique_ptr<SkyboxRenderer> skyboxRenderer;
     std::unique_ptr<ModelRenderer> modelRenderer;
@@ -246,6 +246,6 @@ private:
     static void framebufferResizeCallback(GLFWwindow* window, int width, int height);
 };
 
-} // namespace vgame
+} // namespace owengine
 
 #endif // RENDERER_H

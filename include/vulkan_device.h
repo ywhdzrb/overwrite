@@ -7,7 +7,7 @@
 #include <string>
 #include <optional>
 
-namespace vgame {
+namespace owengine {
 
 struct SwapChainSupportDetails {
     VkSurfaceCapabilitiesKHR capabilities;
@@ -66,6 +66,6 @@ private:
     VkImageView depthImageView = VK_NULL_HANDLE;
 };
 
-} // namespace vgame
+} // namespace owengine
 
 #endif // VULKAN_DEVICE_H

@@ -8,7 +8,7 @@
 #include <algorithm>
 #include <limits>
 
-namespace vgame {
+namespace owengine {
 
 // VulkanSwapchain构造函数
 VulkanSwapchain::VulkanSwapchain(std::shared_ptr<VulkanDevice> device, GLFWwindow* window)
@@ -157,4 +157,4 @@ void VulkanSwapchain::recreate(GLFWwindow* window) {
     create();
 }
 
-} // namespace vgame
+} // namespace owengine

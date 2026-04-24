@@ -80,6 +80,20 @@ world.setPlayer(player);
 using TerrainHeightQuery = std::function<float(float x, float z)>;
 ```
 
+### 斜坡运动
+
+当玩家着地且地面法向量偏离垂直方向（`dot(groundNormal, up) < 0.999`）时，
+MovementSystem 将水平输入投影到坡面上：
+
+```
+v_proj = v - n * (v · n)
+```
+
+其中 `n` 为 PhysicsSystem 在上帧计算出的 `groundNormal`。投影后的速度保留 Y 分量，
+直接更新 `transform.position.xyz`，使角色沿地形轮廓平滑移动，避免水平移动导致的穿透/悬空锯齿。
+
+PhysicsSystem 仅在容差范围（±0.1f）内做微小修正。两者配合实现斜坡上的平滑运动。
+
 ### 类定义
 
 ```cpp
@@ -188,7 +202,16 @@ private:
     bool checkGroundCollision(const glm::vec3& position, float height) const;
     bool checkAABBCollision(const glm::vec3& pos1, const glm::vec3& size1,
                            const glm::vec3& pos2, const glm::vec3& size2) const;
+    // 查询地形高度（内部含单帧缓存，同一帧同一坐标只计算一次）
     float queryTerrainHeight(float x, float z) const;
+    // 用中心差分法计算地形表面法向量（centerHeight 由调用方预查询，避免中心点重复计算）
+    glm::vec3 computeTerrainNormal(float x, float z, float centerHeight) const;
+
+    // 每帧单条目高度缓存，mutable 仅用于性能优化
+    mutable bool cachedQueryValid_{false};
+    mutable float cachedQueryX_{0.0f};
+    mutable float cachedQueryZ_{0.0f};
+    mutable float cachedQueryHeight_{0.0f};
 };
 ```
 
@@ -258,13 +281,42 @@ void PhysicsSystem::update(float deltaTime) {
 
 ## 设计说明
 
-### 地形系统
+### 系统更新顺序
+
+更新顺序在 `client_systems.cpp` 中定义：
+
+```cpp
+void ClientWorld::updateClientSystems(float deltaTime) {
+    // 1. 输入系统
+    inputSystem_->update(deltaTime);
+    // 2. 移动系统（水平输入投影到坡面 → 更新 position.xyz）
+    movementSystem_->update(deltaTime);
+    // 3. 物理系统（重力/着地/跳跃 + 容差范围内的微小修正）
+    physicsSystem_->update(deltaTime);
+    // 4. 相机系统
+    cameraControllerSystem_->update(deltaTime);
+}
+```
+
+MovementSystem 先运行，将输入投影到坡面并更新所有三维坐标；
+PhysicsSystem 后运行，仅做重力/跳跃/容差修正。两者不互相覆盖 Y 坐标。
+
+### 地形高度查询
 
 物理系统使用 `isGrounded` 状态控制重力应用，而非坐标比较：
 
 - `groundHeight`：动态值，由地形系统更新
+- `groundNormal`：由 `computeTerrainNormal()` 用中心差分法计算
 - `isGrounded`：核心状态，决定是否应用重力
-- 支持地形高度查询接口，用于未来地形系统
+- 通过 `setTerrainQuery()` 注入地形系统委托（如 `TerrainRenderer::getHeight`）
+
+### 高度缓存
+
+`queryTerrainHeight()` 包含每帧单条目坐标缓存：
+同一帧内重复查询相同 `(x, z)` 坐标时直接返回缓存值，
+避免重复的 Perlin 噪声计算。尤其 `computeTerrainNormal()` 需要查询
+中心点 + 4 个邻居点，其中 4 个邻居点可能被后续正常查询命中缓存。
+传入 `centerHeight` 参数进一步消除中心点重复查询。
 
 ### 碰撞检测
 

@@ -13,7 +13,7 @@
 #include <unordered_map>
 #include <mutex>
 
-namespace vgame {
+namespace owengine {
 namespace server {
 
 using json = nlohmann::json;
@@ -84,6 +84,6 @@ private:
 };
 
 } // namespace server
-} // namespace vgame
+} // namespace owengine
 
 #endif // WEBSOCKET_SERVER_H

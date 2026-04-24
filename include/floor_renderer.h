@@ -6,7 +6,7 @@
 #include <memory>
 #include "i_renderer.h"
 
-namespace vgame {
+namespace owengine {
 
 class VulkanDevice;
 class VulkanCommandBuffer;
@@ -50,6 +50,6 @@ protected:
     uint32_t indexCount;
 };
 
-} // namespace vgame
+} // namespace owengine
 
 #endif // FLOOR_RENDERER_H

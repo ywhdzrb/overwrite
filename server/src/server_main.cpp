@@ -6,7 +6,7 @@
 #include <thread>
 #include <chrono>
 
-using namespace vgame::server;
+using namespace owengine::server;
 using json = nlohmann::json;
 
 std::atomic<bool> g_running{true};

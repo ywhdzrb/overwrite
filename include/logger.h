@@ -5,7 +5,7 @@
 #include <iostream>
 #include <sstream>
 
-namespace vgame {
+namespace owengine {
 
 enum class LogLevel {
     DEBUG,
@@ -27,6 +27,6 @@ private:
     static std::string getCurrentTime();
 };
 
-} // namespace vgame
+} // namespace owengine
 
 #endif // LOGGER_H

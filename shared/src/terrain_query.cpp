@@ -2,7 +2,7 @@
 #include <cmath>
 #include <random>
 
-namespace vgame {
+namespace owengine {
 
 namespace {
 
@@ -99,4 +99,4 @@ float TerrainQuery::getHeight(float x, float z) {
     return baseHeight + height;
 }
 
-} // namespace vgame
+} // namespace owengine

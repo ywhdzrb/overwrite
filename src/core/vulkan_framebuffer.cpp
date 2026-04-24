@@ -4,7 +4,7 @@
 #include "vulkan_device.h"
 #include <stdexcept>
 
-namespace vgame {
+namespace owengine {
 
 // VulkanFramebuffer构造函数
 VulkanFramebuffer::VulkanFramebuffer(std::shared_ptr<VulkanDevice> device, VkRenderPass renderPass)
@@ -63,4 +63,4 @@ void VulkanFramebuffer::recreate(const std::vector<VkImageView>& swapchainImageV
     create(swapchainImageViews, swapchainExtent, colorImageView);
 }
 
-} // namespace vgame
+} // namespace owengine

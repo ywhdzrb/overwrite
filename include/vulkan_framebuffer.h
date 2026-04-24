@@ -5,7 +5,7 @@
 #include <vector>
 #include <memory>
 
-namespace vgame {
+namespace owengine {
 
 class VulkanDevice;
 
@@ -30,6 +30,6 @@ private:
     std::vector<VkFramebuffer> swapchainFramebuffers;
 };
 
-} // namespace vgame
+} // namespace owengine
 
 #endif // VULKAN_FRAMEBUFFER_H

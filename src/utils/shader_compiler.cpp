@@ -5,7 +5,7 @@
 #include <iostream>
 #include <cstdlib>
 
-namespace vgame {
+namespace owengine {
 
 // 编译着色器
 // 读取GLSL源码并编译为SPIR-V
@@ -45,4 +45,4 @@ bool ShaderCompiler::compileToSpirV(const std::string& sourceFile, const std::st
     return true;
 }
 
-} // namespace vgame
+} // namespace owengine

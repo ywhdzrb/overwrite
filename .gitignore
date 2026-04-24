@@ -57,3 +57,5 @@ imgui.ini
 AGENTS.md
 
 .qwen/
+
+.cache/

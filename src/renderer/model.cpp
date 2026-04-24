@@ -7,7 +7,7 @@
 #include <iostream>
 #include <unordered_map>
 
-namespace vgame {
+namespace owengine {
 
 using namespace std;
 
@@ -146,4 +146,4 @@ void Model::cleanup() {
     indices.clear();
 }
 
-} // namespace vgame
+} // namespace owengine

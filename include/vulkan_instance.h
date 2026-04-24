@@ -7,7 +7,7 @@
 #include <string>
 #include <optional>
 
-namespace vgame {
+namespace owengine {
 
 struct QueueFamilyIndices {
     std::optional<uint32_t> graphicsFamily;
@@ -78,6 +78,6 @@ private:
 #endif
 };
 
-} // namespace vgame
+} // namespace owengine
 
 #endif // VULKAN_INSTANCE_H

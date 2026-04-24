@@ -6,7 +6,7 @@
 #include <string>
 #include <functional>
 
-namespace vgame {
+namespace owengine {
 
 /**
  * @brief 渲染器抽象接口
@@ -95,6 +95,6 @@ enum class RendererType {
     UI = 100          // UI 元素（最后渲染）
 };
 
-} // namespace vgame
+} // namespace owengine
 
 #endif // I_RENDERER_H

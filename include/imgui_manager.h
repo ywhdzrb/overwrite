@@ -10,7 +10,7 @@
 #include "vulkan_swapchain.h"
 #include "vulkan_render_pass.h"
 
-namespace vgame {
+namespace owengine {
 
 class ImGuiManager {
 public:
@@ -49,6 +49,6 @@ private:
     bool initialized = false;
 };
 
-} // namespace vgame
+} // namespace owengine
 
 #endif // IMGUI_MANAGER_H

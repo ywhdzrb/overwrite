@@ -5,7 +5,7 @@
 #include <memory>
 #include <array>
 
-namespace vgame {
+namespace owengine {
 
 class Input {
 public:
@@ -105,6 +105,6 @@ private:
     double smoothMouseY;
 };
 
-} // namespace vgame
+} // namespace owengine
 
 #endif // INPUT_H

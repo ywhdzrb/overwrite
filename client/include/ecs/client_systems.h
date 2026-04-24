@@ -7,10 +7,11 @@
 #include <glm/glm.hpp>
 #include "ecs/client_components.h"
 #include "ecs/systems.h"  // 共享系统
+#include "ecs/camera_controller_system.h"  // 相机控制系统
 #include "network/network_system.h"  // 网络系统
 #include "network/server_discovery.h"  // 服务器发现
 
-namespace vgame {
+namespace owengine {
 namespace ecs {
 
 /**
@@ -98,6 +99,7 @@ public:
     // 获取客户端系统
     InputSystem* getInputSystem() { return inputSystem_.get(); }
     CameraSystem* getCameraSystem() { return cameraSystem_.get(); }
+    CameraControllerSystem* getCameraControllerSystem() { return cameraControllerSystem_.get(); }
     MovementSystem* getMovementSystem() { return movementSystem_.get(); }
     PhysicsSystem* getPhysicsSystem() { return physicsSystem_.get(); }
     client::NetworkSystem* getNetworkSystem() { return networkSystem_.get(); }
@@ -119,12 +121,16 @@ public:
     void setTerrainQuery(TerrainHeightQuery query) {
         if (physicsSystem_) {
             physicsSystem_->setTerrainQuery(std::move(query));
+            adjustPlayerToTerrain();
         }
     }
     
 private:
+    void adjustPlayerToTerrain();
+    
     std::unique_ptr<InputSystem> inputSystem_;
     std::unique_ptr<CameraSystem> cameraSystem_;
+    std::unique_ptr<CameraControllerSystem> cameraControllerSystem_;
     std::unique_ptr<MovementSystem> movementSystem_;
     std::unique_ptr<PhysicsSystem> physicsSystem_;
     std::unique_ptr<client::NetworkSystem> networkSystem_;
@@ -134,6 +140,6 @@ private:
 };
 
 } // namespace ecs
-} // namespace vgame
+} // namespace owengine
 
 #endif // CLIENT_ECS_SYSTEMS_H

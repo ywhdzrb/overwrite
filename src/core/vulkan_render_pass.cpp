@@ -4,7 +4,7 @@
 #include "vulkan_device.h"
 #include <stdexcept>
 
-namespace vgame {
+namespace owengine {
 
 // VulkanRenderPass构造函数
 VulkanRenderPass::VulkanRenderPass(std::shared_ptr<VulkanDevice> device, VkFormat swapchainImageFormat, VkSampleCountFlagBits msaaSamples)
@@ -159,4 +159,4 @@ void VulkanRenderPass::cleanup() {
     }
 }
 
-} // namespace vgame
+} // namespace owengine

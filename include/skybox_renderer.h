@@ -8,7 +8,7 @@
 #include <string>
 #include "i_renderer.h"
 
-namespace vgame {
+namespace owengine {
 
 class VulkanDevice;
 class VulkanPipeline;
@@ -82,6 +82,6 @@ protected:
     VkPipelineLayout pipelineLayout;
 };
 
-} // namespace vgame
+} // namespace owengine
 
 #endif // SKYBOX_RENDERER_H

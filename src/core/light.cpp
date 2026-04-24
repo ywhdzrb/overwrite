@@ -4,7 +4,7 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <cmath>
 
-namespace vgame {
+namespace owengine {
 
 Light::Light(const std::string& name, LightType type)
     : name(name),
@@ -183,4 +183,4 @@ void Light::setStandardAttenuation(float range) {
     }
 }
 
-} // namespace vgame
+} // namespace owengine
