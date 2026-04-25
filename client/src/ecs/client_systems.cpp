@@ -52,7 +52,7 @@ void InputSystem::update(float deltaTime) {
         input.moveRight = keys_[GLFW_KEY_D] || keys_[GLFW_KEY_RIGHT];
         input.jump = isKeyJustPressed(GLFW_KEY_SPACE);
         input.sprint = keys_[GLFW_KEY_LEFT_SHIFT];
-        input.freeCameraToggle = isKeyJustPressed(GLFW_KEY_R);
+        input.freeCameraToggle = false;  // R 键功能已移除
         input.spaceHeld = keys_[GLFW_KEY_SPACE];
         input.shiftHeld = keys_[GLFW_KEY_LEFT_SHIFT];
         

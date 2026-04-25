@@ -8,6 +8,7 @@
 #include <string>
 #include <chrono>
 #include <unordered_map>
+#include <queue>
 
 #include "vulkan_instance.h"
 #include "vulkan_device.h"
@@ -51,6 +52,15 @@ public:
 
     void run();
 
+    // 树木区块系统（公开给内部方法）
+    struct TreeChunkKey {
+        int x, z;
+        bool operator==(const TreeChunkKey& o) const { return x == o.x && z == o.z; }
+    };
+    struct TreeChunkKeyHash {
+        size_t operator()(const TreeChunkKey& k) const { return std::hash<int>()(k.x * 1000 + k.z); }
+    };
+
 private:
     void initWindow();
     void initVulkan();
@@ -72,8 +82,10 @@ private:
     
     /**
      * @brief 创建描述符池
+     * @param maxSets 最大描述符集数量
+     * @param descriptorCount COMBINED_IMAGE_SAMPLER 类型的描述符数量
      */
-    void createDescriptorPool();
+    void createDescriptorPool(uint32_t maxSets, uint32_t descriptorCount);
     
     /**
      * @brief 创建描述符集
@@ -100,6 +112,12 @@ private:
      */
     void setMsaaSamples(VkSampleCountFlagBits samples);
     
+    /**
+     * @brief 启动时预加载树木（哈希确定性位置，一次性加载不卡顿）
+     */
+    void generateTreesAtStartup();
+    void updateTreesByPlayerPosition();
+
     /**
      * @brief 加载模型配置文件
      */
@@ -179,6 +197,7 @@ private:
     
     // 玩家动画状态
     bool playerWasMoving = false;
+    bool playerIsFlying_ = false;
     
     // 远程玩家模型
     struct RemotePlayerModels {
@@ -241,6 +260,30 @@ private:
     VkBuffer lightUniformBuffer = VK_NULL_HANDLE;
     VkDeviceMemory lightUniformBufferMemory = VK_NULL_HANDLE;
 
+    // ========== 树木系统 ==========
+    static constexpr float TREE_CHUNK_SIZE = 16.0f;
+    static constexpr int TREE_LOAD_RADIUS = 6;
+    static constexpr int TREE_MAX_TOTAL = 300;
+
+    struct LoadedTree {
+        std::string id;
+        std::unique_ptr<GLTFModel> model;
+        VkDescriptorSet descriptorSet = VK_NULL_HANDLE;
+    };
+
+    // 待加载的树描述（预计算位置，排队加载）
+    struct TreeLoadJob {
+        std::string id;
+        TreeChunkKey chunk;
+        glm::vec3 position;
+        float scale;
+        float yaw;
+    };
+
+    std::unordered_set<TreeChunkKey, TreeChunkKeyHash> loadedChunks_;
+    std::vector<LoadedTree> trees_;
+    std::queue<TreeLoadJob> treeLoadQueue_;
+    
     static void framebufferResizeCallback(GLFWwindow* window, int width, int height);
 };
 

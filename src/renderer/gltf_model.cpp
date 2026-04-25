@@ -160,6 +160,11 @@ bool GLTFModel::loadFromFile(const std::string& filename) {
 }
 
 void GLTFModel::cleanup() {
+    // 先释放描述符集，避免 GPU 描述符泄漏
+    if (device) {
+        cleanupDescriptorSets(device->getDevice());
+    }
+
     meshes.clear();
     materials.clear();
     nodes.clear();

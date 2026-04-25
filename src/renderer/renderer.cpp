@@ -11,6 +11,7 @@
 #include <set>
 #include <algorithm>
 #include <limits>
+#include <random>
 #include <thread>
 
 namespace owengine {
@@ -210,8 +211,27 @@ void Renderer::initVulkan() {
     // 创建描述符集布局
     createDescriptorSetLayouts();
     
-    // 创建描述符池
-    createDescriptorPool();
+    // 探测 tree.glb 的 mesh 数量，用于动态计算描述符池大小
+    int treeMeshCount = 0;
+    {
+        auto probeModel = std::make_unique<GLTFModel>(vulkanDevice, textureLoader);
+        if (probeModel->loadFromFile("assets/models/tree.glb")) {
+            treeMeshCount = static_cast<int>(probeModel->getMeshCount());
+        }
+    }
+
+    // 计算描述符池大小：基础模型 + 树木池
+    const int baseModelSets = 20;       // player_idle(7) + player_walk(7) + sample(2) + 默认(1) + light(1) + 余量
+    const int treePoolSize = TREE_MAX_TOTAL * (treeMeshCount + 1);
+    const uint32_t maxSets = baseModelSets + treePoolSize;
+    const uint32_t descriptorCount = maxSets;
+
+    Logger::info("[描述符池] 计算: 基础=" + std::to_string(baseModelSets)
+                 + ", 树木mesh=" + std::to_string(treeMeshCount)
+                 + ", 预加载树木=" + std::to_string(TREE_MAX_TOTAL)
+                 + ", maxSets=" + std::to_string(maxSets));
+
+    createDescriptorPool(maxSets, descriptorCount);
     
     // 从 JSON 配置文件加载场景（光源和模型）
     SceneConfig sceneConfig = loadSceneConfig("assets/models/models.json");
@@ -252,6 +272,9 @@ void Renderer::initVulkan() {
     
     // 创建描述符集（创建默认描述符集）
     createDescriptorSets();
+    
+    // 启动时预加载树木（哈希确定性位置，一次性加载不卡顿）
+    generateTreesAtStartup();
     
     // 初始化 ImGui
     imguiManager = std::make_unique<ImGuiManager>(vulkanDevice, swapchain, renderPass, window, vulkanInstance->getInstance(), msaaSamples);
@@ -495,7 +518,7 @@ void Renderer::mainLoop() {
         
                 
         
-                                        freeCameraToggle = input->isKeyJustPressed(GLFW_KEY_R);
+                                        freeCameraToggle = false;
         
                 
         
@@ -709,55 +732,42 @@ void Renderer::updateGameLogic(float deltaTime) {
         auto& transform = ecsClientWorld->registry().get<ecs::TransformComponent>(player);
         terrainRenderer->update(transform.position);
         
-        // 获取输入状态
-        auto* input = ecsClientWorld->registry().try_get<ecs::InputStateComponent>(player);
+        // 飞行模式（F 键切换，space 上升 shift 下降）
+        auto* physics = ecsClientWorld->registry().try_get<ecs::PhysicsComponent>(player);
+        static bool prevF = false;
+        bool curF = glfwGetKey(window, GLFW_KEY_F) == GLFW_PRESS;
+        if (curF && !prevF) playerIsFlying_ = !playerIsFlying_;
+        prevF = curF;
         
-        // 处理自由视角切换
-        if (input && input->freeCameraToggle) {
-            camera->toggleFreeCamera();
+        if (playerIsFlying_ && physics) {
+            physics->useGravity = false;
+            physics->isGrounded = false;
+            auto* input = ecsClientWorld->registry().try_get<ecs::InputStateComponent>(player);
+            float flySpeed = 10.0f;
+            if (input) {
+                if (input->spaceHeld) transform.position.y += flySpeed * deltaTime;
+                if (input->shiftHeld) transform.position.y -= flySpeed * deltaTime;
+            }
+        } else if (physics) {
+            physics->useGravity = true;
         }
         
-        // 自由视角模式下，使用相机自己的移动逻辑
-        if (camera->isFreeCameraMode() && input) {
-            // 处理鼠标移动（自由视角需要单独处理）
-            if (input->mouseDeltaX != 0.0f || input->mouseDeltaY != 0.0f) {
-                camera->processMouseMovement(input->mouseDeltaX, input->mouseDeltaY);
-            }
-            
-            camera->update(deltaTime,
-                          input->moveForward, input->moveBackward,
-                          input->moveLeft, input->moveRight,
-                          input->jump, false,  // freeCameraToggle 已处理
-                          input->shiftHeld, input->spaceHeld);
-        } else {
-            // 非自由视角模式下，从 ECS 同步到旧相机系统（用于渲染）
+        // 从 ECS 同步到旧相机系统
+        {
             auto mainCam = ecsClientWorld->getMainCamera();
             if (ecsClientWorld->registry().valid(mainCam)) {
-                auto& transform = ecsClientWorld->registry().get<ecs::TransformComponent>(mainCam);
+                auto& camTransform = ecsClientWorld->registry().get<ecs::TransformComponent>(mainCam);
                 
-                // 第三人称模式：设置目标位置，第一人称：设置相机位置
                 if (camera->getMode() == Camera::Mode::ThirdPerson) {
-                    camera->setTarget(transform.position);
+                    camera->setTarget(camTransform.position);
                 } else {
-                    camera->setPosition(transform.position);
+                    camera->setPosition(camTransform.position);
                 }
-                // 转换 yaw 到旧 Camera 坐标系（旧Camera yaw=0→+X, 新ECS yaw=0→-Z）
-                camera->setYawPitch(180.0f - transform.yaw, transform.pitch);
-                
-                // 从玩家实体获取移动速度/灵敏度（相机实体没有 MovementControllerComponent）
-                float moveSpeed = userMovementSpeed;
-                float sensitivity = userSensitivity;
-                auto playerEnt = ecsClientWorld->getPlayer();
-                if (ecsClientWorld->registry().valid(playerEnt)) {
-                    if (auto* pc = ecsClientWorld->registry().try_get<ecs::MovementControllerComponent>(playerEnt)) {
-                        moveSpeed = pc->movementSpeed;
-                        sensitivity = pc->mouseSensitivity;
-                    }
-                }
-                camera->setMovementSpeed(moveSpeed);
-                camera->setMouseSensitivity(sensitivity);
+                camera->setYawPitch(180.0f - camTransform.yaw, camTransform.pitch);
             }
         }
+        
+        updateTreesByPlayerPosition();
     } else {
         // 使用旧的系统更新
         float speed = userMovementSpeed;
@@ -777,6 +787,9 @@ void Renderer::updateGameLogic(float deltaTime) {
                       spaceHeld);
         
         physics->update(deltaTime);
+        
+        // 按玩家位置动态更新树木区块
+        updateTreesByPlayerPosition();
     }
     
     // 第三人称模式：将 player 模型位置同步到相机目标
@@ -1103,10 +1116,10 @@ void Renderer::drawFrame() {
             glm::vec3 worldMin = model->getPosition() + bbox.first * model->getScale();
             glm::vec3 worldMax = model->getPosition() + bbox.second * model->getScale();
             
-            // 距离剔除（超过100米不渲染）
+            // 距离剔除（树木生成范围 ±192 单位，留余量设为 250 米）
             glm::vec3 modelCenter = (worldMin + worldMax) * 0.5f;
             float distance = glm::length(modelCenter - camera->getPosition());
-            if (distance > 100.0f) {
+            if (distance > 250.0f) {
                 continue;
             }
             
@@ -1125,6 +1138,30 @@ void Renderer::drawFrame() {
                         camera->getViewMatrix(), camera->getProjectionMatrix(),
                         model->getModelMatrix());
         }
+    }
+
+    // 渲染动态树木（带距离剔除）
+    for (const auto& tree : trees_) {
+        if (!tree.model || tree.model->getMeshCount() == 0 || tree.descriptorSet == VK_NULL_HANDLE) {
+            continue;
+        }
+        
+        auto bbox = tree.model->getBoundingBox();
+        glm::vec3 modelCenter = tree.model->getPosition() + (bbox.first + bbox.second) * 0.5f * tree.model->getScale();
+        float distance = glm::length(modelCenter - camera->getPosition());
+        if (distance > 250.0f) continue;
+
+        if (!camera->getFrustum().isAABBInside(
+            tree.model->getPosition() + bbox.first * tree.model->getScale(),
+            tree.model->getPosition() + bbox.second * tree.model->getScale())) {
+            continue;
+        }
+
+        vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                               graphicsPipeline->getPipelineLayout(), 0, 1, &tree.descriptorSet, 0, nullptr);
+        tree.model->render(commandBuffer, graphicsPipeline->getPipelineLayout(),
+                        camera->getViewMatrix(), camera->getProjectionMatrix(),
+                        tree.model->getModelMatrix());
     }
     
     // 渲染远程玩家模型
@@ -1472,13 +1509,12 @@ void Renderer::createDescriptorSetLayouts() {
     }
 }
 
-void Renderer::createDescriptorPool() {
-    // 描述符池大小
+void Renderer::createDescriptorPool(uint32_t maxSets, uint32_t descriptorCount) {
     std::array<VkDescriptorPoolSize, 2> poolSizes{};
     
-    // 纹理描述符（多个模型需要多个纹理）
+    // 纹理描述符（每个 mesh 需要一个 sampler，每个模型需要一个额外 sampler）
     poolSizes[0].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-    poolSizes[0].descriptorCount = 10;  // 增加以支持多个模型
+    poolSizes[0].descriptorCount = descriptorCount;
     
     // 光源 uniform buffer
     poolSizes[1].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
@@ -1486,9 +1522,10 @@ void Renderer::createDescriptorPool() {
 
     VkDescriptorPoolCreateInfo poolInfo{};
     poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+    poolInfo.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
     poolInfo.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
     poolInfo.pPoolSizes = poolSizes.data();
-    poolInfo.maxSets = 512;  // 支持多模型 + 每个 mesh 的独立描述符集（tree.glb 有 302 个 mesh）
+    poolInfo.maxSets = maxSets;
 
     if (vkCreateDescriptorPool(vulkanDevice->getDevice(), &poolInfo, nullptr, &descriptorPool) != VK_SUCCESS) {
         throw std::runtime_error("failed to create descriptor pool!");
@@ -2215,10 +2252,10 @@ void Renderer::renderDeveloperPanel() {
     ImGui::PopStyleVar();
 }
 
-void Renderer::framebufferResizeCallback(GLFWwindow* window, int width, int height) {
-    auto renderer = reinterpret_cast<Renderer*>(glfwGetWindowUserPointer(window));
-    renderer->framebufferResized = true;
-}
+// void Renderer::framebufferResizeCallback(GLFWwindow* window, int width, int height) {
+//     auto renderer = reinterpret_cast<Renderer*>(glfwGetWindowUserPointer(window));
+//     renderer->framebufferResized = true;
+// }
 
 // ==================== 场景配置加载 ====================
 
@@ -2456,6 +2493,155 @@ VkDescriptorSet Renderer::createModelDescriptorSet(GLTFModel* model, const std::
     }
     
     return descriptorSet;
+}
+
+void Renderer::generateTreesAtStartup() {
+    const float minScale = 0.2f;
+    const float maxScale = 0.5f;
+    const double treeLambda = 0.15;
+    const int genRadius = TREE_LOAD_RADIUS;
+
+    trees_.resize(TREE_MAX_TOTAL);
+    loadedChunks_.reserve(TREE_MAX_TOTAL * 2);
+
+    // 扫描所有区块，预计算树的位置，加入加载队列
+    int jobCount = 0;
+    for (int dz = -genRadius; dz <= genRadius; ++dz) {
+        for (int dx = -genRadius; dx <= genRadius; ++dx) {
+            if (jobCount >= TREE_MAX_TOTAL * 3) break;
+
+            TreeChunkKey key{dx, dz};
+
+            std::mt19937 chunkGen(key.x * 100000 + key.z);
+            std::poisson_distribution<int> poisson(treeLambda);
+            int treeCount = poisson(chunkGen);
+            if (treeCount <= 0) {
+                loadedChunks_.insert(key);  // 无树的区块标记已处理
+                continue;
+            }
+
+            float chunkWorldX = static_cast<float>(key.x) * TREE_CHUNK_SIZE;
+            float chunkWorldZ = static_cast<float>(key.z) * TREE_CHUNK_SIZE;
+
+            std::uniform_real_distribution<float> posOffset(1.0f, TREE_CHUNK_SIZE - 1.0f);
+            std::uniform_real_distribution<float> scaleGen(minScale, maxScale);
+            std::uniform_real_distribution<float> yawGen(0.0f, 360.0f);
+
+            for (int t = 0; t < treeCount; ++t) {
+                for (int attempt = 0; attempt < 10; ++attempt) {
+                    float wx = chunkWorldX + posOffset(chunkGen);
+                    float wz = chunkWorldZ + posOffset(chunkGen);
+
+                    float y = terrainRenderer->getHeight(wx, wz);
+                    if (y < -2.0f) continue;
+
+                    float scale = scaleGen(chunkGen);
+                    float yaw = yawGen(chunkGen);
+
+                    std::string id = "tree_" + std::to_string(key.x) + "_" + std::to_string(key.z) + "_" + std::to_string(t);
+
+                    treeLoadQueue_.push({id, key, {wx, y, wz}, scale, yaw});
+                    jobCount++;
+                    break;
+                }
+            }
+            loadedChunks_.insert(key);  // 区块已队列
+        }
+    }
+
+    Logger::info("[树木] 已预计算 " + std::to_string(jobCount) + " 棵树，启动异步加载");
+}
+
+void Renderer::updateTreesByPlayerPosition() {
+    if (!camera) return;
+
+    // 每帧加载 1 棵树（从队列取）
+    if (!treeLoadQueue_.empty()) {
+        auto job = treeLoadQueue_.front();
+        treeLoadQueue_.pop();
+
+        auto model = std::make_unique<GLTFModel>(vulkanDevice, textureLoader);
+        model->setPosition(job.position);
+        model->setRotation(0.0f, job.yaw, 0.0f);
+        model->setScale(glm::vec3(job.scale));
+
+        try {
+            if (model->loadFromFile("assets/models/tree.glb")) {
+                model->createMeshDescriptorSets(textureDescriptorSetLayout, descriptorPool);
+                VkDescriptorSet descriptorSet = createModelDescriptorSet(model.get(), job.id);
+
+                // LRU: 找池中空位或最旧的树替换
+                int bestSlot = -1;
+                for (int i = 0; i < TREE_MAX_TOTAL; ++i) {
+                    if (!trees_[i].model || !trees_[i].descriptorSet) {
+                        bestSlot = i;
+                        break;
+                    }
+                }
+                if (bestSlot < 0) {
+                    // 池满了，替换最旧位置（基于当前队列位置取模）
+                    static int replaceIdx = 0;
+                    bestSlot = replaceIdx++ % TREE_MAX_TOTAL;
+                }
+
+                if (trees_[bestSlot].descriptorSet != VK_NULL_HANDLE) {
+                    vkFreeDescriptorSets(vulkanDevice->getDevice(), descriptorPool, 1, &trees_[bestSlot].descriptorSet);
+                }
+                trees_[bestSlot] = {job.id, std::move(model), descriptorSet};
+            }
+        } catch (const std::exception& e) {
+            Logger::error("[树木] 树 " + job.id + " 加载异常: " + std::string(e.what()));
+        } catch (...) {
+            Logger::error("[树木] 树 " + job.id + " 加载异常: 未知错误");
+        }
+    }
+
+    // 检测玩家是否移动到新区块，加入加载队列
+    glm::vec3 pos = camera->getPosition();
+    int cx = static_cast<int>(std::floor(pos.x / TREE_CHUNK_SIZE));
+    int cz = static_cast<int>(std::floor(pos.z / TREE_CHUNK_SIZE));
+
+    const float minScale = 0.2f;
+    const float maxScale = 0.5f;
+    const double treeLambda = 0.15;
+
+    for (int dz = -TREE_LOAD_RADIUS; dz <= TREE_LOAD_RADIUS; ++dz) {
+        for (int dx = -TREE_LOAD_RADIUS; dx <= TREE_LOAD_RADIUS; ++dx) {
+            TreeChunkKey key{cx + dx, cz + dz};
+            if (loadedChunks_.count(key)) continue;
+            loadedChunks_.insert(key);
+
+            std::mt19937 chunkGen(key.x * 100000 + key.z);
+            std::poisson_distribution<int> poisson(treeLambda);
+            int treeCount = poisson(chunkGen);
+            if (treeCount <= 0) continue;
+
+            float chunkWorldX = static_cast<float>(key.x) * TREE_CHUNK_SIZE;
+            float chunkWorldZ = static_cast<float>(key.z) * TREE_CHUNK_SIZE;
+
+            std::uniform_real_distribution<float> posOffset(1.0f, TREE_CHUNK_SIZE - 1.0f);
+            std::uniform_real_distribution<float> scaleGen(minScale, maxScale);
+            std::uniform_real_distribution<float> yawGen(0.0f, 360.0f);
+
+            for (int t = 0; t < treeCount; ++t) {
+                for (int attempt = 0; attempt < 10; ++attempt) {
+                    float wx = chunkWorldX + posOffset(chunkGen);
+                    float wz = chunkWorldZ + posOffset(chunkGen);
+
+                    float y = terrainRenderer->getHeight(wx, wz);
+                    if (y < -2.0f) continue;
+
+                    float scale = scaleGen(chunkGen);
+                    float yaw = yawGen(chunkGen);
+
+                    std::string id = "tree_" + std::to_string(key.x) + "_" + std::to_string(key.z) + "_" + std::to_string(t);
+
+                    treeLoadQueue_.push({id, key, {wx, y, wz}, scale, yaw});
+                    break;
+                }
+            }
+        }
+    }
 }
 
 void Renderer::loadModelsFromConfig(const std::vector<ModelConfig>& configs) {

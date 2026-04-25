@@ -30,6 +30,7 @@ Camera::Camera(int windowWidth, int windowHeight)
       terrainQuery_(nullptr),
       freeCameraMode(false),
       freeCameraSpeed(15.0f),
+      skipSyncOnce_(false),
       mode(Mode::ThirdPerson),  // 默认第三人称
       targetPosition(0.0f, 0.0f, -5.0f),
       thirdPersonDistance(8.0f),

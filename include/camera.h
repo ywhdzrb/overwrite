@@ -76,18 +76,26 @@ public:
                 bool moveLeft, bool moveRight, bool jump, bool freeCameraToggle,
                 bool shiftPressed, bool spaceHeld);
     
-    // 切换自由视角模式
-    void toggleFreeCamera() { 
+    // 切换自由视角模式（可选：切回时设置的目标位置）
+    void toggleFreeCamera(const glm::vec3& targetPos = glm::vec3(0.0f)) { 
         freeCameraMode = !freeCameraMode; 
         if (freeCameraMode) {
             mode = Mode::Free;
         } else {
             mode = Mode::ThirdPerson;
+            if (targetPos != glm::vec3(0.0f)) {
+                targetPosition = targetPos;
+                skipSyncOnce_ = true;  // 下一帧跳过同步
+            }
         }
     }
     
     // 检查是否在自由视角模式
     bool isFreeCameraMode() const { return freeCameraMode; }
+    
+    // 检查是否需要跳过同步（仅一次）
+    bool needsSyncSkip() const { return skipSyncOnce_; }
+    void clearSyncSkip() { skipSyncOnce_ = false; }
     
     // 切换相机模式
     void setMode(Mode m) { mode = m; }
@@ -227,6 +235,7 @@ private:
     // 自由视角模式
     bool freeCameraMode;
     float freeCameraSpeed;
+    bool skipSyncOnce_;  // 切回时跳过一帧同步
     
     // 第三人称模式
     Mode mode;
