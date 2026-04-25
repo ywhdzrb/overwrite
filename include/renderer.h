@@ -21,7 +21,6 @@
 #include "input.h"
 #include "imgui_manager.h"
 #include "physics.h"
-#include "floor_renderer.h"
 #include "terrain_renderer.h"
 #include "cube_renderer.h"
 #include "skybox_renderer.h"
@@ -158,7 +157,6 @@ private:
     std::unique_ptr<Camera> camera;
     std::unique_ptr<Input> input;
     std::unique_ptr<Physics> physics;
-    std::unique_ptr<FloorRenderer> floorRenderer;
     std::shared_ptr<TerrainRenderer> terrainRenderer;
     std::unique_ptr<CubeRenderer> cubeRenderer;
     std::unique_ptr<SkyboxRenderer> skyboxRenderer;

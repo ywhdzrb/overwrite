@@ -130,7 +130,7 @@ private:
     World& world_;
     std::vector<std::pair<glm::vec3, glm::vec3>> collisionBoxes_;  // position, size
     TerrainHeightQuery terrainQuery_;                               // 地形高度查询回调
-    float defaultGroundHeight_{-1.5f};                              // 默认地面高度
+    float defaultGroundHeight_{-100.0f};                            // 默认地面高度（很低以允许走到山谷）
     
     bool checkGroundCollision(const glm::vec3& position, float height) const;
     bool checkAABBCollision(const glm::vec3& pos1, const glm::vec3& size1,

@@ -69,8 +69,8 @@ TerrainRenderer::TerrainRenderer(std::shared_ptr<VulkanDevice> device)
       renderRadius(10),
       generationRadius(13),       // renderRadius + 3，提前生成边界外区块
       maxChunksPerFrame(4),       // 每帧异步任务上限，削去区块生成峰值
-      noiseScale(0.08f),
-      heightScale(5.0f),
+      noiseScale(0.01f),
+      heightScale(25.0f),
       baseHeight(0.0f),
       terrainColor(0.0f, 1.0f, 0.0f),
       created_(false) {

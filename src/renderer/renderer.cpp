@@ -146,8 +146,6 @@ void Renderer::initVulkan() {
         std::cout << "[Renderer] ECS 系统初始化完成" << std::endl;
     }
     
-    floorRenderer = std::make_unique<FloorRenderer>(vulkanDevice);
-    floorRenderer->create();
     terrainRenderer = std::make_shared<TerrainRenderer>(vulkanDevice);
     terrainRenderer->create();
     
@@ -258,24 +256,6 @@ void Renderer::initVulkan() {
     // 初始化 ImGui
     imguiManager = std::make_unique<ImGuiManager>(vulkanDevice, swapchain, renderPass, window, vulkanInstance->getInstance(), msaaSamples);
     imguiManager->init();
-    
-    // 设置立方体位置（在相机正前方）
-    glm::vec3 cubePos(0.0f, 0.0f, -1.0f);
-    cubeRenderer->setPosition(cubePos);
-    
-    // 添加立方体碰撞体（大小为 5.0）
-    physics->addCollisionBox(cubePos, glm::vec3(5.0f, 5.0f, 5.0f));
-    camera->addCollisionBox(cubePos, glm::vec3(5.0f, 5.0f, 5.0f));
-    
-    // 同时添加到 ECS 系统
-    if (useECS && ecsClientWorld) {
-        if (ecsClientWorld->getMovementSystem()) {
-            ecsClientWorld->getMovementSystem()->addCollisionBox(cubePos, glm::vec3(5.0f, 5.0f, 5.0f));
-        }
-        if (ecsClientWorld->getPhysicsSystem()) {
-            ecsClientWorld->getPhysicsSystem()->addCollisionBox(cubePos, glm::vec3(5.0f, 5.0f, 5.0f));
-        }
-    }
     
     // 初始化时间
     lastTime = std::chrono::high_resolution_clock::now();
@@ -1067,10 +1047,6 @@ void Renderer::drawFrame() {
     vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
                            graphicsPipeline->getPipelineLayout(), 1, 1, &lightDescriptorSet, 0, nullptr);
     
-    // 渲染地板
-    floorRenderer->render(commandBuffer, graphicsPipeline->getPipelineLayout(),
-                         camera->getViewMatrix(), camera->getProjectionMatrix());
-    
     // 渲染地形 (位置 10, 0.9, 1, 大小 1x1, 柏林噪声高度图)
     terrainRenderer->render(commandBuffer, graphicsPipeline->getPipelineLayout(),
                           camera->getViewMatrix(), camera->getProjectionMatrix());
@@ -1329,7 +1305,6 @@ void Renderer::cleanup() {
     cubeRenderer.reset();
     modelRenderer.reset();
     skyboxRenderer.reset();
-    floorRenderer.reset();
     // 清除地形查询回调，防止悬空指针
     if (camera) camera->clearTerrainQuery();
     if (physics) physics->clearTerrainQuery();
