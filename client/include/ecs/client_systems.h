@@ -7,6 +7,7 @@
 #include <glm/glm.hpp>
 #include "ecs/client_components.h"
 #include "ecs/systems.h"  // 共享系统
+#include "ecs/i_game_world.h"  // 游戏世界接口
 #include "ecs/camera_controller_system.h"  // 相机控制系统
 #include "network/network_system.h"  // 网络系统
 #include "network/server_discovery.h"  // 服务器发现
@@ -85,7 +86,7 @@ private:
  * 
  * 扩展共享 World，添加客户端专用功能
  */
-class ClientWorld : public World {
+class ClientWorld : public World, public IGameWorld {
 public:
     ClientWorld();
     ~ClientWorld();
@@ -121,7 +122,6 @@ public:
     // 服务器发现
     bool startServerDiscovery();
     void stopServerDiscovery();
-    std::vector<DiscoveredServer> getDiscoveredServers();
     
     // 创建带相机组件的玩家
     entt::entity createClientPlayer(int viewportWidth, int viewportHeight);
@@ -134,7 +134,34 @@ public:
         }
     }
     
+    // ── IGameWorld 接口实现 ────────────────
+    void reset() override;
+    bool isPlayerValid() const override;
+    glm::vec3 getPlayerPosition() const override;
+    glm::vec3 getCameraFront() const override { return getCameraFrontImpl(); }
+    glm::vec3 getCameraRight() const override { return getCameraRightImpl(); }
+    void setPlayerSpeed(float speed) override;
+    void setPlayerSensitivity(float sens) override;
+    void setPlayerDirection(const glm::vec3& front, const glm::vec3& right) override;
+    void updateFlight(float dt, bool spaceHeld, bool shiftHeld) override;
+    bool isPlayerFlying() const override { return isFlying_; }
+    void setPlayerFlying(bool flying) override { isFlying_ = flying; }
+    void syncCamera(class Camera& camera) override;
+    std::vector<RemotePlayerInfo> getRemotePlayers() const override;
+    std::vector<DiscoveredServerInfo> getDiscoveredServers() override;
+    entt::registry* getRegistry() override { return &registry(); }
+
+    // 桥接：IGameWorld 接口命名 → ClientWorld 现有方法
+    void updateSync(float dt) override { updateClientSystemsSync(dt); }
+    void updateAsync(float dt) override { updateClientSystemsAsync(dt); }
+    void sendNetInputs() override { sendNetworkInputs(); }
+    class InputSystem* getInputSystem() const override { return inputSystem_.get(); }
+    class owengine::client::NetworkSystem* getNetworkSystem() const override { return networkSystem_.get(); }
+
 private:
+    glm::vec3 getCameraFrontImpl() const;
+    glm::vec3 getCameraRightImpl() const;
+
     void adjustPlayerToTerrain();
     
     std::unique_ptr<InputSystem> inputSystem_;
@@ -146,6 +173,7 @@ private:
     std::unique_ptr<ServerDiscoveryScanner> discoveryScanner_;
     int viewportWidth_{800};
     int viewportHeight_{600};
+    bool isFlying_ = false;
 };
 
 } // namespace ecs

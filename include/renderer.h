@@ -33,8 +33,11 @@
 #include "scene_config.h"
 #include "resource_manager.h"
 
-// ECS 系统
-#include "ecs/ecs.h"
+// ECS 系统（通过接口解耦）
+#include "ecs/i_game_world.h"
+
+// 前向声明（具体类型仅 cpp 中使用）
+namespace owengine { namespace ecs { class ClientWorld; } }
 
 namespace owengine {
 
@@ -52,15 +55,6 @@ public:
     Renderer& operator=(const Renderer&) = delete;
 
     void run();
-
-    // 树木区块系统（公开给内部方法）
-    struct TreeChunkKey {
-        int x, z;
-        bool operator==(const TreeChunkKey& o) const { return x == o.x && z == o.z; }
-    };
-    struct TreeChunkKeyHash {
-        size_t operator()(const TreeChunkKey& k) const { return std::hash<int>()(k.x * 1000 + k.z); }
-    };
 
 private:
     void initWindow();
@@ -113,8 +107,7 @@ private:
      */
     void setMsaaSamples(VkSampleCountFlagBits samples);
     
-    void generateTreesAtStartup();
-    void updateTreesByPlayerPosition();
+    // 树系统由独立类 TreeSystem 管理
 
     /**
      * @brief 加载模型配置文件
@@ -206,9 +199,10 @@ private:
     };
     std::unordered_map<std::string, RemotePlayerModels> remotePlayerModels;
     
-    // ECS 系统
+    // ECS 系统（通过接口解耦，具体类型仅用于 dev panel 逃生口）
     bool useECS{true};
-    std::unique_ptr<ecs::ClientWorld> ecsClientWorld;
+    std::unique_ptr<ecs::IGameWorld> ecsClientWorld;
+    ecs::ClientWorld* rawClientWorld_ = nullptr;
 
     // 时间管理
     std::chrono::high_resolution_clock::time_point lastTime;
@@ -260,27 +254,8 @@ private:
     VkBuffer lightUniformBuffer = VK_NULL_HANDLE;
     VkDeviceMemory lightUniformBufferMemory = VK_NULL_HANDLE;
 
-    // ========== 树木系统 ==========
-    // 所有树木实例共享同一个 tree.glb 模型的 geometry + 纹理，
-    // 每棵树只存储位置/姿态数据，消除每棵树的 GPU 缓冲创建开销
-    static constexpr float TREE_CHUNK_SIZE = 16.0f;
-    static constexpr int TREE_LOAD_RADIUS = 6;
-    static constexpr int TREE_MAX_TOTAL = 300;
-
-    struct LoadedTree {
-        std::string id;
-        glm::vec3 position;
-        float scale = 1.0f;
-        float yaw = 0.0f;
-    };
-
-    // 共享树木几何体模型（所有树实例共用）
-    std::unique_ptr<GLTFModel> sharedTreeModel_;
-    // 共享树木描述符池（301 个 mesh 描述符集 + 备用）
-    VkDescriptorPool sharedTreePool_ = VK_NULL_HANDLE;
-
-    std::unordered_set<TreeChunkKey, TreeChunkKeyHash> loadedChunks_;
-    std::vector<LoadedTree> trees_;
+    // 树系统（独立类，Renderer 不直接管理树木数据）
+    std::unique_ptr<class TreeSystem> treeSystem_;
     
     static void framebufferResizeCallback(GLFWwindow* window, int width, int height);
 };

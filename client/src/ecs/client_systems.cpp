@@ -305,12 +305,22 @@ void ClientWorld::stopServerDiscovery() {
     }
 }
 
-std::vector<DiscoveredServer> ClientWorld::getDiscoveredServers() {
-    if (discoveryScanner_) {
-        discoveryScanner_->pruneStaleServers();
-        return discoveryScanner_->getDiscoveredServers();
+std::vector<DiscoveredServerInfo> ClientWorld::getDiscoveredServers() {
+    std::vector<DiscoveredServerInfo> result;
+    if (!discoveryScanner_) return result;
+    auto servers = discoveryScanner_->getDiscoveredServers();
+    result.reserve(servers.size());
+    for (const auto& s : servers) {
+        DiscoveredServerInfo info;
+        info.name = s.name;
+        info.host = s.host;
+        info.port = s.port;
+        info.pingMs = 0;  // DiscoveredServer 无 ping 字段
+        info.currentPlayers = s.currentPlayers;
+        info.maxPlayers = s.maxPlayers;
+        result.push_back(std::move(info));
     }
-    return {};
+    return result;
 }
 
 entt::entity ClientWorld::createClientPlayer(int viewportWidth, int viewportHeight) {
@@ -366,6 +376,123 @@ void ClientWorld::adjustPlayerToTerrain() {
     physics->isJumping = false;
     
     std::cout << "[ClientWorld] 调整玩家位置到地形高度: " << terrainHeight << std::endl;
+}
+
+// ==================== IGameWorld 接口实现 ====================
+
+void ClientWorld::reset() {
+    // 断开网络连接与清理
+    if (networkSystem_ && networkSystem_->isConnected()) {
+        networkSystem_->disconnect();
+    }
+    inputSystem_.reset();
+    cameraSystem_.reset();
+    cameraControllerSystem_.reset();
+    movementSystem_.reset();
+    physicsSystem_.reset();
+    discoveryScanner_.reset();
+}
+
+bool ClientWorld::isPlayerValid() const {
+    auto player = getPlayer();
+    return registry().valid(player);
+}
+
+glm::vec3 ClientWorld::getPlayerPosition() const {
+    auto player = getPlayer();
+    if (!registry().valid(player)) return glm::vec3(0.0f);
+    return registry().get<TransformComponent>(player).position;
+}
+
+glm::vec3 ClientWorld::getCameraFrontImpl() const {
+    if (cameraControllerSystem_) return cameraControllerSystem_->getCameraFront();
+    // 回退：从玩家实体的变换计算 front
+    auto player = getPlayer();
+    if (registry().valid(player)) {
+        auto& t = registry().get<TransformComponent>(player);
+        return t.getFront();
+    }
+    return glm::vec3(0.0f, 0.0f, -1.0f);
+}
+
+glm::vec3 ClientWorld::getCameraRightImpl() const {
+    if (cameraControllerSystem_) return cameraControllerSystem_->getCameraRight();
+    auto player = getPlayer();
+    if (registry().valid(player)) {
+        auto& t = registry().get<TransformComponent>(player);
+        return t.getRight();
+    }
+    return glm::vec3(1.0f, 0.0f, 0.0f);
+}
+
+void ClientWorld::setPlayerSpeed(float speed) {
+    auto player = getPlayer();
+    if (!registry().valid(player)) return;
+    auto& controller = registry().get<MovementControllerComponent>(player);
+    controller.movementSpeed = speed;
+}
+
+void ClientWorld::setPlayerSensitivity(float sens) {
+    auto player = getPlayer();
+    if (!registry().valid(player)) return;
+    auto& controller = registry().get<MovementControllerComponent>(player);
+    controller.mouseSensitivity = sens;
+}
+
+void ClientWorld::setPlayerDirection(const glm::vec3& front, const glm::vec3& right) {
+    auto player = getPlayer();
+    if (!registry().valid(player)) return;
+    auto& controller = registry().get<MovementControllerComponent>(player);
+    controller.moveFront = front;
+    controller.moveRight = right;
+}
+
+void ClientWorld::updateFlight(float dt, bool spaceHeld, bool shiftHeld) {
+    auto player = getPlayer();
+    if (!registry().valid(player)) return;
+    auto* physics = registry().try_get<PhysicsComponent>(player);
+    auto* transform = registry().try_get<TransformComponent>(player);
+    if (!physics || !transform) return;
+
+    if (isFlying_) {
+        physics->useGravity = false;
+        physics->isGrounded = false;
+        float flySpeed = 10.0f;
+        if (spaceHeld) transform->position.y += flySpeed * dt;
+        if (shiftHeld) transform->position.y -= flySpeed * dt;
+    } else {
+        physics->useGravity = true;
+    }
+}
+
+void ClientWorld::syncCamera(class Camera& camera) {
+    auto mainCam = getMainCamera();
+    if (!registry().valid(mainCam)) return;
+    auto& camTransform = registry().get<TransformComponent>(mainCam);
+
+    if (camera.getMode() == Camera::Mode::ThirdPerson) {
+        camera.setTarget(camTransform.position);
+    } else {
+        camera.setPosition(camTransform.position);
+    }
+    camera.setYawPitch(180.0f - camTransform.yaw, camTransform.pitch);
+}
+
+std::vector<RemotePlayerInfo> ClientWorld::getRemotePlayers() const {
+    std::vector<RemotePlayerInfo> result;
+    if (!networkSystem_) return result;
+    const auto& players = networkSystem_->getRemotePlayers();
+    result.reserve(players.size());
+    for (const auto& [clientId, player] : players) {
+        RemotePlayerInfo info;
+        info.clientId = clientId;
+        info.isMoving = player.isMoving;
+        info.position = player.position;
+        info.yaw = player.yaw;
+        info.scale = 1.0f;
+        result.push_back(std::move(info));
+    }
+    return result;
 }
 
 } // namespace ecs

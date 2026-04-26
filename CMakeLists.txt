@@ -220,6 +220,7 @@ set(SOURCES
     src/renderer/texture.cpp
     src/renderer/texture_loader.cpp
     src/renderer/gltf_model.cpp
+    src/renderer/tree_system.cpp
     src/utils/shader_compiler.cpp
     src/utils/logger.cpp
     src/utils/scene_config.cpp

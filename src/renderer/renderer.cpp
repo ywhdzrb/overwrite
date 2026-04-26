@@ -14,6 +14,9 @@
 #include <random>
 #include <thread>
 #include <future>
+#include "tree_system.h"
+#include "ecs/ecs.h"  // 仅 cpp 引用具体类型（dev panel + raw ptr cast）
+#include "ecs/client_systems.h"  // InputSystem 完整定义
 
 namespace owengine {
 
@@ -137,14 +140,13 @@ void Renderer::initVulkan() {
     input = std::make_unique<Input>(window);
     physics = std::make_unique<Physics>();
     
-    // 初始化 ECS 系统（使用 ClientWorld）
+    // 初始化 ECS 系统（通过 IGameWorld 接口）
     if (useECS) {
-        ecsClientWorld = std::make_unique<ecs::ClientWorld>();
+        auto* clientWorld = new ecs::ClientWorld();
+        rawClientWorld_ = clientWorld;
+        ecsClientWorld.reset(clientWorld);
         ecsClientWorld->initClientSystems(window, windowWidth, windowHeight);
-        
-        // 创建玩家实体
         ecsClientWorld->createClientPlayer(windowWidth, windowHeight);
-        
         std::cout << "[Renderer] ECS 系统初始化完成" << std::endl;
     }
     
@@ -212,18 +214,8 @@ void Renderer::initVulkan() {
     // 创建描述符集布局
     createDescriptorSetLayouts();
     
-    // 树木模型 mesh 数量（tree.glb 固定 301 个 mesh，每棵树使用独立描述符池动态分配）
-    const int treeMeshCount = 301;
-
-    // 计算基础描述符池大小：仅非树木模型使用全局池
-    const int baseModelSets = 20;       // player_idle(7) + player_walk(7) + sample(2) + 默认(1) + light(1) + 余量
-    const uint32_t maxSets = baseModelSets;
-    const uint32_t descriptorCount = maxSets;
-
-    Logger::info("[描述符池] 基础模型池: 基础=" + std::to_string(baseModelSets)
-                 + ", 树木使用独立描述符池(每棵树动态分配, mesh=" + std::to_string(treeMeshCount) + ")");
-
-    createDescriptorPool(maxSets, descriptorCount);
+    // 基础描述符池：仅非树木模型使用全局池
+    createDescriptorPool(20, 20);
     
     // 从 JSON 配置文件加载场景（光源和模型）
     SceneConfig sceneConfig = loadSceneConfig("assets/models/models.json");
@@ -265,27 +257,9 @@ void Renderer::initVulkan() {
     // 创建描述符集（创建默认描述符集）
     createDescriptorSets();
     
-    // 加载共享树木模型（所有树实例共用 geometry + 纹理，仅加载一次）
-    sharedTreeModel_ = std::make_unique<GLTFModel>(vulkanDevice, textureLoader);
-    if (sharedTreeModel_->loadFromFile("assets/models/tree.glb")) {
-        VkDescriptorPoolSize poolSize{};
-        poolSize.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-        poolSize.descriptorCount = 312;
-        VkDescriptorPoolCreateInfo poolInfo{};
-        poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-        poolInfo.poolSizeCount = 1;
-        poolInfo.pPoolSizes = &poolSize;
-        poolInfo.maxSets = 302;
-        if (vkCreateDescriptorPool(vulkanDevice->getDevice(), &poolInfo, nullptr, &sharedTreePool_) == VK_SUCCESS) {
-            sharedTreeModel_->createMeshDescriptorSets(textureDescriptorSetLayout, sharedTreePool_);
-        }
-        Logger::info("[树木] 共享模型加载完成, mesh数: " + std::to_string(sharedTreeModel_->getMeshCount()));
-    } else {
-        Logger::error("[树木] 共享模型加载失败");
-    }
-    
-    // 为所有区块预计算树木位置（纯 CPU 计算，无 GPU 操作）
-    generateTreesAtStartup();
+    // 初始化树系统（独立类，通过依赖注入创建）
+    treeSystem_ = std::make_unique<TreeSystem>(vulkanDevice, textureLoader, textureDescriptorSetLayout);
+    treeSystem_->init();
     
     // 初始化 ImGui
     imguiManager = std::make_unique<ImGuiManager>(vulkanDevice, swapchain, renderPass, window, vulkanInstance->getInstance(), msaaSamples);
@@ -721,81 +695,44 @@ void Renderer::updateGameLogic(float deltaTime) {
     }
     
     if (useECS && ecsClientWorld) {
-        // 获取玩家实体并更新设置
-        auto player = ecsClientWorld->getPlayer();
-        if (ecsClientWorld->registry().valid(player)) {
-            auto& controller = ecsClientWorld->registry().get<ecs::MovementControllerComponent>(player);
-            
-            // 更新速度设置
-            controller.movementSpeed = userMovementSpeed;
-            controller.mouseSensitivity = userSensitivity;
-            
-            // 先同步相机方向（在主线程同步阶段，GLFW 回调读取必须主线程）
-            if (ecsClientWorld->getCameraControllerSystem()) {
-                controller.moveFront = ecsClientWorld->getCameraControllerSystem()->getCameraFront();
-                controller.moveRight = ecsClientWorld->getCameraControllerSystem()->getCameraRight();
-            } else {
-                controller.moveFront = camera->getFront();
-                controller.moveRight = camera->getRight();
-            }
-            
-            // === 1) 同步阶段：输入 + 网络接收（必须主线程） ===
-            ecsClientWorld->updateClientSystemsSync(deltaTime);
-            
-            // 拷贝玩家当前位置（异步期间主线程读取，避免数据竞争）
-            auto& transform = ecsClientWorld->registry().get<ecs::TransformComponent>(player);
-            glm::vec3 playerPos = transform.position;
-            
-            // === 2) 异步阶段：纯 CPU 模拟（后台线程） ===
-            auto ecsFuture = std::async(std::launch::async, [this, deltaTime]() {
-                ecsClientWorld->updateClientSystemsAsync(deltaTime);
-            });
-            
-            // === 3) 主线程并行工作（与异步模拟同时执行） ===
-            terrainRenderer->update(playerPos);
-            updateTreesByPlayerPosition();
-            
-            // === 4) 等待异步模拟完成 ===
-            ecsFuture.wait();
-            
-            // === 5) 发送网络输入（同步阶段已获取输入，异步阶段已更新位置） ===
-            ecsClientWorld->sendNetworkInputs();
-            
-            // 飞行模式（F 键切换，space 上升 shift 下降）
-            auto* physics = ecsClientWorld->registry().try_get<ecs::PhysicsComponent>(player);
-            static bool prevF = false;
-            bool curF = glfwGetKey(window, GLFW_KEY_F) == GLFW_PRESS;
-            if (curF && !prevF) playerIsFlying_ = !playerIsFlying_;
-            prevF = curF;
-            
-            if (playerIsFlying_ && physics) {
-                physics->useGravity = false;
-                physics->isGrounded = false;
-                auto* input = ecsClientWorld->registry().try_get<ecs::InputStateComponent>(player);
-                float flySpeed = 10.0f;
-                if (input) {
-                    if (input->spaceHeld) transform.position.y += flySpeed * deltaTime;
-                    if (input->shiftHeld) transform.position.y -= flySpeed * deltaTime;
-                }
-            } else if (physics) {
-                physics->useGravity = true;
-            }
-            
-            // 从 ECS 同步到旧相机系统
-            {
-                auto mainCam = ecsClientWorld->getMainCamera();
-                if (ecsClientWorld->registry().valid(mainCam)) {
-                    auto& camTransform = ecsClientWorld->registry().get<ecs::TransformComponent>(mainCam);
-                    
-                    if (camera->getMode() == Camera::Mode::ThirdPerson) {
-                        camera->setTarget(camTransform.position);
-                    } else {
-                        camera->setPosition(camTransform.position);
-                    }
-                    camera->setYawPitch(180.0f - camTransform.yaw, camTransform.pitch);
-                }
-            }
-        }
+        // 通过 IGameWorld 接口操作游戏世界，不再直接访问 ECS registry
+        ecsClientWorld->setPlayerSpeed(userMovementSpeed);
+        ecsClientWorld->setPlayerSensitivity(userSensitivity);
+        ecsClientWorld->setPlayerDirection(camera->getFront(), camera->getRight());
+        
+        // === 1) 同步阶段：输入 + 网络接收（必须主线程） ===
+        ecsClientWorld->updateSync(deltaTime);
+        
+        // 拷贝玩家当前位置（异步期间主线程读取，避免数据竞争）
+        glm::vec3 playerPos = ecsClientWorld->getPlayerPosition();
+        
+        // === 2) 异步阶段：纯 CPU 模拟（后台线程） ===
+        auto ecsFuture = std::async(std::launch::async, [this, deltaTime]() {
+            ecsClientWorld->updateAsync(deltaTime);
+        });
+        
+        // === 3) 主线程并行工作（与异步模拟同时执行） ===
+        terrainRenderer->update(playerPos);
+        if (treeSystem_) treeSystem_->update(playerPos, *camera);
+        
+        // === 4) 等待异步模拟完成 ===
+        ecsFuture.wait();
+        
+        // === 5) 发送网络输入 ===
+        ecsClientWorld->sendNetInputs();
+        
+        // 飞行模式（F 键切换）
+        static bool prevF = false;
+        bool curF = glfwGetKey(window, GLFW_KEY_F) == GLFW_PRESS;
+        if (curF && !prevF) ecsClientWorld->setPlayerFlying(!ecsClientWorld->isPlayerFlying());
+        prevF = curF;
+        ecsClientWorld->updateFlight(deltaTime, spaceHeld, shiftInput);
+        
+        // 从 ECS 同步到旧相机系统
+        ecsClientWorld->syncCamera(*camera);
+        
+        // 将 playerIsFlying_ 同步标记
+        playerIsFlying_ = ecsClientWorld->isPlayerFlying();
     } else {
         // 使用旧的系统更新
         float speed = userMovementSpeed;
@@ -817,7 +754,7 @@ void Renderer::updateGameLogic(float deltaTime) {
         physics->update(deltaTime);
         
         // 按玩家位置动态更新树木区块
-        updateTreesByPlayerPosition();
+        if (treeSystem_) treeSystem_->update(camera->getPosition(), *camera);
     }
     
     // 第三人称模式：将 player 模型位置同步到相机目标
@@ -826,50 +763,27 @@ void Renderer::updateGameLogic(float deltaTime) {
         bool isMoving = false;
         float moveYaw = camera->getYaw();  // 默认面向相机方向
         
-        if (useECS && ecsClientWorld) {
-            auto player = ecsClientWorld->getPlayer();
-            if (ecsClientWorld->registry().valid(player)) {
-                auto* input = ecsClientWorld->registry().try_get<ecs::InputStateComponent>(player);
-                if (input) {
-                    isMoving = input->moveForward || input->moveBackward || 
-                              input->moveLeft || input->moveRight;
-                    
-                    // 计算移动方向
-                    if (isMoving) {
-                        float dirX = 0.0f, dirZ = 0.0f;
-                        
-                        // 相机的前方向（忽略Y轴）
-                        glm::vec3 camFront = camera->getFront();
-                        camFront.y = 0.0f;
-                        camFront = glm::normalize(camFront);
-                        
-                        // 相机的右方向
-                        glm::vec3 camRight = camera->getRight();
-                        camRight.y = 0.0f;
-                        camRight = glm::normalize(camRight);
-                        
-                        // 根据输入计算移动向量
-                        if (input->moveForward) {
-                            dirX += camFront.x;
-                            dirZ += camFront.z;
-                        }
-                        if (input->moveBackward) {
-                            dirX -= camFront.x;
-                            dirZ -= camFront.z;
-                        }
-                        if (input->moveLeft) {
-                            dirX -= camRight.x;
-                            dirZ -= camRight.z;
-                        }
-                        if (input->moveRight) {
-                            dirX += camRight.x;
-                            dirZ += camRight.z;
-                        }
-                        
-                        // 计算移动方向的yaw角度
-                        if (dirX != 0.0f || dirZ != 0.0f) {
-                            moveYaw = glm::degrees(atan2(-dirX, -dirZ));
-                        }
+        if (useECS && ecsClientWorld && ecsClientWorld->isPlayerValid()) {
+            auto* r = ecsClientWorld->getRegistry();
+            auto player = rawClientWorld_->getPlayer();
+            auto* input = r ? r->try_get<ecs::InputStateComponent>(player) : nullptr;
+            if (input) {
+                isMoving = input->moveForward || input->moveBackward || 
+                          input->moveLeft || input->moveRight;      
+                if (isMoving) {
+                    float dirX = 0.0f, dirZ = 0.0f;
+                    glm::vec3 camFront = camera->getFront();
+                    camFront.y = 0.0f;
+                    camFront = glm::normalize(camFront);
+                    glm::vec3 camRight = camera->getRight();
+                    camRight.y = 0.0f;
+                    camRight = glm::normalize(camRight);
+                    if (input->moveForward)  { dirX += camFront.x; dirZ += camFront.z; }
+                    if (input->moveBackward) { dirX -= camFront.x; dirZ -= camFront.z; }
+                    if (input->moveLeft)     { dirX -= camRight.x; dirZ -= camRight.z; }
+                    if (input->moveRight)    { dirX += camRight.x; dirZ += camRight.z; }
+                    if (dirX != 0.0f || dirZ != 0.0f) {
+                        moveYaw = glm::degrees(atan2(-dirX, -dirZ));
                     }
                 }
             }
@@ -915,8 +829,8 @@ void Renderer::updateGameLogic(float deltaTime) {
     }
     
     // 更新远程玩家模型
-    if (ecsClientWorld && ecsClientWorld->isConnectedToServer()) {
-        auto& remotePlayers = ecsClientWorld->getNetworkSystem()->getRemotePlayers();
+    if (ecsClientWorld && ecsClientWorld->isConnectedToServer() && rawClientWorld_) {
+        auto& remotePlayers = rawClientWorld_->getNetworkSystem()->getRemotePlayers();
         
         // 移除已离开的玩家模型
         for (auto it = remotePlayerModels.begin(); it != remotePlayerModels.end(); ) {
@@ -1168,31 +1082,8 @@ void Renderer::drawFrame() {
         }
     }
 
-    // 渲染动态树木（带距离剔除）
-    // 渲染树木（共享模型 + 每棵树独立变换矩阵）
-    for (const auto& tree : trees_) {
-        if (tree.id.empty()) continue;
-
-        // 距离剔除
-        float distance = glm::length(tree.position - camera->getPosition());
-        if (distance > 250.0f) continue;
-
-        // 视锥体剔除（使用共享模型的包围盒 + 树的缩放）
-        auto bbox = sharedTreeModel_->getBoundingBox();
-        if (!camera->getFrustum().isAABBInside(
-            tree.position + bbox.first * tree.scale,
-            tree.position + bbox.second * tree.scale)) {
-            continue;
-        }
-
-        glm::mat4 modelMatrix = glm::translate(glm::mat4(1.0f), tree.position)
-                              * glm::rotate(glm::mat4(1.0f), glm::radians(tree.yaw), glm::vec3(0.0f, 1.0f, 0.0f))
-                              * glm::scale(glm::mat4(1.0f), glm::vec3(tree.scale));
-
-        sharedTreeModel_->render(commandBuffer, graphicsPipeline->getPipelineLayout(),
-                                camera->getViewMatrix(), camera->getProjectionMatrix(),
-                                modelMatrix);
-    }
+    // 渲染树木（由 TreeSystem 统一管理剔除 + 渲染）
+    treeSystem_->render(commandBuffer, graphicsPipeline->getPipelineLayout(), *camera);
     
     // 渲染远程玩家模型
     for (auto& [clientId, models] : remotePlayerModels) {
@@ -1364,9 +1255,10 @@ void Renderer::cleanup() {
     imguiManager.reset();
     
     // 清理 ECS 客户端世界
-    if (ecsClientWorld && ecsClientWorld->getPhysicsSystem()) {
-        ecsClientWorld->getPhysicsSystem()->clearTerrainQuery();
+    if (rawClientWorld_ && rawClientWorld_->getPhysicsSystem()) {
+        rawClientWorld_->getPhysicsSystem()->clearTerrainQuery();
     }
+    rawClientWorld_ = nullptr;
     ecsClientWorld.reset();
     
     cubeRenderer.reset();
@@ -1384,13 +1276,8 @@ void Renderer::cleanup() {
     lightManager.reset();
     textureLoader.reset();
     
-    // 清理树木（共享模型，仅释放共享池）
-    sharedTreeModel_.reset();
-    if (sharedTreePool_ != VK_NULL_HANDLE) {
-        vkDestroyDescriptorPool(vulkanDevice->getDevice(), sharedTreePool_, nullptr);
-        sharedTreePool_ = VK_NULL_HANDLE;
-    }
-    trees_.clear();
+    // 清理树木（由 TreeSystem 统一管理）
+    treeSystem_.reset();
 
     // 清理描述符集资源
     if (lightUniformBuffer != VK_NULL_HANDLE) {
@@ -2093,11 +1980,11 @@ void Renderer::renderDeveloperPanel() {
         camera->setDefaultGroundHeight(groundHeight);
         physics->setGroundHeight(groundHeight);
         // 同步到 ECS
-        if (useECS && ecsClientWorld) {
-            auto player = ecsClientWorld->getPlayer();
-            if (ecsClientWorld->registry().valid(player)) {
-                auto& physicsComp = ecsClientWorld->registry().get<ecs::PhysicsComponent>(player);
-                physicsComp.groundHeight = groundHeight;
+        if (useECS && rawClientWorld_ && ecsClientWorld->isPlayerValid()) {
+            auto* r = ecsClientWorld->getRegistry();
+            auto player = rawClientWorld_->getPlayer();
+            if (r && r->valid(player)) {
+                r->get<ecs::PhysicsComponent>(player).groundHeight = groundHeight;
             }
         }
     }
@@ -2106,11 +1993,11 @@ void Renderer::renderDeveloperPanel() {
     if (ImGui::SliderFloat("跳跃力", &jumpForce, 0.0f, 20.0f)) {
         camera->setJumpForce(jumpForce);
         // 同步到 ECS
-        if (useECS && ecsClientWorld) {
-            auto player = ecsClientWorld->getPlayer();
-            if (ecsClientWorld->registry().valid(player)) {
-                auto& physicsComp = ecsClientWorld->registry().get<ecs::PhysicsComponent>(player);
-                physicsComp.jumpForce = jumpForce;
+        if (useECS && rawClientWorld_ && ecsClientWorld->isPlayerValid()) {
+            auto* r = ecsClientWorld->getRegistry();
+            auto player = rawClientWorld_->getPlayer();
+            if (r && r->valid(player)) {
+                r->get<ecs::PhysicsComponent>(player).jumpForce = jumpForce;
             }
         }
     }
@@ -2224,8 +2111,9 @@ void Renderer::renderDeveloperPanel() {
         ImGui::Text("服务器: %s:%d", serverHost, serverPort);
         
         // 显示远程玩家数量
-        auto& remotePlayers = ecsClientWorld->getNetworkSystem()->getRemotePlayers();
-        ImGui::Text("远程玩家: %zu", remotePlayers.size());
+        auto remotePlayers2 = ecsClientWorld->getRemotePlayers();
+        (void)remotePlayers2;
+        ImGui::Text("远程玩家: %zu", rawClientWorld_ ? rawClientWorld_->getNetworkSystem()->getRemotePlayers().size() : 0);
         
         if (ImGui::Button("断开连接")) {
             disconnectRequested = true;
@@ -2550,129 +2438,6 @@ VkDescriptorSet Renderer::createModelDescriptorSet(GLTFModel* model, const std::
     }
     
     return descriptorSet;
-}
-
-// 启动时预计算所有树木位置（纯 CPU 计算，直接填入槽位）
-void Renderer::generateTreesAtStartup() {
-    const float minScale = 0.2f;
-    const float maxScale = 0.5f;
-    const double treeLambda = 0.15;
-    const int genRadius = TREE_LOAD_RADIUS;
-
-    trees_.resize(TREE_MAX_TOTAL);
-    loadedChunks_.reserve(TREE_MAX_TOTAL * 2);
-
-    int treeIdx = 0;
-    for (int dz = -genRadius; dz <= genRadius; ++dz) {
-        for (int dx = -genRadius; dx <= genRadius; ++dx) {
-            if (treeIdx >= TREE_MAX_TOTAL) break;
-
-            TreeChunkKey key{dx, dz};
-
-            std::mt19937 chunkGen(key.x * 100000 + key.z);
-            std::poisson_distribution<int> poisson(treeLambda);
-            int treeCount = poisson(chunkGen);
-            if (treeCount <= 0) {
-                loadedChunks_.insert(key);
-                continue;
-            }
-
-            float chunkWorldX = static_cast<float>(key.x) * TREE_CHUNK_SIZE;
-            float chunkWorldZ = static_cast<float>(key.z) * TREE_CHUNK_SIZE;
-
-            std::uniform_real_distribution<float> posOffset(1.0f, TREE_CHUNK_SIZE - 1.0f);
-            std::uniform_real_distribution<float> scaleGen(minScale, maxScale);
-            std::uniform_real_distribution<float> yawGen(0.0f, 360.0f);
-
-            for (int t = 0; t < treeCount && treeIdx < TREE_MAX_TOTAL; ++t) {
-                for (int attempt = 0; attempt < 10; ++attempt) {
-                    float wx = chunkWorldX + posOffset(chunkGen);
-                    float wz = chunkWorldZ + posOffset(chunkGen);
-
-                    float y = terrainRenderer->getHeight(wx, wz);
-                    if (y < -2.0f) continue;
-
-                    float scale = scaleGen(chunkGen);
-                    float yaw = yawGen(chunkGen);
-
-                    trees_[treeIdx].id = "tree_" + std::to_string(key.x) + "_" + std::to_string(key.z) + "_" + std::to_string(t);
-                    trees_[treeIdx].position = {wx, y, wz};
-                    trees_[treeIdx].scale = scale;
-                    trees_[treeIdx].yaw = yaw;
-                    treeIdx++;
-                    break;
-                }
-            }
-            loadedChunks_.insert(key);
-        }
-    }
-
-    Logger::info("[树木] 已预计算 " + std::to_string(treeIdx) + " 棵树，直接填入槽位");
-}
-
-// 按玩家位置动态更新树木区块
-// 直接计算位置填入槽位，无 GPU 操作
-void Renderer::updateTreesByPlayerPosition() {
-    if (!camera || !sharedTreeModel_) return;
-
-    // 检测玩家是否移动到新区块，直接填入槽位
-    glm::vec3 pos = camera->getPosition();
-    int cx = static_cast<int>(std::floor(pos.x / TREE_CHUNK_SIZE));
-    int cz = static_cast<int>(std::floor(pos.z / TREE_CHUNK_SIZE));
-
-    const float minScale = 0.2f;
-    const float maxScale = 0.5f;
-    const double treeLambda = 0.15;
-
-    for (int dz = -TREE_LOAD_RADIUS; dz <= TREE_LOAD_RADIUS; ++dz) {
-        for (int dx = -TREE_LOAD_RADIUS; dx <= TREE_LOAD_RADIUS; ++dx) {
-            TreeChunkKey key{cx + dx, cz + dz};
-            if (loadedChunks_.count(key)) continue;
-            loadedChunks_.insert(key);
-
-            std::mt19937 chunkGen(key.x * 100000 + key.z);
-            std::poisson_distribution<int> poisson(treeLambda);
-            int treeCount = poisson(chunkGen);
-            if (treeCount <= 0) continue;
-
-            float chunkWorldX = static_cast<float>(key.x) * TREE_CHUNK_SIZE;
-            float chunkWorldZ = static_cast<float>(key.z) * TREE_CHUNK_SIZE;
-
-            std::uniform_real_distribution<float> posOffset(1.0f, TREE_CHUNK_SIZE - 1.0f);
-            std::uniform_real_distribution<float> scaleGen(minScale, maxScale);
-            std::uniform_real_distribution<float> yawGen(0.0f, 360.0f);
-
-            for (int t = 0; t < treeCount; ++t) {
-                for (int attempt = 0; attempt < 10; ++attempt) {
-                    float wx = chunkWorldX + posOffset(chunkGen);
-                    float wz = chunkWorldZ + posOffset(chunkGen);
-
-                    float y = terrainRenderer->getHeight(wx, wz);
-                    if (y < -2.0f) continue;
-
-                    float scale = scaleGen(chunkGen);
-                    float yaw = yawGen(chunkGen);
-
-                    std::string id = "tree_" + std::to_string(key.x) + "_" + std::to_string(key.z) + "_" + std::to_string(t);
-
-                    // 找空槽位或替换最旧
-                    int slot = -1;
-                    for (int i = 0; i < TREE_MAX_TOTAL; ++i) {
-                        if (trees_[i].id.empty()) { slot = i; break; }
-                    }
-                    if (slot < 0) {
-                        static int replaceIdx = 0;
-                        slot = replaceIdx++ % TREE_MAX_TOTAL;
-                    }
-                    trees_[slot].id = id;
-                    trees_[slot].position = {wx, y, wz};
-                    trees_[slot].scale = scale;
-                    trees_[slot].yaw = yaw;
-                    break;
-                }
-            }
-        }
-    }
 }
 
 void Renderer::loadModelsFromConfig(const std::vector<ModelConfig>& configs) {
