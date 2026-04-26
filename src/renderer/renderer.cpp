@@ -211,25 +211,16 @@ void Renderer::initVulkan() {
     // 创建描述符集布局
     createDescriptorSetLayouts();
     
-    // 探测 tree.glb 的 mesh 数量，用于动态计算描述符池大小
-    int treeMeshCount = 0;
-    {
-        auto probeModel = std::make_unique<GLTFModel>(vulkanDevice, textureLoader);
-        if (probeModel->loadFromFile("assets/models/tree.glb")) {
-            treeMeshCount = static_cast<int>(probeModel->getMeshCount());
-        }
-    }
+    // 树木模型 mesh 数量（tree.glb 固定 301 个 mesh，每棵树使用独立描述符池动态分配）
+    const int treeMeshCount = 301;
 
-    // 计算描述符池大小：基础模型 + 树木池
+    // 计算基础描述符池大小：仅非树木模型使用全局池
     const int baseModelSets = 20;       // player_idle(7) + player_walk(7) + sample(2) + 默认(1) + light(1) + 余量
-    const int treePoolSize = TREE_MAX_TOTAL * (treeMeshCount + 1);
-    const uint32_t maxSets = baseModelSets + treePoolSize;
+    const uint32_t maxSets = baseModelSets;
     const uint32_t descriptorCount = maxSets;
 
-    Logger::info("[描述符池] 计算: 基础=" + std::to_string(baseModelSets)
-                 + ", 树木mesh=" + std::to_string(treeMeshCount)
-                 + ", 预加载树木=" + std::to_string(TREE_MAX_TOTAL)
-                 + ", maxSets=" + std::to_string(maxSets));
+    Logger::info("[描述符池] 基础模型池: 基础=" + std::to_string(baseModelSets)
+                 + ", 树木使用独立描述符池(每棵树动态分配, mesh=" + std::to_string(treeMeshCount) + ")");
 
     createDescriptorPool(maxSets, descriptorCount);
     
@@ -273,7 +264,26 @@ void Renderer::initVulkan() {
     // 创建描述符集（创建默认描述符集）
     createDescriptorSets();
     
-    // 启动时预加载树木（哈希确定性位置，一次性加载不卡顿）
+    // 加载共享树木模型（所有树实例共用 geometry + 纹理，仅加载一次）
+    sharedTreeModel_ = std::make_unique<GLTFModel>(vulkanDevice, textureLoader);
+    if (sharedTreeModel_->loadFromFile("assets/models/tree.glb")) {
+        VkDescriptorPoolSize poolSize{};
+        poolSize.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        poolSize.descriptorCount = 312;
+        VkDescriptorPoolCreateInfo poolInfo{};
+        poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+        poolInfo.poolSizeCount = 1;
+        poolInfo.pPoolSizes = &poolSize;
+        poolInfo.maxSets = 302;
+        if (vkCreateDescriptorPool(vulkanDevice->getDevice(), &poolInfo, nullptr, &sharedTreePool_) == VK_SUCCESS) {
+            sharedTreeModel_->createMeshDescriptorSets(textureDescriptorSetLayout, sharedTreePool_);
+        }
+        Logger::info("[树木] 共享模型加载完成, mesh数: " + std::to_string(sharedTreeModel_->getMeshCount()));
+    } else {
+        Logger::error("[树木] 共享模型加载失败");
+    }
+    
+    // 为所有区块预计算树木位置（纯 CPU 计算，无 GPU 操作）
     generateTreesAtStartup();
     
     // 初始化 ImGui
@@ -293,6 +303,9 @@ void Renderer::mainLoop() {
     // FPS 计数
     int frameCount = 0;
     float fpsTimer = 0.0f;
+    
+    // 绝对帧时间目标（用 sleep_until 替代 sleep_for 避免累计漂移）
+    auto nextFrameTime = std::chrono::high_resolution_clock::now();
     
     while (!glfwWindowShouldClose(window)) {
         // 记录帧开始时间
@@ -663,7 +676,8 @@ void Renderer::mainLoop() {
         // 在帧结束时重置"刚刚按下"标志
         input->resetJustPressedFlags();
         
-        // 帧率限制：计算这一帧用了多少时间，如果少于目标时间则睡眠剩余时间
+        // 帧率限制：基于绝对时间戳 sleep_until，避免累计时间漂移
+        nextFrameTime += std::chrono::nanoseconds(static_cast<long long>((1.0 / targetFPS) * 1e9));
         auto frameEndTime = std::chrono::high_resolution_clock::now();
         frameTime = std::chrono::duration<float>(frameEndTime - frameStartTime).count();
         
@@ -671,11 +685,12 @@ void Renderer::mainLoop() {
         if (frameTime < minFrameTime) minFrameTime = frameTime;
         if (frameTime > maxFrameTime) maxFrameTime = frameTime;
         
-        float targetFrameTime = 1.0f / targetFPS;
-        if (frameTime < targetFrameTime) {
-            float sleepTime = targetFrameTime - frameTime;
-            // 转换为微秒
-            std::this_thread::sleep_for(std::chrono::microseconds(static_cast<long long>(sleepTime * 1000000)));
+        // 如果当前帧结束时间早于下一帧目标时间，睡眠等待
+        if (frameEndTime < nextFrameTime) {
+            std::this_thread::sleep_until(nextFrameTime);
+        } else {
+            // 帧已超时，将下一帧目标前移到当前时间（防止连续追赶）
+            nextFrameTime = frameEndTime;
         }
     }
     
@@ -1141,27 +1156,29 @@ void Renderer::drawFrame() {
     }
 
     // 渲染动态树木（带距离剔除）
+    // 渲染树木（共享模型 + 每棵树独立变换矩阵）
     for (const auto& tree : trees_) {
-        if (!tree.model || tree.model->getMeshCount() == 0 || tree.descriptorSet == VK_NULL_HANDLE) {
-            continue;
-        }
-        
-        auto bbox = tree.model->getBoundingBox();
-        glm::vec3 modelCenter = tree.model->getPosition() + (bbox.first + bbox.second) * 0.5f * tree.model->getScale();
-        float distance = glm::length(modelCenter - camera->getPosition());
+        if (tree.id.empty()) continue;
+
+        // 距离剔除
+        float distance = glm::length(tree.position - camera->getPosition());
         if (distance > 250.0f) continue;
 
+        // 视锥体剔除（使用共享模型的包围盒 + 树的缩放）
+        auto bbox = sharedTreeModel_->getBoundingBox();
         if (!camera->getFrustum().isAABBInside(
-            tree.model->getPosition() + bbox.first * tree.model->getScale(),
-            tree.model->getPosition() + bbox.second * tree.model->getScale())) {
+            tree.position + bbox.first * tree.scale,
+            tree.position + bbox.second * tree.scale)) {
             continue;
         }
 
-        vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                               graphicsPipeline->getPipelineLayout(), 0, 1, &tree.descriptorSet, 0, nullptr);
-        tree.model->render(commandBuffer, graphicsPipeline->getPipelineLayout(),
-                        camera->getViewMatrix(), camera->getProjectionMatrix(),
-                        tree.model->getModelMatrix());
+        glm::mat4 modelMatrix = glm::translate(glm::mat4(1.0f), tree.position)
+                              * glm::rotate(glm::mat4(1.0f), glm::radians(tree.yaw), glm::vec3(0.0f, 1.0f, 0.0f))
+                              * glm::scale(glm::mat4(1.0f), glm::vec3(tree.scale));
+
+        sharedTreeModel_->render(commandBuffer, graphicsPipeline->getPipelineLayout(),
+                                camera->getViewMatrix(), camera->getProjectionMatrix(),
+                                modelMatrix);
     }
     
     // 渲染远程玩家模型
@@ -1354,6 +1371,14 @@ void Renderer::cleanup() {
     lightManager.reset();
     textureLoader.reset();
     
+    // 清理树木（共享模型，仅释放共享池）
+    sharedTreeModel_.reset();
+    if (sharedTreePool_ != VK_NULL_HANDLE) {
+        vkDestroyDescriptorPool(vulkanDevice->getDevice(), sharedTreePool_, nullptr);
+        sharedTreePool_ = VK_NULL_HANDLE;
+    }
+    trees_.clear();
+
     // 清理描述符集资源
     if (lightUniformBuffer != VK_NULL_HANDLE) {
         vkDestroyBuffer(vulkanDevice->getDevice(), lightUniformBuffer, nullptr);
@@ -2151,6 +2176,17 @@ void Renderer::renderDeveloperPanel() {
     // 线框模式
     ImGui::Checkbox("线框模式", &wireframeMode);
     
+    bool useMailbox = vulkanDevice->getPreferMailbox();
+    if (ImGui::Checkbox("MAILBOX 模式 (低延迟)", &useMailbox)) {
+        vulkanDevice->setPreferMailbox(useMailbox);
+        framebufferResized = true; // forcing swapchain recreation to apply new present mode
+    }
+    ImGui::SameLine();
+    ImGui::TextDisabled("(?)");
+    if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("MAILBOX=三重缓冲低延迟，FIFO=垂直同步稳定帧间隔");
+    }
+    
     // 窗口大小
     ImGui::Text("窗口: %d x %d", windowWidth, windowHeight);
     
@@ -2456,10 +2492,11 @@ std::vector<ModelConfig> Renderer::loadModelConfig(const std::string& configFile
     return sceneConfig.models;
 }
 
-VkDescriptorSet Renderer::createModelDescriptorSet(GLTFModel* model, const std::string& modelId) {
+VkDescriptorSet Renderer::createModelDescriptorSet(GLTFModel* model, const std::string& modelId, VkDescriptorPool pool) {
+    VkDescriptorPool targetPool = (pool != VK_NULL_HANDLE) ? pool : descriptorPool;
     VkDescriptorSetAllocateInfo allocInfo{};
     allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-    allocInfo.descriptorPool = descriptorPool;
+    allocInfo.descriptorPool = targetPool;
     allocInfo.descriptorSetCount = 1;
     allocInfo.pSetLayouts = &textureDescriptorSetLayout;
 
@@ -2495,6 +2532,7 @@ VkDescriptorSet Renderer::createModelDescriptorSet(GLTFModel* model, const std::
     return descriptorSet;
 }
 
+// 启动时预计算所有树木位置（纯 CPU 计算，直接填入槽位）
 void Renderer::generateTreesAtStartup() {
     const float minScale = 0.2f;
     const float maxScale = 0.5f;
@@ -2504,11 +2542,10 @@ void Renderer::generateTreesAtStartup() {
     trees_.resize(TREE_MAX_TOTAL);
     loadedChunks_.reserve(TREE_MAX_TOTAL * 2);
 
-    // 扫描所有区块，预计算树的位置，加入加载队列
-    int jobCount = 0;
+    int treeIdx = 0;
     for (int dz = -genRadius; dz <= genRadius; ++dz) {
         for (int dx = -genRadius; dx <= genRadius; ++dx) {
-            if (jobCount >= TREE_MAX_TOTAL * 3) break;
+            if (treeIdx >= TREE_MAX_TOTAL) break;
 
             TreeChunkKey key{dx, dz};
 
@@ -2516,7 +2553,7 @@ void Renderer::generateTreesAtStartup() {
             std::poisson_distribution<int> poisson(treeLambda);
             int treeCount = poisson(chunkGen);
             if (treeCount <= 0) {
-                loadedChunks_.insert(key);  // 无树的区块标记已处理
+                loadedChunks_.insert(key);
                 continue;
             }
 
@@ -2527,7 +2564,7 @@ void Renderer::generateTreesAtStartup() {
             std::uniform_real_distribution<float> scaleGen(minScale, maxScale);
             std::uniform_real_distribution<float> yawGen(0.0f, 360.0f);
 
-            for (int t = 0; t < treeCount; ++t) {
+            for (int t = 0; t < treeCount && treeIdx < TREE_MAX_TOTAL; ++t) {
                 for (int attempt = 0; attempt < 10; ++attempt) {
                     float wx = chunkWorldX + posOffset(chunkGen);
                     float wz = chunkWorldZ + posOffset(chunkGen);
@@ -2538,65 +2575,27 @@ void Renderer::generateTreesAtStartup() {
                     float scale = scaleGen(chunkGen);
                     float yaw = yawGen(chunkGen);
 
-                    std::string id = "tree_" + std::to_string(key.x) + "_" + std::to_string(key.z) + "_" + std::to_string(t);
-
-                    treeLoadQueue_.push({id, key, {wx, y, wz}, scale, yaw});
-                    jobCount++;
+                    trees_[treeIdx].id = "tree_" + std::to_string(key.x) + "_" + std::to_string(key.z) + "_" + std::to_string(t);
+                    trees_[treeIdx].position = {wx, y, wz};
+                    trees_[treeIdx].scale = scale;
+                    trees_[treeIdx].yaw = yaw;
+                    treeIdx++;
                     break;
                 }
             }
-            loadedChunks_.insert(key);  // 区块已队列
+            loadedChunks_.insert(key);
         }
     }
 
-    Logger::info("[树木] 已预计算 " + std::to_string(jobCount) + " 棵树，启动异步加载");
+    Logger::info("[树木] 已预计算 " + std::to_string(treeIdx) + " 棵树，直接填入槽位");
 }
 
+// 按玩家位置动态更新树木区块
+// 直接计算位置填入槽位，无 GPU 操作
 void Renderer::updateTreesByPlayerPosition() {
-    if (!camera) return;
+    if (!camera || !sharedTreeModel_) return;
 
-    // 每帧加载 1 棵树（从队列取）
-    if (!treeLoadQueue_.empty()) {
-        auto job = treeLoadQueue_.front();
-        treeLoadQueue_.pop();
-
-        auto model = std::make_unique<GLTFModel>(vulkanDevice, textureLoader);
-        model->setPosition(job.position);
-        model->setRotation(0.0f, job.yaw, 0.0f);
-        model->setScale(glm::vec3(job.scale));
-
-        try {
-            if (model->loadFromFile("assets/models/tree.glb")) {
-                model->createMeshDescriptorSets(textureDescriptorSetLayout, descriptorPool);
-                VkDescriptorSet descriptorSet = createModelDescriptorSet(model.get(), job.id);
-
-                // LRU: 找池中空位或最旧的树替换
-                int bestSlot = -1;
-                for (int i = 0; i < TREE_MAX_TOTAL; ++i) {
-                    if (!trees_[i].model || !trees_[i].descriptorSet) {
-                        bestSlot = i;
-                        break;
-                    }
-                }
-                if (bestSlot < 0) {
-                    // 池满了，替换最旧位置（基于当前队列位置取模）
-                    static int replaceIdx = 0;
-                    bestSlot = replaceIdx++ % TREE_MAX_TOTAL;
-                }
-
-                if (trees_[bestSlot].descriptorSet != VK_NULL_HANDLE) {
-                    vkFreeDescriptorSets(vulkanDevice->getDevice(), descriptorPool, 1, &trees_[bestSlot].descriptorSet);
-                }
-                trees_[bestSlot] = {job.id, std::move(model), descriptorSet};
-            }
-        } catch (const std::exception& e) {
-            Logger::error("[树木] 树 " + job.id + " 加载异常: " + std::string(e.what()));
-        } catch (...) {
-            Logger::error("[树木] 树 " + job.id + " 加载异常: 未知错误");
-        }
-    }
-
-    // 检测玩家是否移动到新区块，加入加载队列
+    // 检测玩家是否移动到新区块，直接填入槽位
     glm::vec3 pos = camera->getPosition();
     int cx = static_cast<int>(std::floor(pos.x / TREE_CHUNK_SIZE));
     int cz = static_cast<int>(std::floor(pos.z / TREE_CHUNK_SIZE));
@@ -2636,7 +2635,19 @@ void Renderer::updateTreesByPlayerPosition() {
 
                     std::string id = "tree_" + std::to_string(key.x) + "_" + std::to_string(key.z) + "_" + std::to_string(t);
 
-                    treeLoadQueue_.push({id, key, {wx, y, wz}, scale, yaw});
+                    // 找空槽位或替换最旧
+                    int slot = -1;
+                    for (int i = 0; i < TREE_MAX_TOTAL; ++i) {
+                        if (trees_[i].id.empty()) { slot = i; break; }
+                    }
+                    if (slot < 0) {
+                        static int replaceIdx = 0;
+                        slot = replaceIdx++ % TREE_MAX_TOTAL;
+                    }
+                    trees_[slot].id = id;
+                    trees_[slot].position = {wx, y, wz};
+                    trees_[slot].scale = scale;
+                    trees_[slot].yaw = yaw;
                     break;
                 }
             }

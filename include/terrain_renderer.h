@@ -18,7 +18,7 @@
 //   renderRadius=10       渲染/碰撞检测半径（~314 区块）
 //   generationRadius=13   预生成半径 = renderRadius + 3（提前生成边界外区块）
 //   maxChunksPerFrame=4   每帧最多启动的异步任务数（削峰填谷）
-//   noiseScale=0.08, heightScale=5.0, 4-octave FBM
+//   noiseScale=0.08, heightScale=5.0, 3-octave FBM
 //
 // 线程安全：
 //   - perlinNoise/fbm/getHeight/computeChunkMesh 均为 const，只读成员数据
@@ -44,16 +44,21 @@ struct TerrainVertex {
     glm::vec2 texCoord;
 };
 
-// Vulkan 侧的已就绪区块（含 GPU 缓冲句柄）
+// 每个区块的固定缓冲大小（17×17 顶点，16×16 四边形 × 2 三角形 × 3 索引）
+constexpr VkDeviceSize CHUNK_VERTEX_BUFFER_SIZE = (17 * 17) * sizeof(TerrainVertex);
+constexpr VkDeviceSize CHUNK_INDEX_BUFFER_SIZE = (16 * 16 * 6) * sizeof(uint32_t);
+
+// Vulkan 侧的已就绪区块（含 GPU 缓冲句柄，来自缓冲池）
 struct TerrainChunk {
     int chunkX;
     int chunkZ;
-    VkBuffer vertexBuffer;
-    VkDeviceMemory vertexBufferMemory;
-    VkBuffer indexBuffer;
-    VkDeviceMemory indexBufferMemory;
-    uint32_t indexCount;
-    bool isValid;
+    VkBuffer vertexBuffer = VK_NULL_HANDLE;
+    VkDeviceMemory vertexBufferMemory = VK_NULL_HANDLE;
+    VkBuffer indexBuffer = VK_NULL_HANDLE;
+    VkDeviceMemory indexBufferMemory = VK_NULL_HANDLE;
+    uint32_t indexCount = 0;
+    bool isValid = false;
+    int poolSlot = -1;  // 缓冲池槽位索引，-1 表示未分配
 };
 
 // 异步计算结果：纯 CPU 网格数据（不含 Vulkan 资源）
@@ -116,11 +121,28 @@ private:
     float fbm(float x, float z, int octaves) const;
     // 纯 CPU 网格生成（无 Vulkan 调用），在 std::async 后台线程中安全执行
     ChunkMesh computeChunkMesh(int chunkX, int chunkZ) const;
-    // 将已计算的网格数据上传到 Vulkan 缓冲（必须在主线程调用）
+    // 将已计算的网格数据上传到 Vulkan 缓冲（从缓冲池取用，必须在主线程调用）
     void uploadChunk(const ChunkMesh& mesh);
     // 同步备用路径：直接 computeChunkMesh + uploadChunk（不经过异步管线）
     void generateChunk(int chunkX, int chunkZ);
     void cleanupChunk(TerrainChunk& chunk);
+
+    // === 缓冲池管理 ===
+    // 缓冲池槽：预分配的一组 vertex + index 缓冲区，避免运行时反复 vkCreateBuffer/vkAllocateMemory
+    struct BufferPoolSlot {
+        VkBuffer vertexBuffer = VK_NULL_HANDLE;
+        VkDeviceMemory vertexBufferMemory = VK_NULL_HANDLE;
+        VkBuffer indexBuffer = VK_NULL_HANDLE;
+        VkDeviceMemory indexBufferMemory = VK_NULL_HANDLE;
+        bool inUse = false;
+    };
+    static constexpr int BUFFER_POOL_SIZE = 512;  // 覆盖 renderRadius ≈ 314 区块 + 余量
+    void initBufferPool();
+    void cleanupBufferPool();
+    int acquirePoolSlot();
+    void releasePoolSlot(int slot);
+    std::vector<BufferPoolSlot> bufferPool_;
+    int nextPoolHint_ = 0;  // acquire 的起始搜索位置
 
     std::shared_ptr<VulkanDevice> device;
     

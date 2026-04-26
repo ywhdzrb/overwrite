@@ -112,9 +112,6 @@ private:
      */
     void setMsaaSamples(VkSampleCountFlagBits samples);
     
-    /**
-     * @brief 启动时预加载树木（哈希确定性位置，一次性加载不卡顿）
-     */
     void generateTreesAtStartup();
     void updateTreesByPlayerPosition();
 
@@ -130,8 +127,9 @@ private:
     
     /**
      * @brief 为模型创建纹理描述符集
+     * @param pool 可选：使用指定描述符池，默认使用全局 descriptorPool
      */
-    VkDescriptorSet createModelDescriptorSet(GLTFModel* model, const std::string& modelId);
+    VkDescriptorSet createModelDescriptorSet(GLTFModel* model, const std::string& modelId, VkDescriptorPool pool = VK_NULL_HANDLE);
     
     /**
      * @brief 加载场景配置文件
@@ -261,28 +259,26 @@ private:
     VkDeviceMemory lightUniformBufferMemory = VK_NULL_HANDLE;
 
     // ========== 树木系统 ==========
+    // 所有树木实例共享同一个 tree.glb 模型的 geometry + 纹理，
+    // 每棵树只存储位置/姿态数据，消除每棵树的 GPU 缓冲创建开销
     static constexpr float TREE_CHUNK_SIZE = 16.0f;
     static constexpr int TREE_LOAD_RADIUS = 6;
     static constexpr int TREE_MAX_TOTAL = 300;
 
     struct LoadedTree {
         std::string id;
-        std::unique_ptr<GLTFModel> model;
-        VkDescriptorSet descriptorSet = VK_NULL_HANDLE;
+        glm::vec3 position;
+        float scale = 1.0f;
+        float yaw = 0.0f;
     };
 
-    // 待加载的树描述（预计算位置，排队加载）
-    struct TreeLoadJob {
-        std::string id;
-        TreeChunkKey chunk;
-        glm::vec3 position;
-        float scale;
-        float yaw;
-    };
+    // 共享树木几何体模型（所有树实例共用）
+    std::unique_ptr<GLTFModel> sharedTreeModel_;
+    // 共享树木描述符池（301 个 mesh 描述符集 + 备用）
+    VkDescriptorPool sharedTreePool_ = VK_NULL_HANDLE;
 
     std::unordered_set<TreeChunkKey, TreeChunkKeyHash> loadedChunks_;
     std::vector<LoadedTree> trees_;
-    std::queue<TreeLoadJob> treeLoadQueue_;
     
     static void framebufferResizeCallback(GLFWwindow* window, int width, int height);
 };

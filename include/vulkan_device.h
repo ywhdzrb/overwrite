@@ -6,6 +6,7 @@
 #include <vector>
 #include <string>
 #include <optional>
+#include <mutex>
 
 namespace owengine {
 
@@ -28,6 +29,10 @@ public:
     VkSurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& availableFormats) const;
     VkPresentModeKHR chooseSwapPresentMode(const std::vector<VkPresentModeKHR>& availablePresentModes) const;
     VkExtent2D chooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities, GLFWwindow* window) const;
+
+    // 设置首选呈现模式（默认 Mailbox，可切换为 Fifo 以稳定帧间隔）
+    void setPreferMailbox(bool enable) { preferMailbox_ = enable; }
+    bool getPreferMailbox() const { return preferMailbox_; }
     
     uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties) const;
     VkCommandBuffer beginSingleTimeCommands() const;
@@ -43,6 +48,7 @@ public:
     VkQueue getPresentQueue() const { return presentQueue; }
     uint32_t getGraphicsQueueFamily() const { return graphicsQueueFamily; }
     VkCommandPool getCommandPool() const { return commandPool; }
+    std::mutex& getQueueMutex() const { return queueMutex_; }
     VkImage getDepthImage() const { return depthImage; }
     VkImageView getDepthImageView() const { return depthImageView; }
 
@@ -59,6 +65,14 @@ private:
     VkQueue presentQueue;
     uint32_t graphicsQueueFamily = 0;
     VkCommandPool commandPool;
+
+    // 呈现模式偏好：true=优先 Mailbox（默认），false=始终使用 Fifo
+    bool preferMailbox_ = true;
+    
+    // 线程安全：保护 commandPool 的分配/释放
+    mutable std::mutex commandPoolMutex_;
+    // 线程安全：保护 graphicsQueue 的 vkQueueSubmit（支持后台线程资源加载）
+    mutable std::mutex queueMutex_;
     
     // 深度缓冲资源
     VkImage depthImage = VK_NULL_HANDLE;

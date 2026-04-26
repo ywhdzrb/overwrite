@@ -1,4 +1,5 @@
 #include "terrain_renderer.h"
+#include "logger.h"
 #include "vulkan_device.h"
 #include <glm/glm.hpp>
 #include <stdexcept>
@@ -98,15 +99,111 @@ TerrainRenderer::~TerrainRenderer() {
 }
 
 void TerrainRenderer::create() {
+    initBufferPool();
     created_ = true;
 }
 
 void TerrainRenderer::cleanup() {
     for (auto& pair : chunks) {
-        cleanupChunk(pair.second);
+        // Only release slot, don't destroy (pool owns buffers)
+        if (pair.second.poolSlot >= 0) {
+            bufferPool_[pair.second.poolSlot].inUse = false;
+        }
     }
     chunks.clear();
+    cleanupBufferPool();
     created_ = false;
+}
+
+// 初始化缓冲池：预分配 BUFFER_POOL_SIZE 组 vertex + index 缓冲区
+void TerrainRenderer::initBufferPool() {
+    bufferPool_.resize(BUFFER_POOL_SIZE);
+    for (int i = 0; i < BUFFER_POOL_SIZE; ++i) {
+        auto& slot = bufferPool_[i];
+        VkBufferCreateInfo vbInfo{};
+        vbInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+        vbInfo.size = CHUNK_VERTEX_BUFFER_SIZE;
+        vbInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+        vbInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+        if (vkCreateBuffer(device->getDevice(), &vbInfo, nullptr, &slot.vertexBuffer) != VK_SUCCESS) {
+            throw std::runtime_error("failed to create pooled vertex buffer!");
+        }
+
+        VkMemoryRequirements memReqs;
+        vkGetBufferMemoryRequirements(device->getDevice(), slot.vertexBuffer, &memReqs);
+        VkMemoryAllocateInfo allocInfo{};
+        allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+        allocInfo.allocationSize = memReqs.size;
+        allocInfo.memoryTypeIndex = device->findMemoryType(memReqs.memoryTypeBits,
+            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+        if (vkAllocateMemory(device->getDevice(), &allocInfo, nullptr, &slot.vertexBufferMemory) != VK_SUCCESS) {
+            throw std::runtime_error("failed to allocate pooled vertex buffer memory!");
+        }
+        vkBindBufferMemory(device->getDevice(), slot.vertexBuffer, slot.vertexBufferMemory, 0);
+
+        VkBufferCreateInfo ibInfo{};
+        ibInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+        ibInfo.size = CHUNK_INDEX_BUFFER_SIZE;
+        ibInfo.usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
+        ibInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+        if (vkCreateBuffer(device->getDevice(), &ibInfo, nullptr, &slot.indexBuffer) != VK_SUCCESS) {
+            throw std::runtime_error("failed to create pooled index buffer!");
+        }
+
+        vkGetBufferMemoryRequirements(device->getDevice(), slot.indexBuffer, &memReqs);
+        allocInfo.allocationSize = memReqs.size;
+        allocInfo.memoryTypeIndex = device->findMemoryType(memReqs.memoryTypeBits,
+            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+        if (vkAllocateMemory(device->getDevice(), &allocInfo, nullptr, &slot.indexBufferMemory) != VK_SUCCESS) {
+            throw std::runtime_error("failed to allocate pooled index buffer memory!");
+        }
+        vkBindBufferMemory(device->getDevice(), slot.indexBuffer, slot.indexBufferMemory, 0);
+
+        slot.inUse = false;
+    }
+    nextPoolHint_ = 0;
+}
+
+// 销毁缓冲池：释放所有预先分配的缓冲区
+void TerrainRenderer::cleanupBufferPool() {
+    for (auto& slot : bufferPool_) {
+        if (slot.indexBuffer != VK_NULL_HANDLE) {
+            vkDestroyBuffer(device->getDevice(), slot.indexBuffer, nullptr);
+        }
+        if (slot.indexBufferMemory != VK_NULL_HANDLE) {
+            vkFreeMemory(device->getDevice(), slot.indexBufferMemory, nullptr);
+        }
+        if (slot.vertexBuffer != VK_NULL_HANDLE) {
+            vkDestroyBuffer(device->getDevice(), slot.vertexBuffer, nullptr);
+        }
+        if (slot.vertexBufferMemory != VK_NULL_HANDLE) {
+            vkFreeMemory(device->getDevice(), slot.vertexBufferMemory, nullptr);
+        }
+    }
+    bufferPool_.clear();
+    nextPoolHint_ = 0;
+}
+
+// 从缓冲池中获取一个空闲槽位（O(n) 扫描，从上次分配位置附近开始）
+int TerrainRenderer::acquirePoolSlot() {
+    for (int i = 0; i < BUFFER_POOL_SIZE; ++i) {
+        int idx = (nextPoolHint_ + i) % BUFFER_POOL_SIZE;
+        if (!bufferPool_[idx].inUse) {
+            bufferPool_[idx].inUse = true;
+            nextPoolHint_ = (idx + 1) % BUFFER_POOL_SIZE;
+            return idx;
+        }
+    }
+    // 所有槽位已满（正常情况下不应发生，因为 chunk 总数 ≤ BUFFER_POOL_SIZE）
+    Logger::error("[地形] 缓冲池耗尽！增大 BUFFER_POOL_SIZE");
+    return -1;
+}
+
+// 归还槽位到缓冲池
+void TerrainRenderer::releasePoolSlot(int slot) {
+    if (slot >= 0 && slot < BUFFER_POOL_SIZE) {
+        bufferPool_[slot].inUse = false;
+    }
 }
 
 float TerrainRenderer::perlinNoise(float x, float z) const {
@@ -155,7 +252,7 @@ float TerrainRenderer::fbm(float x, float z, int octaves) const {
 float TerrainRenderer::getHeight(float x, float z) const {
     float noiseX = x * noiseScale;
     float noiseZ = z * noiseScale;
-    float height = fbm(noiseX, noiseZ, 4) * heightScale;
+    float height = fbm(noiseX, noiseZ, 3) * heightScale;
     return baseHeight + height;
 }
 
@@ -227,78 +324,41 @@ ChunkMesh TerrainRenderer::computeChunkMesh(int chunkX, int chunkZ) const {
     return mesh;
 }
 
-// 将 computeChunkMesh 的输出上传到 Vulkan（必须在主线程调用）
+// 将 computeChunkMesh 的输出上传到 Vulkan（从缓冲池取用，必须在主线程调用）
 //
-// Vulkan 操作序列：
-//   1. 创建顶点缓冲（VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, HOST_VISIBLE | HOST_COHERENT）
-//   2. 分配 + 映射内存，memcpy 顶点数据，解除映射
-//   3. 创建索引缓冲（VK_BUFFER_USAGE_INDEX_BUFFER_BIT, HOST_VISIBLE | HOST_COHERENT）
-//   4. 分配 + 映射内存，memcpy 索引数据，解除映射
-//   5. 将 TerrainChunk 存入 chunks 哈希表
+// 从缓冲池获取预先分配的 vertex + index 缓冲区，直接 memcpy 数据，
+// 避免运行时 vkCreateBuffer/vkAllocateMemory 的 GPU 内存分配开销。
 void TerrainRenderer::uploadChunk(const ChunkMesh& mesh) {
     ChunkKey key{mesh.chunkX, mesh.chunkZ};
     if (chunks.find(key) != chunks.end()) return;
+    
+    int slot = acquirePoolSlot();
+    if (slot < 0) return;  // 池耗尽，丢弃该区块
     
     TerrainChunk chunk;
     chunk.chunkX = mesh.chunkX;
     chunk.chunkZ = mesh.chunkZ;
     chunk.indexCount = static_cast<uint32_t>(mesh.indices.size());
     chunk.isValid = true;
+    chunk.poolSlot = slot;
     
-    VkDeviceSize vertexBufferSize = sizeof(TerrainVertex) * mesh.vertices.size();
-    VkBufferCreateInfo vbInfo{};
-    vbInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-    vbInfo.size = vertexBufferSize;
-    vbInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
-    vbInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    // 从池中获取预分配的缓冲区句柄
+    auto& poolSlot = bufferPool_[slot];
+    chunk.vertexBuffer = poolSlot.vertexBuffer;
+    chunk.vertexBufferMemory = poolSlot.vertexBufferMemory;
+    chunk.indexBuffer = poolSlot.indexBuffer;
+    chunk.indexBufferMemory = poolSlot.indexBufferMemory;
     
-    if (vkCreateBuffer(device->getDevice(), &vbInfo, nullptr, &chunk.vertexBuffer) != VK_SUCCESS) {
-        throw std::runtime_error("failed to create vertex buffer!");
-    }
-    
-    VkMemoryRequirements memRequirements;
-    vkGetBufferMemoryRequirements(device->getDevice(), chunk.vertexBuffer, &memRequirements);
-    
-    VkMemoryAllocateInfo allocInfo{};
-    allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-    allocInfo.allocationSize = memRequirements.size;
-    allocInfo.memoryTypeIndex = device->findMemoryType(memRequirements.memoryTypeBits,
-                                                       VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-    
-    if (vkAllocateMemory(device->getDevice(), &allocInfo, nullptr, &chunk.vertexBufferMemory) != VK_SUCCESS) {
-        throw std::runtime_error("failed to allocate vertex buffer memory!");
-    }
-    
-    vkBindBufferMemory(device->getDevice(), chunk.vertexBuffer, chunk.vertexBufferMemory, 0);
-    
+    // 顶点数据上传（池缓冲区大小固定 ≥ 实际数据，直接 memcpy）
     void* data;
-    vkMapMemory(device->getDevice(), chunk.vertexBufferMemory, 0, vertexBufferSize, 0, &data);
+    VkDeviceSize vertexBufferSize = sizeof(TerrainVertex) * mesh.vertices.size();
+    vkMapMemory(device->getDevice(), chunk.vertexBufferMemory, 0, VK_WHOLE_SIZE, 0, &data);
     memcpy(data, mesh.vertices.data(), static_cast<size_t>(vertexBufferSize));
     vkUnmapMemory(device->getDevice(), chunk.vertexBufferMemory);
     
+    // 索引数据上传
     VkDeviceSize indexBufferSize = sizeof(uint32_t) * mesh.indices.size();
-    VkBufferCreateInfo ibInfo{};
-    ibInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-    ibInfo.size = indexBufferSize;
-    ibInfo.usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
-    ibInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    
-    if (vkCreateBuffer(device->getDevice(), &ibInfo, nullptr, &chunk.indexBuffer) != VK_SUCCESS) {
-        throw std::runtime_error("failed to create index buffer!");
-    }
-    
-    vkGetBufferMemoryRequirements(device->getDevice(), chunk.indexBuffer, &memRequirements);
-    allocInfo.allocationSize = memRequirements.size;
-    allocInfo.memoryTypeIndex = device->findMemoryType(memRequirements.memoryTypeBits,
-                                                       VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-    
-    if (vkAllocateMemory(device->getDevice(), &allocInfo, nullptr, &chunk.indexBufferMemory) != VK_SUCCESS) {
-        throw std::runtime_error("failed to allocate index buffer memory!");
-    }
-    
-    vkBindBufferMemory(device->getDevice(), chunk.indexBuffer, chunk.indexBufferMemory, 0);
-    
-    vkMapMemory(device->getDevice(), chunk.indexBufferMemory, 0, indexBufferSize, 0, &data);
+    vkMapMemory(device->getDevice(), chunk.indexBufferMemory, 0, VK_WHOLE_SIZE, 0, &data);
     memcpy(data, mesh.indices.data(), static_cast<size_t>(indexBufferSize));
     vkUnmapMemory(device->getDevice(), chunk.indexBufferMemory);
     
@@ -313,18 +373,13 @@ void TerrainRenderer::generateChunk(int chunkX, int chunkZ) {
 }
 
 void TerrainRenderer::cleanupChunk(TerrainChunk& chunk) {
-    if (chunk.indexBuffer != VK_NULL_HANDLE) {
-        vkDestroyBuffer(device->getDevice(), chunk.indexBuffer, nullptr);
-    }
-    if (chunk.indexBufferMemory != VK_NULL_HANDLE) {
-        vkFreeMemory(device->getDevice(), chunk.indexBufferMemory, nullptr);
-    }
-    if (chunk.vertexBuffer != VK_NULL_HANDLE) {
-        vkDestroyBuffer(device->getDevice(), chunk.vertexBuffer, nullptr);
-    }
-    if (chunk.vertexBufferMemory != VK_NULL_HANDLE) {
-        vkFreeMemory(device->getDevice(), chunk.vertexBufferMemory, nullptr);
-    }
+    // 归还缓冲区到池（不销毁，池拥有生命周期）
+    releasePoolSlot(chunk.poolSlot);
+    chunk.poolSlot = -1;
+    chunk.vertexBuffer = VK_NULL_HANDLE;
+    chunk.vertexBufferMemory = VK_NULL_HANDLE;
+    chunk.indexBuffer = VK_NULL_HANDLE;
+    chunk.indexBufferMemory = VK_NULL_HANDLE;
 }
 
 // 异步区块更新管线（每帧由渲染线程调用）

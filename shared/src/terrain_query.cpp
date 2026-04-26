@@ -94,7 +94,7 @@ float TerrainQuery::getHeight(float x, float z) {
     
     float noiseX = x * noiseScale;
     float noiseZ = z * noiseScale;
-    float height = fbm(noiseX, noiseZ, 4) * heightScale;
+    float height = fbm(noiseX, noiseZ, 3) * heightScale;
     
     return baseHeight + height;
 }

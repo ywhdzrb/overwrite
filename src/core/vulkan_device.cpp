@@ -1,6 +1,7 @@
 // Vulkan设备管理实现
 // 负责管理Vulkan设备、队列、命令池以及图像操作
 #include "vulkan_device.h"
+#include "logger.h"
 #include <GLFW/glfw3.h>
 #include <iostream>
 #include <stdexcept>
@@ -124,12 +125,17 @@ VkSurfaceFormatKHR VulkanDevice::chooseSwapSurfaceFormat(const std::vector<VkSur
 }
 
 VkPresentModeKHR VulkanDevice::chooseSwapPresentMode(const std::vector<VkPresentModeKHR>& availablePresentModes) const {
-    for (const auto& availablePresentMode : availablePresentModes) {
-        if (availablePresentMode == VK_PRESENT_MODE_MAILBOX_KHR) {
-            return availablePresentMode;
+    if (preferMailbox_) {
+        for (const auto& mode : availablePresentModes) {
+            if (mode == VK_PRESENT_MODE_MAILBOX_KHR) {
+                Logger::info("[Vulkan] 呈现模式: MAILBOX (三重缓冲，低延迟)");
+                return mode;
+            }
         }
+        Logger::warning("[Vulkan] MAILBOX 不可用，回退至 FIFO (垂直同步)");
+    } else {
+        Logger::info("[Vulkan] 呈现模式: FIFO (垂直同步，稳定帧间隔)");
     }
-    
     return VK_PRESENT_MODE_FIFO_KHR;
 }
 
@@ -167,6 +173,8 @@ uint32_t VulkanDevice::findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags
 }
 
 VkCommandBuffer VulkanDevice::beginSingleTimeCommands() const {
+    std::lock_guard<std::mutex> lock(commandPoolMutex_);
+    
     VkCommandBufferAllocateInfo allocInfo{};
     allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
     allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
@@ -187,16 +195,42 @@ VkCommandBuffer VulkanDevice::beginSingleTimeCommands() const {
 
 void VulkanDevice::endSingleTimeCommands(VkCommandBuffer commandBuffer) const {
     vkEndCommandBuffer(commandBuffer);
-    
+
     VkSubmitInfo submitInfo{};
     submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
     submitInfo.commandBufferCount = 1;
     submitInfo.pCommandBuffers = &commandBuffer;
-    
-    vkQueueSubmit(graphicsQueue, 1, &submitInfo, VK_NULL_HANDLE);
-    vkQueueWaitIdle(graphicsQueue);
-    
-    vkFreeCommandBuffers(device, commandPool, 1, &commandBuffer);
+
+    VkFence fence;
+    VkFenceCreateInfo fenceInfo{};
+    fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+    vkCreateFence(device, &fenceInfo, nullptr, &fence);
+
+    VkResult submitResult;
+    {
+        std::lock_guard<std::mutex> lock(queueMutex_);
+        submitResult = vkQueueSubmit(graphicsQueue, 1, &submitInfo, fence);
+    }
+    // queueMutex_ 已释放！主线程可以继续提交渲染帧
+
+    if (submitResult == VK_SUCCESS) {
+        // 等待 fence，设 5 秒超时防止死锁
+        VkResult waitResult = vkWaitForFences(device, 1, &fence, VK_TRUE, 5000000000ULL);
+        if (waitResult != VK_SUCCESS) {
+            // fence 超时：紧急回退到 queueWaitIdle（锁内，会阻塞主线程）
+            std::lock_guard<std::mutex> lock(queueMutex_);
+            vkQueueWaitIdle(graphicsQueue);
+        }
+    } else {
+        // vkQueueSubmit 失败（如设备丢失），fence 永远不会被信号，跳过等待
+    }
+
+    vkDestroyFence(device, fence, nullptr);
+
+    {
+        std::lock_guard<std::mutex> lock(commandPoolMutex_);
+        vkFreeCommandBuffers(device, commandPool, 1, &commandBuffer);
+    }
 }
 
 void VulkanDevice::transitionImageLayout(VkImage image, VkImageLayout oldLayout, VkImageLayout newLayout,
