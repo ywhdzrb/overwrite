@@ -82,15 +82,19 @@ void TreeSystem::generateTreesAtStartup() {
                 for (int attempt = 0; attempt < 10; ++attempt) {
                     float wx = chunkWorldX + posOffset(chunkGen);
                     float wz = chunkWorldZ + posOffset(chunkGen);
+
+                    // 采样地形高度，低于阈值跳过
+                    float y = heightSampler_ ? heightSampler_(wx, wz) : 0.0f;
+                    if (y < -2.0f) continue;
+
                     trees_[treeIdx].id = "tree_" + std::to_string(key.x) + "_" + std::to_string(key.z) + "_" + std::to_string(t);
-                    trees_[treeIdx].position = {wx, 0.0f, wz}; // 游戏运行时 terrainRenderer 会更新高度
+                    trees_[treeIdx].position = {wx, y, wz};
                     trees_[treeIdx].scale = scaleGen(chunkGen);
                     trees_[treeIdx].yaw = yawGen(chunkGen);
                     treeIdx++;
                     break;
                 }
             }
-            loadedChunks_.insert(key);
         }
     }
     Logger::info("[TreeSystem] 已预计算 " + std::to_string(treeIdx) + " 棵树，直接填入槽位");
@@ -139,9 +143,12 @@ void TreeSystem::update(const glm::vec3& playerPos, const Camera& camera) {
                         slot = replaceIdx++ % MAX_TOTAL;
                     }
 
+                    float y = heightSampler_ ? heightSampler_(wx, wz) : 0.0f;
+                    if (y < -2.0f) continue;
+
                     std::string id = "tree_" + std::to_string(key.x) + "_" + std::to_string(key.z) + "_" + std::to_string(t);
                     trees_[slot].id = id;
-                    trees_[slot].position = {wx, 0.0f, wz};
+                    trees_[slot].position = {wx, y, wz};
                     trees_[slot].scale = scaleGen(chunkGen);
                     trees_[slot].yaw = yawGen(chunkGen);
                     break;

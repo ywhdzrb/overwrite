@@ -4,6 +4,7 @@
 #include <memory>
 #include <vector>
 #include <string>
+#include <functional>
 #include <unordered_set>
 #include <glm/glm.hpp>
 
@@ -57,6 +58,12 @@ public:
                 const Camera& camera) const;
 
     /**
+     * @brief 设置地形高度采样器（注入外部高度查询委托，如 TerrainRenderer::getHeight）
+     * @param sampler 输入世界坐标 x,z，返回该点地形高度 Y
+     */
+    void setHeightSampler(std::function<float(float x, float z)> sampler) { heightSampler_ = std::move(sampler); }
+
+    /**
      * @brief 清理 GPU 资源
      */
     void cleanup();
@@ -99,6 +106,7 @@ private:
     VkDescriptorPool sharedTreePool_ = VK_NULL_HANDLE;
     std::unordered_set<TreeChunkKey, TreeChunkKeyHash> loadedChunks_;
     std::vector<LoadedTree> trees_;
+    std::function<float(float, float)> heightSampler_;
 };
 
 } // namespace owengine

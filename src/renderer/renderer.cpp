@@ -259,6 +259,7 @@ void Renderer::initVulkan() {
     
     // 初始化树系统（独立类，通过依赖注入创建）
     treeSystem_ = std::make_unique<TreeSystem>(vulkanDevice, textureLoader, textureDescriptorSetLayout);
+    treeSystem_->setHeightSampler(terrainHeightQuery);
     treeSystem_->init();
     
     // 初始化 ImGui
