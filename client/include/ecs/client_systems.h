@@ -93,8 +93,17 @@ public:
     // 初始化客户端系统
     void initClientSystems(GLFWwindow* window, int viewportWidth, int viewportHeight);
     
-    // 更新所有客户端系统
+    // 更新所有客户端系统（同步调用，保持向后兼容）
     void updateClientSystems(float deltaTime);
+
+    // 同步阶段：仅 GLFW/WebSocket 操作（必须主线程）
+    void updateClientSystemsSync(float deltaTime);
+
+    // 异步阶段：纯 CPU 模拟（移动/物理/相机，可后台线程执行）
+    void updateClientSystemsAsync(float deltaTime);
+
+    // 发送网络输入（需要在同步输入 + 异步模拟完成后调用）
+    void sendNetworkInputs();
     
     // 获取客户端系统
     InputSystem* getInputSystem() { return inputSystem_.get(); }

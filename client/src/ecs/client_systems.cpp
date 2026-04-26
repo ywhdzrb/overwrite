@@ -202,14 +202,42 @@ void ClientWorld::initClientSystems(GLFWwindow* window, int viewportWidth, int v
 }
 
 void ClientWorld::updateClientSystems(float deltaTime) {
+    // 保持向后兼容：同步调用全部系统
+    updateClientSystemsSync(deltaTime);
+    updateClientSystemsAsync(deltaTime);
+    sendNetworkInputs();
+}
+
+void ClientWorld::sendNetworkInputs() {
+    if (!networkSystem_ || !networkSystem_->isConnected()) return;
+    auto player = getPlayer();
+    if (!registry().valid(player)) return;
+    auto* input = registry().try_get<InputStateComponent>(player);
+    auto* movement = registry().try_get<MovementControllerComponent>(player);
+    if (!input || !movement) return;
+    networkSystem_->sendInput(
+        input->moveForward, input->moveBackward,
+        input->moveLeft, input->moveRight,
+        input->jump, input->sprint,
+        input->spaceHeld, input->shiftHeld,
+        input->mouseDeltaX, input->mouseDeltaY,
+        movement->moveFront, movement->moveRight
+    );
+}
+
+// 同步阶段：仅 GLFW/WebSocket 操作，必须主线程
+void ClientWorld::updateClientSystemsSync(float deltaTime) {
     // 更新网络系统（处理接收消息）
     if (networkSystem_) {
         networkSystem_->update(deltaTime);
     }
     
-    // 更新输入
+    // 更新输入（GLFW 回调，必须主线程）
     inputSystem_->update(deltaTime);
-    
+}
+
+// 异步阶段：纯 CPU 模拟，可后台线程执行
+void ClientWorld::updateClientSystemsAsync(float deltaTime) {
     // 更新移动（单机模式或客户端预测）
     movementSystem_->update(deltaTime);
     
@@ -223,26 +251,6 @@ void ClientWorld::updateClientSystems(float deltaTime) {
     
     // 更新相机（更新矩阵）
     cameraSystem_->update(deltaTime);
-    
-    // 连接到服务器后发送输入（在所有系统更新之后）
-    if (networkSystem_ && networkSystem_->isConnected()) {
-        auto player = getPlayer();
-        if (registry().valid(player)) {
-            auto* input = registry().try_get<InputStateComponent>(player);
-            auto* movement = registry().try_get<MovementControllerComponent>(player);
-            
-            if (input && movement) {
-                networkSystem_->sendInput(
-                    input->moveForward, input->moveBackward,
-                    input->moveLeft, input->moveRight,
-                    input->jump, input->sprint,
-                    input->spaceHeld, input->shiftHeld,
-                    input->mouseDeltaX, input->mouseDeltaY,
-                    movement->moveFront, movement->moveRight
-                );
-            }
-        }
-    }
 }
 
 bool ClientWorld::connectToServer(const std::string& host, uint16_t port) {

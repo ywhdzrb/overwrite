@@ -13,6 +13,7 @@
 #include <limits>
 #include <random>
 #include <thread>
+#include <future>
 
 namespace owengine {
 
@@ -729,8 +730,7 @@ void Renderer::updateGameLogic(float deltaTime) {
             controller.movementSpeed = userMovementSpeed;
             controller.mouseSensitivity = userSensitivity;
             
-            // 先同步相机方向（在更新系统之前，确保发送正确的方向）
-            // 优先使用 CameraControllerSystem，否则回退到旧的 Camera 类
+            // 先同步相机方向（在主线程同步阶段，GLFW 回调读取必须主线程）
             if (ecsClientWorld->getCameraControllerSystem()) {
                 controller.moveFront = ecsClientWorld->getCameraControllerSystem()->getCameraFront();
                 controller.moveRight = ecsClientWorld->getCameraControllerSystem()->getCameraRight();
@@ -738,51 +738,64 @@ void Renderer::updateGameLogic(float deltaTime) {
                 controller.moveFront = camera->getFront();
                 controller.moveRight = camera->getRight();
             }
-        }
-        
-        // 使用 ClientWorld 统一更新所有系统
-        ecsClientWorld->updateClientSystems(deltaTime);
-        
-        // 更新地形区块
-        auto& transform = ecsClientWorld->registry().get<ecs::TransformComponent>(player);
-        terrainRenderer->update(transform.position);
-        
-        // 飞行模式（F 键切换，space 上升 shift 下降）
-        auto* physics = ecsClientWorld->registry().try_get<ecs::PhysicsComponent>(player);
-        static bool prevF = false;
-        bool curF = glfwGetKey(window, GLFW_KEY_F) == GLFW_PRESS;
-        if (curF && !prevF) playerIsFlying_ = !playerIsFlying_;
-        prevF = curF;
-        
-        if (playerIsFlying_ && physics) {
-            physics->useGravity = false;
-            physics->isGrounded = false;
-            auto* input = ecsClientWorld->registry().try_get<ecs::InputStateComponent>(player);
-            float flySpeed = 10.0f;
-            if (input) {
-                if (input->spaceHeld) transform.position.y += flySpeed * deltaTime;
-                if (input->shiftHeld) transform.position.y -= flySpeed * deltaTime;
-            }
-        } else if (physics) {
-            physics->useGravity = true;
-        }
-        
-        // 从 ECS 同步到旧相机系统
-        {
-            auto mainCam = ecsClientWorld->getMainCamera();
-            if (ecsClientWorld->registry().valid(mainCam)) {
-                auto& camTransform = ecsClientWorld->registry().get<ecs::TransformComponent>(mainCam);
-                
-                if (camera->getMode() == Camera::Mode::ThirdPerson) {
-                    camera->setTarget(camTransform.position);
-                } else {
-                    camera->setPosition(camTransform.position);
+            
+            // === 1) 同步阶段：输入 + 网络接收（必须主线程） ===
+            ecsClientWorld->updateClientSystemsSync(deltaTime);
+            
+            // 拷贝玩家当前位置（异步期间主线程读取，避免数据竞争）
+            auto& transform = ecsClientWorld->registry().get<ecs::TransformComponent>(player);
+            glm::vec3 playerPos = transform.position;
+            
+            // === 2) 异步阶段：纯 CPU 模拟（后台线程） ===
+            auto ecsFuture = std::async(std::launch::async, [this, deltaTime]() {
+                ecsClientWorld->updateClientSystemsAsync(deltaTime);
+            });
+            
+            // === 3) 主线程并行工作（与异步模拟同时执行） ===
+            terrainRenderer->update(playerPos);
+            updateTreesByPlayerPosition();
+            
+            // === 4) 等待异步模拟完成 ===
+            ecsFuture.wait();
+            
+            // === 5) 发送网络输入（同步阶段已获取输入，异步阶段已更新位置） ===
+            ecsClientWorld->sendNetworkInputs();
+            
+            // 飞行模式（F 键切换，space 上升 shift 下降）
+            auto* physics = ecsClientWorld->registry().try_get<ecs::PhysicsComponent>(player);
+            static bool prevF = false;
+            bool curF = glfwGetKey(window, GLFW_KEY_F) == GLFW_PRESS;
+            if (curF && !prevF) playerIsFlying_ = !playerIsFlying_;
+            prevF = curF;
+            
+            if (playerIsFlying_ && physics) {
+                physics->useGravity = false;
+                physics->isGrounded = false;
+                auto* input = ecsClientWorld->registry().try_get<ecs::InputStateComponent>(player);
+                float flySpeed = 10.0f;
+                if (input) {
+                    if (input->spaceHeld) transform.position.y += flySpeed * deltaTime;
+                    if (input->shiftHeld) transform.position.y -= flySpeed * deltaTime;
                 }
-                camera->setYawPitch(180.0f - camTransform.yaw, camTransform.pitch);
+            } else if (physics) {
+                physics->useGravity = true;
+            }
+            
+            // 从 ECS 同步到旧相机系统
+            {
+                auto mainCam = ecsClientWorld->getMainCamera();
+                if (ecsClientWorld->registry().valid(mainCam)) {
+                    auto& camTransform = ecsClientWorld->registry().get<ecs::TransformComponent>(mainCam);
+                    
+                    if (camera->getMode() == Camera::Mode::ThirdPerson) {
+                        camera->setTarget(camTransform.position);
+                    } else {
+                        camera->setPosition(camTransform.position);
+                    }
+                    camera->setYawPitch(180.0f - camTransform.yaw, camTransform.pitch);
+                }
             }
         }
-        
-        updateTreesByPlayerPosition();
     } else {
         // 使用旧的系统更新
         float speed = userMovementSpeed;
@@ -2494,6 +2507,11 @@ std::vector<ModelConfig> Renderer::loadModelConfig(const std::string& configFile
 
 VkDescriptorSet Renderer::createModelDescriptorSet(GLTFModel* model, const std::string& modelId, VkDescriptorPool pool) {
     VkDescriptorPool targetPool = (pool != VK_NULL_HANDLE) ? pool : descriptorPool;
+    
+    // 从全局池分配描述符集时需要加锁（vkAllocateDescriptorSets 要求外部同步）
+    std::unique_lock<std::mutex> poolLock(descriptorPoolMutex_, std::defer_lock);
+    if (pool == VK_NULL_HANDLE) poolLock.lock();
+    
     VkDescriptorSetAllocateInfo allocInfo{};
     allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
     allocInfo.descriptorPool = targetPool;
@@ -2505,6 +2523,8 @@ VkDescriptorSet Renderer::createModelDescriptorSet(GLTFModel* model, const std::
         Logger::warning("无法为模型 " + modelId + " 分配纹理描述符集");
         return VK_NULL_HANDLE;
     }
+    
+    if (pool == VK_NULL_HANDLE) poolLock.unlock();
 
     // 获取模型纹理
     std::shared_ptr<Texture> texture = model->getFirstTexture();
