@@ -20,8 +20,9 @@ std::shared_ptr<Texture> TextureLoader::loadTexture(const std::string& filename,
     // 规范化文件路径
     std::string normalizedPath = normalizePath(filename);
     
-    // 检查缓存
+    // 检查缓存（加锁）
     if (useCache) {
+        std::lock_guard<std::mutex> lock(cacheMutex_);
         auto it = textureCache.find(normalizedPath);
         if (it != textureCache.end()) {
             Logger::info("Texture loaded from cache: " + normalizedPath);
@@ -29,7 +30,7 @@ std::shared_ptr<Texture> TextureLoader::loadTexture(const std::string& filename,
         }
     }
     
-    // 加载图像文件
+    // 加载图像文件（I/O 操作，锁外执行）
     int width, height, channelCount;
     unsigned char* pixels = loadImageFile(normalizedPath, &width, &height, &channelCount, 0);
     
@@ -66,8 +67,9 @@ std::shared_ptr<Texture> TextureLoader::loadTexture(const std::string& filename,
     // 释放图像数据
     stbi_image_free(pixels);
     
-    // 添加到缓存
+    // 添加到缓存（加锁）
     if (useCache) {
+        std::lock_guard<std::mutex> lock(cacheMutex_);
         textureCache[normalizedPath] = texture;
     }
     
@@ -164,6 +166,7 @@ std::shared_ptr<Texture> TextureLoader::createEmptyTexture(uint32_t width,
 bool TextureLoader::unloadTexture(const std::string& filename) {
     std::string normalizedPath = normalizePath(filename);
     
+    std::lock_guard<std::mutex> lock(cacheMutex_);
     auto it = textureCache.find(normalizedPath);
     if (it != textureCache.end()) {
         textureCache.erase(it);
@@ -176,22 +179,26 @@ bool TextureLoader::unloadTexture(const std::string& filename) {
 }
 
 void TextureLoader::unloadAllTextures() {
+    std::lock_guard<std::mutex> lock(cacheMutex_);
     textureCache.clear();
     Logger::info("All textures unloaded");
 }
 
 void TextureLoader::clearCache() {
+    std::lock_guard<std::mutex> lock(cacheMutex_);
     textureCache.clear();
     Logger::info("Texture cache cleared");
 }
 
 bool TextureLoader::isTextureLoaded(const std::string& filename) const {
     std::string normalizedPath = normalizePath(filename);
+    std::lock_guard<std::mutex> lock(cacheMutex_);
     return textureCache.find(normalizedPath) != textureCache.end();
 }
 
 std::shared_ptr<Texture> TextureLoader::getTexture(const std::string& filename) const {
     std::string normalizedPath = normalizePath(filename);
+    std::lock_guard<std::mutex> lock(cacheMutex_);
     auto it = textureCache.find(normalizedPath);
     if (it != textureCache.end()) {
         return it->second;

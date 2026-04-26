@@ -9,6 +9,7 @@
 #include <chrono>
 #include <unordered_map>
 #include <queue>
+#include <mutex>
 
 #include "vulkan_instance.h"
 #include "vulkan_device.h"
@@ -251,6 +252,7 @@ private:
     VkDescriptorSetLayout textureDescriptorSetLayout = VK_NULL_HANDLE;
     VkDescriptorSetLayout lightDescriptorSetLayout = VK_NULL_HANDLE;
     VkDescriptorPool descriptorPool = VK_NULL_HANDLE;
+    std::mutex descriptorPoolMutex_;  // 描述符池线程安全锁（vkAllocateDescriptorSets 需外部同步）
     VkDescriptorSet textureDescriptorSet = VK_NULL_HANDLE;
     VkDescriptorSet lightDescriptorSet = VK_NULL_HANDLE;
     

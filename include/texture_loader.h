@@ -4,6 +4,7 @@
 #include <string>
 #include <memory>
 #include <map>
+#include <mutex>
 #include "texture.h"
 #include "vulkan_device.h"
 
@@ -90,7 +91,7 @@ public:
      * @brief 获取缓存的纹理数量
      * @return 缓存的纹理数量
      */
-    size_t getCacheSize() const { return textureCache.size(); }
+    size_t getCacheSize() const { std::lock_guard<std::mutex> lock(cacheMutex_); return textureCache.size(); }
 
     /**
      * @brief 清空缓存
@@ -178,6 +179,9 @@ private:
     
     // 纹理缓存（文件路径 -> 纹理指针）
     std::map<std::string, std::shared_ptr<Texture>> textureCache;
+
+    // 纹理缓存线程安全锁
+    mutable std::mutex cacheMutex_;
 
     // 默认采样器参数
     VkFilter defaultFilterMode = VK_FILTER_LINEAR;
