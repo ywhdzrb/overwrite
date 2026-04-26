@@ -1,10 +1,10 @@
 #ifndef SCENE_MANAGER_H
 #define SCENE_MANAGER_H
 
-#include "i_renderer.h"
-#include "scene_config.h"
-#include "resource_manager.h"
-#include "light_manager.h"
+#include "core/i_renderer.h"
+#include "core/scene_config.h"
+#include "core/resource_manager.h"
+#include "renderer/light_manager.h"
 #include <memory>
 #include <vector>
 #include <unordered_map>

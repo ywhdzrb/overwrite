@@ -6,8 +6,8 @@
 
 | 类名 | 文件 | 描述 |
 |------|------|------|
-| `Texture` | `include/texture.h` | 纹理资源类 |
-| `TextureLoader` | `include/texture_loader.h` | 纹理加载器 |
+| `Texture` | `include/renderer/texture.h` | 纹理资源类 |
+| `TextureLoader` | `include/renderer/texture_loader.h` | 纹理加载器 |
 
 ---
 

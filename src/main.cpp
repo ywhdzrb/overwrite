@@ -1,7 +1,7 @@
 // OverWrite 游戏主程序入口
 // 包含渲染器和日志系统的头文件
-#include "renderer.h"
-#include "logger.h"
+#include "core/renderer.h"
+#include "utils/logger.h"
 #include <iostream>
 #include <stdexcept>
 

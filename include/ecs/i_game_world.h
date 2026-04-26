@@ -6,7 +6,7 @@
 #include <cstdint>
 #include <glm/glm.hpp>
 #include <entt/entt.hpp>
-#include "camera.h"
+#include "core/camera.h"
 
 // 前向声明
 struct GLFWwindow;

@@ -1,8 +1,8 @@
 // 纹理类实现
-#include "texture.h"
-#include "vulkan_device.h"
-#include "vulkan_command_buffer.h"
-#include "logger.h"
+#include "renderer/texture.h"
+#include "core/vulkan_device.h"
+#include "core/vulkan_command_buffer.h"
+#include "utils/logger.h"
 #include <stdexcept>
 #include <cstring>
 #include <cmath>

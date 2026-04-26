@@ -6,8 +6,8 @@
 
 | 类名 | 文件 | 描述 |
 |------|------|------|
-| `Camera` | `include/camera.h` | 主相机类 |
-| `Frustum` | `include/camera.h` | 视锥体类（用于剔除） |
+| `Camera` | `include/core/camera.h` | 主相机类 |
+| `Frustum` | `include/core/camera.h` | 视锥体类（用于剔除） |
 
 ---
 

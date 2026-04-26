@@ -1,7 +1,7 @@
 // 地板渲染器实现
 // 渲染简单的地板平面
-#include "floor_renderer.h"
-#include "vulkan_device.h"
+#include "renderer/floor_renderer.h"
+#include "core/vulkan_device.h"
 #include <stdexcept>
 #include <cstring>
 #include <iostream>

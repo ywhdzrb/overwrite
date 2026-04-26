@@ -1,7 +1,7 @@
 // 天空盒渲染器实现
 // 渲染天空盒背景
-#include "skybox_renderer.h"
-#include "vulkan_device.h"
+#include "renderer/skybox_renderer.h"
+#include "core/vulkan_device.h"
 #include <stdexcept>
 #include <cstring>
 #include <iostream>

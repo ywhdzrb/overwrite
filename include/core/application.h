@@ -1,11 +1,11 @@
 #ifndef APPLICATION_H
 #define APPLICATION_H
 
-#include "render_engine.h"
-#include "scene_manager.h"
-#include "scene_config.h"
-#include "input.h"
-#include "imgui_manager.h"
+#include "core/render_engine.h"
+#include "core/scene_manager.h"
+#include "core/scene_config.h"
+#include "core/input.h"
+#include "renderer/imgui_manager.h"
 #include <memory>
 #include <chrono>
 #include <string>

@@ -6,7 +6,7 @@
 
 | 类名 | 文件 | 描述 |
 |------|------|------|
-| `Input` | `include/input.h` | 输入管理类 |
+| `Input` | `include/core/input.h` | 输入管理类 |
 
 ---
 

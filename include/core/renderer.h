@@ -11,27 +11,26 @@
 #include <queue>
 #include <mutex>
 
-#include "vulkan_instance.h"
-#include "vulkan_device.h"
-#include "vulkan_swapchain.h"
-#include "vulkan_render_pass.h"
-#include "vulkan_pipeline.h"
-#include "vulkan_framebuffer.h"
-#include "vulkan_command_buffer.h"
-#include "vulkan_sync.h"
-#include "camera.h"
-#include "input.h"
-#include "imgui_manager.h"
-#include "physics.h"
-#include "terrain_renderer.h"
-#include "cube_renderer.h"
-#include "skybox_renderer.h"
-#include "model_renderer.h"
-#include "texture_loader.h"
-#include "light_manager.h"
-#include "gltf_model.h"
-#include "scene_config.h"
-#include "resource_manager.h"
+#include "core/vulkan_instance.h"
+#include "core/vulkan_device.h"
+#include "core/vulkan_swapchain.h"
+#include "core/vulkan_render_pass.h"
+#include "core/vulkan_pipeline.h"
+#include "core/vulkan_framebuffer.h"
+#include "core/vulkan_command_buffer.h"
+#include "core/vulkan_sync.h"
+#include "core/camera.h"
+#include "core/input.h"
+#include "renderer/imgui_manager.h"
+#include "core/physics.h"
+#include "renderer/terrain_renderer.h"
+#include "renderer/skybox_renderer.h"
+#include "renderer/model_renderer.h"
+#include "renderer/texture_loader.h"
+#include "renderer/light_manager.h"
+#include "renderer/gltf_model.h"
+#include "core/scene_config.h"
+#include "core/resource_manager.h"
 
 // ECS 系统（通过接口解耦）
 #include "ecs/i_game_world.h"
@@ -168,7 +167,6 @@ private:
     std::unique_ptr<Input> input;
     std::unique_ptr<Physics> physics;
     std::shared_ptr<TerrainRenderer> terrainRenderer;
-    std::unique_ptr<CubeRenderer> cubeRenderer;
     std::unique_ptr<SkyboxRenderer> skyboxRenderer;
     std::unique_ptr<ModelRenderer> modelRenderer;
     std::unique_ptr<ImGuiManager> imguiManager;

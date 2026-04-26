@@ -6,7 +6,7 @@
 
 | 类名 | 文件 | 描述 |
 |------|------|------|
-| `Physics` | `include/physics.h` | 物理管理类 |
+| `Physics` | `include/core/physics.h` | 物理管理类 |
 
 ---
 

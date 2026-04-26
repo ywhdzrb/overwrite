@@ -1,8 +1,8 @@
-#include "resource_manager.h"
-#include "gltf_model.h"
-#include "texture.h"
-#include "texture_loader.h"
-#include "logger.h"
+#include "core/resource_manager.h"
+#include "renderer/gltf_model.h"
+#include "renderer/texture.h"
+#include "renderer/texture_loader.h"
+#include "utils/logger.h"
 #include <stdexcept>
 
 namespace owengine {

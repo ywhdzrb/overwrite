@@ -9,7 +9,7 @@
 // PhysicsSystem 仅在容差范围内做微小修正（足部穿透/悬空 < 0.1f）。
 // 两者配合避免了 "水平移动 → Y 不变 → 物理弹回" 的锯齿形卡顿。
 #include "ecs/systems.h"
-#include "logger.h"
+#include "utils/logger.h"
 #include <iostream>
 #include <algorithm>
 #include <sstream>

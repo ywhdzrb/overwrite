@@ -1,6 +1,6 @@
 // 输入处理实现
 // 处理键盘和鼠标输入
-#include "input.h"
+#include "core/input.h"
 #include <cstring>
 #include <iostream>
 #include <cmath>

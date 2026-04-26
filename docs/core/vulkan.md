@@ -6,14 +6,14 @@
 
 | 类名 | 文件 | 描述 |
 |------|------|------|
-| `VulkanInstance` | `include/vulkan_instance.h` | Vulkan 实例和设备管理 |
-| `VulkanDevice` | `include/vulkan_device.h` | 逻辑设备和队列管理 |
-| `VulkanSwapchain` | `include/vulkan_swapchain.h` | 交换链管理 |
-| `VulkanRenderPass` | `include/vulkan_render_pass.h` | 渲染通道 |
-| `VulkanPipeline` | `include/vulkan_pipeline.h` | 图形管线 |
-| `VulkanFramebuffer` | `include/vulkan_framebuffer.h` | 帧缓冲区 |
-| `VulkanCommandBuffer` | `include/vulkan_command_buffer.h` | 命令缓冲区 |
-| `VulkanSync` | `include/vulkan_sync.h` | 同步对象 |
+| `VulkanInstance` | `include/core/vulkan_instance.h` | Vulkan 实例和设备管理 |
+| `VulkanDevice` | `include/core/vulkan_device.h` | 逻辑设备和队列管理 |
+| `VulkanSwapchain` | `include/core/vulkan_swapchain.h` | 交换链管理 |
+| `VulkanRenderPass` | `include/core/vulkan_render_pass.h` | 渲染通道 |
+| `VulkanPipeline` | `include/core/vulkan_pipeline.h` | 图形管线 |
+| `VulkanFramebuffer` | `include/core/vulkan_framebuffer.h` | 帧缓冲区 |
+| `VulkanCommandBuffer` | `include/core/vulkan_command_buffer.h` | 命令缓冲区 |
+| `VulkanSync` | `include/core/vulkan_sync.h` | 同步对象 |
 
 ---
 

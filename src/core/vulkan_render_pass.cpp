@@ -1,7 +1,7 @@
 // Vulkan渲染通道管理实现
 // 负责创建和管理渲染通道，定义渲染过程
-#include "vulkan_render_pass.h"
-#include "vulkan_device.h"
+#include "core/vulkan_render_pass.h"
+#include "core/vulkan_device.h"
 #include <stdexcept>
 
 namespace owengine {

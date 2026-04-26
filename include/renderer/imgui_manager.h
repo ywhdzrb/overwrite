@@ -6,9 +6,9 @@
 #include <memory>
 #include <vector>
 
-#include "vulkan_device.h"
-#include "vulkan_swapchain.h"
-#include "vulkan_render_pass.h"
+#include "core/vulkan_device.h"
+#include "core/vulkan_swapchain.h"
+#include "core/vulkan_render_pass.h"
 
 namespace owengine {
 

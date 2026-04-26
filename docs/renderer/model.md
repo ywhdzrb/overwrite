@@ -6,10 +6,10 @@
 
 | 类名 | 文件 | 描述 |
 |------|------|------|
-| `Vertex` | `include/model.h` | 顶点数据结构 |
-| `Model` | `include/model.h` | OBJ 模型加载 |
-| `Mesh` | `include/mesh.h` | 网格类 |
-| `GLTFModel` | `include/gltf_model.h` | glTF 模型加载 |
+| `Vertex` | `include/renderer/model.h` | 顶点数据结构 |
+| `Model` | `include/renderer/model.h` | OBJ 模型加载 |
+| `Mesh` | `include/renderer/mesh.h` | 网格类 |
+| `GLTFModel` | `include/renderer/gltf_model.h` | glTF 模型加载 |
 
 ---
 

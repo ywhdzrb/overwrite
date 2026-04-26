@@ -214,7 +214,6 @@ set(SOURCES
     src/renderer/model_renderer.cpp
     src/renderer/floor_renderer.cpp
     src/renderer/terrain_renderer.cpp
-    src/renderer/cube_renderer.cpp
     src/renderer/skybox_renderer.cpp
     src/renderer/imgui_manager.cpp
     src/renderer/texture.cpp

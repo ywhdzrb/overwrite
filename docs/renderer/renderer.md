@@ -6,13 +6,13 @@
 
 | 类名 | 文件 | 描述 |
 |------|------|------|
-| `Renderer` | `include/renderer.h` | 主渲染器类 |
-| `FloorRenderer` | `include/floor_renderer.h` | 地板渲染器 |
-| `CubeRenderer` | `include/cube_renderer.h` | 立方体渲染器 |
-| `SkyboxRenderer` | `include/skybox_renderer.h` | 天空盒渲染器 |
-| `ModelRenderer` | `include/model_renderer.h` | 模型渲染器 |
-| `TextRenderer` | `include/text_renderer.h` | 文本渲染器 |
-| `ImGuiManager` | `include/imgui_manager.h` | ImGui 管理器 |
+| `Renderer` | `include/core/renderer.h` | 主渲染器类 |
+| `FloorRenderer` | `include/renderer/floor_renderer.h` | 地板渲染器 |
+| `CubeRenderer` | `include/renderer/cube_renderer.h` | 立方体渲染器 |
+| `SkyboxRenderer` | `include/renderer/skybox_renderer.h` | 天空盒渲染器 |
+| `ModelRenderer` | `include/renderer/model_renderer.h` | 模型渲染器 |
+| `TextRenderer` | `include/renderer/text_renderer.h` | 文本渲染器 |
+| `ImGuiManager` | `include/renderer/imgui_manager.h` | ImGui 管理器 |
 
 ---
 

@@ -1,6 +1,6 @@
 // GLTF 模型实现
-#include "gltf_model.h"
-#include "logger.h"
+#include "renderer/gltf_model.h"
+#include "utils/logger.h"
 #include <algorithm>
 #include <stdexcept>
 #include <filesystem>

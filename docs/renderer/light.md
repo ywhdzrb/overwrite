@@ -6,10 +6,10 @@
 
 | 类名 | 文件 | 描述 |
 |------|------|------|
-| `LightType` | `include/light.h` | 光源类型枚举 |
-| `Light` | `include/light.h` | 光源类 |
-| `ShaderLight` | `include/light.h` | 着色器光源数据结构 |
-| `LightManager` | `include/light_manager.h` | 光源管理器 |
+| `LightType` | `include/renderer/light.h` | 光源类型枚举 |
+| `Light` | `include/renderer/light.h` | 光源类 |
+| `ShaderLight` | `include/renderer/light.h` | 着色器光源数据结构 |
+| `LightManager` | `include/renderer/light_manager.h` | 光源管理器 |
 
 ---
 

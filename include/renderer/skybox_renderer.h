@@ -6,7 +6,7 @@
 #include <memory>
 #include <vector>
 #include <string>
-#include "i_renderer.h"
+#include "core/i_renderer.h"
 
 namespace owengine {
 

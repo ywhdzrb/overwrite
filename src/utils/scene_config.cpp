@@ -1,5 +1,5 @@
-#include "scene_config.h"
-#include "logger.h"
+#include "core/scene_config.h"
+#include "utils/logger.h"
 #include <nlohmann/json.hpp>
 #include <fstream>
 #include <stdexcept>

@@ -1,7 +1,7 @@
 // OBJ模型渲染器实现
 // 用于加载和渲染OBJ格式的3D模型
-#include "model_renderer.h"
-#include "vulkan_device.h"
+#include "renderer/model_renderer.h"
+#include "core/vulkan_device.h"
 #include <stdexcept>
 #include <cstring>
 #include <glm/glm.hpp>

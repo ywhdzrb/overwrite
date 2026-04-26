@@ -1,9 +1,9 @@
 // 渲染器实现
 // 负责管理整个渲染流程，包括窗口创建、Vulkan初始化和渲染循环
 #include "imgui.h"
-#include "renderer.h"
-#include "skybox_renderer.h"
-#include "logger.h"
+#include "core/renderer.h"
+#include "renderer/skybox_renderer.h"
+#include "utils/logger.h"
 #include <nlohmann/json.hpp>
 #include <fstream>
 #include <iostream>
@@ -14,7 +14,8 @@
 #include <random>
 #include <thread>
 #include <future>
-#include "tree_system.h"
+#include "renderer/tree_system.h"
+#include "core/game_config.h"
 #include "ecs/ecs.h"  // 仅 cpp 引用具体类型（dev panel + raw ptr cast）
 #include "ecs/client_systems.h"  // InputSystem 完整定义
 
@@ -174,9 +175,6 @@ void Renderer::initVulkan() {
         ecsClientWorld->setTerrainQuery(terrainHeightQuery);
     }
     
-    cubeRenderer = std::make_unique<CubeRenderer>(vulkanDevice);
-    cubeRenderer->create();
-    
     // 初始化纹理加载器
     textureLoader = std::make_shared<TextureLoader>(vulkanDevice);
     
@@ -257,10 +255,17 @@ void Renderer::initVulkan() {
     // 创建描述符集（创建默认描述符集）
     createDescriptorSets();
     
-    // 初始化树系统（独立类，通过依赖注入创建）
+    // 加载游戏全局配置
+    auto gameConfig = GameConfig::load("assets/configs/game_config.json");
+    const auto& rCfg = gameConfig.renderer;
+    userMovementSpeed = rCfg.movementSpeed;
+    userSensitivity   = rCfg.mouseSensitivity;
+    targetFPS         = rCfg.targetFPS;
+
+    // 初始化树系统（依赖注入 + 配置驱动）
     treeSystem_ = std::make_unique<TreeSystem>(vulkanDevice, textureLoader, textureDescriptorSetLayout);
     treeSystem_->setHeightSampler(terrainHeightQuery);
-    treeSystem_->init();
+    treeSystem_->init(gameConfig.tree);
     
     // 初始化 ImGui
     imguiManager = std::make_unique<ImGuiManager>(vulkanDevice, swapchain, renderPass, window, vulkanInstance->getInstance(), msaaSamples);
@@ -1007,10 +1012,6 @@ void Renderer::drawFrame() {
     terrainRenderer->render(commandBuffer, graphicsPipeline->getPipelineLayout(),
                           camera->getViewMatrix(), camera->getProjectionMatrix());
     
-    // 渲染立方体
-    cubeRenderer->render(commandBuffer, graphicsPipeline->getPipelineLayout(),
-                        camera->getViewMatrix(), camera->getProjectionMatrix());
-    
     // 渲染 OBJ 模型
     if (modelRenderer) {
         modelRenderer->render(commandBuffer, graphicsPipeline->getPipelineLayout(),
@@ -1262,7 +1263,6 @@ void Renderer::cleanup() {
     rawClientWorld_ = nullptr;
     ecsClientWorld.reset();
     
-    cubeRenderer.reset();
     modelRenderer.reset();
     skyboxRenderer.reset();
     // 清除地形查询回调，防止悬空指针
@@ -1943,17 +1943,6 @@ void Renderer::renderDeveloperPanel() {
             }
         }
         
-        // 立方体控制
-        if (cubeRenderer) {
-            if (ImGui::TreeNode("立方体")) {
-                static glm::vec3 cubePos(0.0f, 0.0f, -1.0f);
-                
-                if (ImGui::DragFloat3("位置##cube", &cubePos.x, 0.1f)) {
-                    cubeRenderer->setPosition(cubePos);
-                }
-                ImGui::TreePop();
-            }
-        }
     }
     
     // 从配置文件重新加载

@@ -15,6 +15,18 @@ class GLTFModel;
 class TextureLoader;
 class Camera;
 
+/// 树木系统配置参数（由 game_config.json 的 "tree" 段填充）
+struct TreeConfig {
+    float chunkSize = 16.0f;          // 区块边长（米）
+    int   loadRadius = 6;             // 加载半径（区块数）
+    int   maxTotal = 300;             // 最大树木实例数
+    float minScale = 0.2f;            // 最小缩放
+    float maxScale = 0.5f;            // 最大缩放
+    double density = 0.15;            // 泊松 λ，每区块平均树数
+    float renderDistance = 250.0f;    // 渲染距离（米）
+    float heightThreshold = -2.0f;    // 地形高度下限
+};
+
 /**
  * @brief 树木系统
  *
@@ -41,8 +53,9 @@ public:
 
     /**
      * @brief 初始化：加载 tree.glb 模型，创建共享描述符池，预计算树木位置
+     * @param cfg 树木系统配置参数（从 game_config.json 读取）
      */
-    void init();
+    void init(const TreeConfig& cfg);
 
     /**
      * @brief 每帧更新：根据玩家位置动态加载/卸载树木区块
@@ -91,17 +104,14 @@ private:
         float yaw = 0.0f;
     };
 
-    void generateTreesAtStartup();
-    void loadTreeChunk(const glm::vec3& playerPos);
-
-    static constexpr float CHUNK_SIZE = 16.0f;
-    static constexpr int LOAD_RADIUS = 6;
-    static constexpr int MAX_TOTAL = 300;
+    void generateTreesAtStartup(const TreeConfig& cfg);
+    void loadTreeChunk(const TreeConfig& cfg, const glm::vec3& playerPos);
 
     std::shared_ptr<VulkanDevice> device_;
     std::shared_ptr<TextureLoader> textureLoader_;
     VkDescriptorSetLayout descriptorSetLayout_ = VK_NULL_HANDLE;
 
+    TreeConfig config_;
     std::unique_ptr<GLTFModel> sharedTreeModel_;
     VkDescriptorPool sharedTreePool_ = VK_NULL_HANDLE;
     std::unordered_set<TreeChunkKey, TreeChunkKeyHash> loadedChunks_;

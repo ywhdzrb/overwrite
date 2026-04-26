@@ -5,8 +5,8 @@
 #include <vector>
 #include <memory>
 
-#include "vulkan_device.h"
-#include "model.h"
+#include "core/vulkan_device.h"
+#include "renderer/model.h"
 
 namespace owengine {
 

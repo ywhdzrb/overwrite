@@ -1,7 +1,7 @@
 #ifndef LIGHT_MANAGER_H
 #define LIGHT_MANAGER_H
 
-#include "light.h"
+#include "renderer/light.h"
 #include <vector>
 #include <memory>
 #include <map>

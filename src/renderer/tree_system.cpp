@@ -1,9 +1,9 @@
-#include "tree_system.h"
-#include "gltf_model.h"
-#include "vulkan_device.h"
-#include "texture_loader.h"
-#include "camera.h"
-#include "logger.h"
+#include "renderer/tree_system.h"
+#include "renderer/gltf_model.h"
+#include "core/vulkan_device.h"
+#include "renderer/texture_loader.h"
+#include "core/camera.h"
+#include "utils/logger.h"
 
 #include <random>
 #include <algorithm>
@@ -24,9 +24,8 @@ TreeSystem::~TreeSystem() {
     cleanup();
 }
 
-void TreeSystem::init() {
-    const int treeMeshCount = 301;
-    (void)treeMeshCount; // 日志用常量
+void TreeSystem::init(const TreeConfig& cfg) {
+    config_ = cfg;
 
     sharedTreeModel_ = std::make_unique<GLTFModel>(device_, textureLoader_);
     if (sharedTreeModel_->loadFromFile("assets/models/tree.glb")) {
@@ -46,46 +45,43 @@ void TreeSystem::init() {
         Logger::error("[TreeSystem] 共享模型加载失败");
     }
 
-    generateTreesAtStartup();
+    generateTreesAtStartup(config_);
 }
 
-void TreeSystem::generateTreesAtStartup() {
-    const float minScale = 0.2f;
-    const float maxScale = 0.5f;
-    const double treeLambda = 0.15;
+void TreeSystem::generateTreesAtStartup(const TreeConfig& cfg) {
+    auto& c = cfg;
 
-    trees_.resize(MAX_TOTAL);
-    loadedChunks_.reserve(MAX_TOTAL * 2);
+    trees_.resize(c.maxTotal);
+    loadedChunks_.reserve(c.maxTotal * 2);
 
     int treeIdx = 0;
-    for (int dz = -LOAD_RADIUS; dz <= LOAD_RADIUS; ++dz) {
-        for (int dx = -LOAD_RADIUS; dx <= LOAD_RADIUS; ++dx) {
-            if (treeIdx >= MAX_TOTAL) break;
+    for (int dz = -c.loadRadius; dz <= c.loadRadius; ++dz) {
+        for (int dx = -c.loadRadius; dx <= c.loadRadius; ++dx) {
+            if (treeIdx >= c.maxTotal) break;
             TreeChunkKey key{dx, dz};
 
             std::mt19937 chunkGen(key.x * 100000 + key.z);
-            std::poisson_distribution<int> poisson(treeLambda);
+            std::poisson_distribution<int> poisson(c.density);
             int treeCount = poisson(chunkGen);
             if (treeCount <= 0) {
                 loadedChunks_.insert(key);
                 continue;
             }
 
-            float chunkWorldX = static_cast<float>(key.x) * CHUNK_SIZE;
-            float chunkWorldZ = static_cast<float>(key.z) * CHUNK_SIZE;
+            float chunkWorldX = static_cast<float>(key.x) * c.chunkSize;
+            float chunkWorldZ = static_cast<float>(key.z) * c.chunkSize;
 
-            std::uniform_real_distribution<float> posOffset(1.0f, CHUNK_SIZE - 1.0f);
-            std::uniform_real_distribution<float> scaleGen(minScale, maxScale);
+            std::uniform_real_distribution<float> posOffset(1.0f, c.chunkSize - 1.0f);
+            std::uniform_real_distribution<float> scaleGen(c.minScale, c.maxScale);
             std::uniform_real_distribution<float> yawGen(0.0f, 360.0f);
 
-            for (int t = 0; t < treeCount && treeIdx < MAX_TOTAL; ++t) {
+            for (int t = 0; t < treeCount && treeIdx < c.maxTotal; ++t) {
                 for (int attempt = 0; attempt < 10; ++attempt) {
                     float wx = chunkWorldX + posOffset(chunkGen);
                     float wz = chunkWorldZ + posOffset(chunkGen);
 
-                    // 采样地形高度，低于阈值跳过
                     float y = heightSampler_ ? heightSampler_(wx, wz) : 0.0f;
-                    if (y < -2.0f) continue;
+                    if (y < c.heightThreshold) continue;
 
                     trees_[treeIdx].id = "tree_" + std::to_string(key.x) + "_" + std::to_string(key.z) + "_" + std::to_string(t);
                     trees_[treeIdx].position = {wx, y, wz};
@@ -95,6 +91,7 @@ void TreeSystem::generateTreesAtStartup() {
                     break;
                 }
             }
+            loadedChunks_.insert(key);
         }
     }
     Logger::info("[TreeSystem] 已预计算 " + std::to_string(treeIdx) + " 棵树，直接填入槽位");
@@ -102,31 +99,27 @@ void TreeSystem::generateTreesAtStartup() {
 
 void TreeSystem::update(const glm::vec3& playerPos, const Camera& camera) {
     if (!sharedTreeModel_) return;
-    (void)camera; // 距离剔除在渲染时再做，位置更新仅需玩家坐标
+    auto& c = config_;
 
-    int cx = static_cast<int>(std::floor(playerPos.x / CHUNK_SIZE));
-    int cz = static_cast<int>(std::floor(playerPos.z / CHUNK_SIZE));
+    int cx = static_cast<int>(std::floor(playerPos.x / c.chunkSize));
+    int cz = static_cast<int>(std::floor(playerPos.z / c.chunkSize));
 
-    const float minScale = 0.2f;
-    const float maxScale = 0.5f;
-    const double treeLambda = 0.15;
-
-    for (int dz = -LOAD_RADIUS; dz <= LOAD_RADIUS; ++dz) {
-        for (int dx = -LOAD_RADIUS; dx <= LOAD_RADIUS; ++dx) {
+    for (int dz = -c.loadRadius; dz <= c.loadRadius; ++dz) {
+        for (int dx = -c.loadRadius; dx <= c.loadRadius; ++dx) {
             TreeChunkKey key{cx + dx, cz + dz};
             if (loadedChunks_.count(key)) continue;
             loadedChunks_.insert(key);
 
             std::mt19937 chunkGen(key.x * 100000 + key.z);
-            std::poisson_distribution<int> poisson(treeLambda);
+            std::poisson_distribution<int> poisson(c.density);
             int treeCount = poisson(chunkGen);
             if (treeCount <= 0) continue;
 
-            float chunkWorldX = static_cast<float>(key.x) * CHUNK_SIZE;
-            float chunkWorldZ = static_cast<float>(key.z) * CHUNK_SIZE;
+            float chunkWorldX = static_cast<float>(key.x) * c.chunkSize;
+            float chunkWorldZ = static_cast<float>(key.z) * c.chunkSize;
 
-            std::uniform_real_distribution<float> posOffset(1.0f, CHUNK_SIZE - 1.0f);
-            std::uniform_real_distribution<float> scaleGen(minScale, maxScale);
+            std::uniform_real_distribution<float> posOffset(1.0f, c.chunkSize - 1.0f);
+            std::uniform_real_distribution<float> scaleGen(c.minScale, c.maxScale);
             std::uniform_real_distribution<float> yawGen(0.0f, 360.0f);
 
             for (int t = 0; t < treeCount; ++t) {
@@ -135,16 +128,16 @@ void TreeSystem::update(const glm::vec3& playerPos, const Camera& camera) {
                     float wz = chunkWorldZ + posOffset(chunkGen);
 
                     int slot = -1;
-                    for (int i = 0; i < MAX_TOTAL; ++i) {
+                    for (int i = 0; i < c.maxTotal; ++i) {
                         if (trees_[i].id.empty()) { slot = i; break; }
                     }
                     if (slot < 0) {
                         static int replaceIdx = 0;
-                        slot = replaceIdx++ % MAX_TOTAL;
+                        slot = replaceIdx++ % c.maxTotal;
                     }
 
                     float y = heightSampler_ ? heightSampler_(wx, wz) : 0.0f;
-                    if (y < -2.0f) continue;
+                    if (y < c.heightThreshold) continue;
 
                     std::string id = "tree_" + std::to_string(key.x) + "_" + std::to_string(key.z) + "_" + std::to_string(t);
                     trees_[slot].id = id;
@@ -166,7 +159,7 @@ void TreeSystem::render(VkCommandBuffer commandBuffer, VkPipelineLayout pipeline
         if (tree.id.empty()) continue;
 
         float distance = glm::length(tree.position - camera.getPosition());
-        if (distance > 250.0f) continue;
+        if (distance > config_.renderDistance) continue;
 
         auto bbox = sharedTreeModel_->getBoundingBox();
         if (!camera.getFrustum().isAABBInside(

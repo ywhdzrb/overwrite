@@ -1,6 +1,6 @@
 // 着色器编译器实现
 // 负责将GLSL着色器编译为SPIR-V字节码
-#include "shader_compiler.h"
+#include "core/shader_compiler.h"
 #include <fstream>
 #include <iostream>
 #include <cstdlib>

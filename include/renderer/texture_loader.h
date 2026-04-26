@@ -5,8 +5,8 @@
 #include <memory>
 #include <map>
 #include <mutex>
-#include "texture.h"
-#include "vulkan_device.h"
+#include "renderer/texture.h"
+#include "core/vulkan_device.h"
 
 namespace owengine {
 
