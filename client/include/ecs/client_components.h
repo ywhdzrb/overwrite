@@ -1,5 +1,4 @@
-#ifndef CLIENT_ECS_COMPONENTS_H
-#define CLIENT_ECS_COMPONENTS_H
+#pragma once
 
 #include <glm/glm.hpp>
 #include <glm/gtc/quaternion.hpp>
@@ -97,5 +96,3 @@ struct LightComponent {
 
 } // namespace ecs
 } // namespace owengine
-
-#endif // CLIENT_ECS_COMPONENTS_H

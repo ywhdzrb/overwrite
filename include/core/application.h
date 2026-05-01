@@ -1,11 +1,11 @@
-#ifndef APPLICATION_H
-#define APPLICATION_H
+#pragma once
 
 #include "core/render_engine.h"
 #include "core/scene_manager.h"
 #include "core/scene_config.h"
 #include "core/input.h"
 #include "renderer/imgui_manager.h"
+#include "utils/asset_paths.h"
 #include <memory>
 #include <chrono>
 #include <string>
@@ -21,8 +21,7 @@ class ClientWorld;
  */
 struct ApplicationConfig {
     RenderEngineConfig render;
-    std::string sceneConfigPath = "assets/models/models.json";
-    bool useECS = true;
+    std::string sceneConfigPath = AssetPaths::SCENE_CONFIG;
     bool enableDeveloperMode = true;
     float targetFPS = 60.0f;
 };
@@ -140,5 +139,3 @@ private:
 };
 
 } // namespace owengine
-
-#endif // APPLICATION_H

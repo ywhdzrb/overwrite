@@ -1,5 +1,4 @@
-#ifndef LIGHT_H
-#define LIGHT_H
+#pragma once
 
 #include <glm/glm.hpp>
 #include <string>
@@ -333,5 +332,3 @@ struct ShaderLight {
 using ShaderLightArray = std::array<ShaderLight, 16>;
 
 } // namespace owengine
-
-#endif // LIGHT_H

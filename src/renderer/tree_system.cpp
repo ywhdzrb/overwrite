@@ -4,6 +4,7 @@
 #include "renderer/texture_loader.h"
 #include "core/camera.h"
 #include "utils/logger.h"
+#include "utils/asset_paths.h"
 
 #include <random>
 #include <algorithm>
@@ -28,12 +29,13 @@ void TreeSystem::init(const TreeConfig& cfg) {
     config_ = cfg;
 
     sharedTreeModel_ = std::make_unique<GLTFModel>(device_, textureLoader_);
-    if (sharedTreeModel_->loadFromFile("assets/models/tree.glb")) {
+    if (sharedTreeModel_->loadFromFile(AssetPaths::TREE_MODEL)) {
         VkDescriptorPoolSize poolSize{};
         poolSize.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
         poolSize.descriptorCount = 312;
         VkDescriptorPoolCreateInfo poolInfo{};
         poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+        poolInfo.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
         poolInfo.poolSizeCount = 1;
         poolInfo.pPoolSizes = &poolSize;
         poolInfo.maxSets = 302;

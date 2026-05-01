@@ -3,6 +3,11 @@
 # OverWrite Build Script
 # 前后端分离架构构建脚本
 #
+# 依赖管理：本脚本与 .gitmodules 同步维护，两者定义的依赖列表必须一致。
+#   - .gitmodules 记录官方源 URL（供 git submodule init 使用）
+#   - build.sh 提供 GitHub/Gitee 镜像切换（供无梯子环境使用）
+#   修改依赖时请同步更新两个文件。
+#
 # Usage:
 #   ./build.sh              # 默认构建 release 版本
 #   ./build.sh release      # 构建 release 版本
@@ -11,6 +16,7 @@
 #   ./build.sh run          # 构建并运行客户端
 #   ./build.sh run-server   # 构建并运行服务端
 #   ./build.sh all          # 构建所有目标（默认）
+#   ./build.sh test         # 构建并运行单元测试（需联网下载 GTest）
 #   ./build.sh --github     # 强制使用 GitHub 源
 #   ./build.sh --gitee      # 强制使用 Gitee 源
 
@@ -29,6 +35,7 @@ BUILD_TYPE="Release"
 RUN_AFTER_BUILD=false
 RUN_SERVER=false
 BUILD_TARGET="all"
+BUILD_TESTS="OFF"
 FORCE_SOURCE=""  # 空=自动检测，github=强制 GitHub，gitee=强制 Gitee
 
 # 依赖源配置
@@ -89,6 +96,9 @@ for arg in "$@"; do
             ;;
         client)
             BUILD_TARGET="OverWrite"
+            ;;
+        test|tests)
+            BUILD_TESTS="ON"
             ;;
         all)
             BUILD_TARGET="all"
@@ -286,7 +296,7 @@ cd build
 
 # Configure with CMake
 echo -e "${GREEN}Configuring project with CMake...${NC}"
-cmake .. -DCMAKE_BUILD_TYPE=${BUILD_TYPE}
+cmake .. -DCMAKE_BUILD_TYPE=${BUILD_TYPE} -DBUILD_TESTS=${BUILD_TESTS}
 
 # Build the project
 echo -e "${GREEN}Building project...${NC}"

@@ -1,5 +1,4 @@
-#ifndef CLIENT_ECS_CAMERA_CONTROLLER_SYSTEM_H
-#define CLIENT_ECS_CAMERA_CONTROLLER_SYSTEM_H
+#pragma once
 
 #include <entt/entt.hpp>
 #include <glm/glm.hpp>
@@ -100,5 +99,3 @@ private:
 
 } // namespace ecs
 } // namespace owengine
-
-#endif // CLIENT_ECS_CAMERA_CONTROLLER_SYSTEM_H

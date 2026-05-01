@@ -1,5 +1,4 @@
-#ifndef RENDER_ENGINE_H
-#define RENDER_ENGINE_H
+#pragma once
 
 #include <vulkan/vulkan.h>
 #include <GLFW/glfw3.h>
@@ -163,5 +162,3 @@ private:
 };
 
 } // namespace owengine
-
-#endif // RENDER_ENGINE_H

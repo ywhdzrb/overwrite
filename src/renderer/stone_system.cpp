@@ -4,6 +4,7 @@
 #include "renderer/texture_loader.h"
 #include "core/camera.h"
 #include "utils/logger.h"
+#include "utils/asset_paths.h"
 
 #include <random>
 #include <algorithm>
@@ -28,12 +29,13 @@ void StoneSystem::init(const StoneConfig& cfg) {
     config_ = cfg;
 
     sharedStoneModel_ = std::make_unique<GLTFModel>(device_, textureLoader_);
-    if (sharedStoneModel_->loadFromFile("assets/models/stone.gltf")) {
+    if (sharedStoneModel_->loadFromFile(AssetPaths::STONE_MODEL)) {
         VkDescriptorPoolSize poolSize{};
         poolSize.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
         poolSize.descriptorCount = 512;
         VkDescriptorPoolCreateInfo poolInfo{};
         poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+        poolInfo.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
         poolInfo.poolSizeCount = 1;
         poolInfo.pPoolSizes = &poolSize;
         poolInfo.maxSets = 502;

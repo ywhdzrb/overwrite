@@ -1,5 +1,4 @@
-#ifndef TERRAIN_CHUNK_H
-#define TERRAIN_CHUNK_H
+#pragma once
 
 // 地形渲染器 — 基于 Perlin 噪声的过程化地形
 //
@@ -23,7 +22,6 @@
 // 线程安全：
 //   - perlinNoise/fbm/getHeight/computeChunkMesh 均为 const，只读成员数据
 //   - perm 向量在构造函数中一次性初始化，之后永不修改
-//   - 匿名命名空间 initPerm() 由构造函数的 permInitialized=true 阻止重新运行
 
 #include <vulkan/vulkan.h>
 #include <glm/glm.hpp>
@@ -166,5 +164,3 @@ private:
 };
 
 } // namespace owengine
-
-#endif // TERRAIN_CHUNK_H

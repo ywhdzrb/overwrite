@@ -2,6 +2,7 @@
 #include "core/vulkan_device.h"
 #include "core/camera.h"
 #include "utils/logger.h"
+#include "utils/asset_paths.h"
 #include <glm/gtc/matrix_transform.hpp>
 #include <algorithm>
 #include <cmath>
@@ -658,8 +659,8 @@ void GrassSystem::render(VkCommandBuffer commandBuffer, const Camera& camera) {
 
 void GrassSystem::createPipeline(VkRenderPass renderPass, VkExtent2D extent,
                                   VkSampleCountFlagBits msaaSamples) {
-    auto vertCode = readFile("shaders/grass.vert.spv");
-    auto fragCode = readFile("shaders/grass.frag.spv");
+    auto vertCode = readFile(AssetPaths::GRASS_VERT_SHADER);
+    auto fragCode = readFile(AssetPaths::GRASS_FRAG_SHADER);
     if (vertCode.empty() || fragCode.empty()) {
         Logger::error("[GrassSystem] 着色器文件读取失败");
         return;

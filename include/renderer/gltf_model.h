@@ -1,5 +1,4 @@
-#ifndef GLTF_MODEL_H
-#define GLTF_MODEL_H
+#pragma once
 
 #include <vulkan/vulkan.h>
 #include <string>
@@ -533,5 +532,3 @@ private:
 };
 
 } // namespace owengine
-
-#endif // GLTF_MODEL_H

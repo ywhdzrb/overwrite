@@ -1,5 +1,4 @@
-#ifndef VULKAN_SYNC_H
-#define VULKAN_SYNC_H
+#pragma once
 
 #include <vulkan/vulkan.h>
 #include <vector>
@@ -35,5 +34,3 @@ private:
 };
 
 } // namespace owengine
-
-#endif // VULKAN_SYNC_H

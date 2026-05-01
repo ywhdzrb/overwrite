@@ -1,5 +1,6 @@
 #include "renderer/fsr1_pass.h"
 #include "utils/logger.h"
+#include "utils/asset_paths.h"
 #include <fstream>
 #include <cstring>
 
@@ -127,7 +128,7 @@ void Fsr1Pass::createDescriptorResources() {
 
 void Fsr1Pass::createEasuPipeline() {
     VkDevice dev = device_->getDevice();
-    auto code = readFile_("shaders/fsr1_easu.comp.spv");
+    auto code = readFile_(AssetPaths::FSR1_EASU_SHADER);
     if (code.empty()) { Logger::error("[Fsr1Pass] shader not found"); return; }
     VkShaderModule mod = createMod_(dev, code);
     if (!mod) return;

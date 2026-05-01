@@ -1,5 +1,4 @@
-#ifndef I_RENDERER_H
-#define I_RENDERER_H
+#pragma once
 
 #include <vulkan/vulkan.h>
 #include <glm/glm.hpp>
@@ -96,5 +95,3 @@ enum class RendererType {
 };
 
 } // namespace owengine
-
-#endif // I_RENDERER_H

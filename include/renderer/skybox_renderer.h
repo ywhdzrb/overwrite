@@ -1,5 +1,4 @@
-#ifndef SKYBOX_RENDERER_H
-#define SKYBOX_RENDERER_H
+#pragma once
 
 #include <vulkan/vulkan.h>
 #include <glm/glm.hpp>
@@ -83,5 +82,3 @@ protected:
 };
 
 } // namespace owengine
-
-#endif // SKYBOX_RENDERER_H

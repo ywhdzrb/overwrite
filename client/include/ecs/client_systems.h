@@ -1,5 +1,4 @@
-#ifndef CLIENT_ECS_SYSTEMS_H
-#define CLIENT_ECS_SYSTEMS_H
+#pragma once
 
 #include <entt/entt.hpp>
 #include <GLFW/glfw3.h>
@@ -178,5 +177,3 @@ private:
 
 } // namespace ecs
 } // namespace owengine
-
-#endif // CLIENT_ECS_SYSTEMS_H

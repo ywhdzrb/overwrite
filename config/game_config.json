@@ -1,0 +1,46 @@
+{
+    "grass": {
+        "chunk_size":         16.0,
+        "load_radius":        5,
+        "max_blades":         500000,
+        "density":            10.0,
+        "render_distance":    120.0,
+        "blade_height_min":   0.05,
+        "blade_height_max":   1.2,
+        "segments_per_blade": 4,
+        "blade_width":        0.12,
+        "wind_strength":      0.5,
+        "player_radius":      2.5,
+        "player_force":       1.5
+    },
+
+    "tree": {
+        "chunk_size":       16.0,
+        "load_radius":      6,
+        "max_total":        300,
+        "min_scale":        0.2,
+        "max_scale":        0.5,
+        "density":          0.15,
+        "render_distance":  250.0,
+        "height_threshold": -2.0
+    },
+
+    "stone": {
+        "chunk_size":       16.0,
+        "load_radius":      6,
+        "max_stones":       500,
+        "min_scale":        0.3,
+        "max_scale":        1.5,
+        "density":          0.3,
+        "render_distance":  200.0,
+        "height_threshold": -2.0
+    },
+
+    "renderer": {
+        "target_fps":         0.0,
+        "movement_speed":     5.0,
+        "mouse_sensitivity":  0.1,
+        "msaa_samples":       4,
+        "fly_speed":          10.0
+    }
+}

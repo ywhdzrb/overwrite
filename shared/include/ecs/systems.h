@@ -1,5 +1,4 @@
-#ifndef SHARED_ECS_SYSTEMS_H
-#define SHARED_ECS_SYSTEMS_H
+#pragma once
 
 #include <entt/entt.hpp>
 #include <memory>
@@ -151,5 +150,3 @@ private:
 
 } // namespace ecs
 } // namespace owengine
-
-#endif // SHARED_ECS_SYSTEMS_H

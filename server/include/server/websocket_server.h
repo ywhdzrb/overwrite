@@ -1,5 +1,4 @@
-#ifndef WEBSOCKET_SERVER_H
-#define WEBSOCKET_SERVER_H
+#pragma once
 
 #include "server/server_world.h"
 #include "network/server_discovery.h"
@@ -85,5 +84,3 @@ private:
 
 } // namespace server
 } // namespace owengine
-
-#endif // WEBSOCKET_SERVER_H

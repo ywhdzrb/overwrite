@@ -1,5 +1,4 @@
-#ifndef SHARED_ECS_COMPONENTS_H
-#define SHARED_ECS_COMPONENTS_H
+#pragma once
 
 #include <glm/glm.hpp>
 #include <glm/gtc/quaternion.hpp>
@@ -160,5 +159,3 @@ struct EntityTypeComponent {
 
 } // namespace ecs
 } // namespace owengine
-
-#endif // SHARED_ECS_COMPONENTS_H

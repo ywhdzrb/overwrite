@@ -1,5 +1,4 @@
-#ifndef SCENE_MANAGER_H
-#define SCENE_MANAGER_H
+#pragma once
 
 #include "core/i_renderer.h"
 #include "core/scene_config.h"
@@ -179,5 +178,3 @@ private:
 };
 
 } // namespace owengine
-
-#endif // SCENE_MANAGER_H

@@ -1,5 +1,4 @@
-#ifndef CLIENT_NETWORK_SYSTEM_H
-#define CLIENT_NETWORK_SYSTEM_H
+#pragma once
 
 #include <string>
 #include <functional>
@@ -136,5 +135,3 @@ private:
 
 } // namespace client
 } // namespace owengine
-
-#endif // CLIENT_NETWORK_SYSTEM_H

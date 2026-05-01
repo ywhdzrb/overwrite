@@ -1,0 +1,84 @@
+{
+  "ambient": {
+    "color": [0.8, 0.8, 0.8],
+    "intensity": 1.0
+  },
+  "models": [
+    {
+      "id": "player_idle",
+      "file": "assets/models/player.glb",
+      "enabled": false,
+      "position": [0.0, 0.0, -5.0],
+      "rotation": [0.0, 0.0, 0.0],
+      "scale": [0.3, 0.3, 0.3],
+      "subdivisionIterations": 0,
+      "playAnimation": false,
+      "animationIndex": 0,
+      "playAllAnimations": false,
+      "isPlayerModel": true,
+      "isPlayerWalkModel": false,
+      "description": "玩家空闲动画模型"
+    },
+    {
+      "id": "player_walk",
+      "file": "assets/models/player_walk.glb",
+      "enabled": false,
+      "position": [0.0, 0.0, -5.0],
+      "rotation": [0.0, 0.0, 0.0],
+      "scale": [0.3, 0.3, 0.3],
+      "subdivisionIterations": 0,
+      "playAnimation": true,
+      "animationIndex": 0,
+      "playAllAnimations": true,
+      "isPlayerModel": false,
+      "isPlayerWalkModel": true,
+      "description": "玩家行走动画模型"
+    },
+    {
+      "id": "ball",
+      "file": "assets/models/ball.glb",
+      "enabled": false,
+      "position": [0.0, 0.0, -5.0],
+      "rotation": [0.0, 0.0, 0.0],
+      "scale": [1.0, 1.0, 1.0],
+      "subdivisionIterations": 0,
+      "playAnimation": false,
+      "animationIndex": 0,
+      "playAllAnimations": false,
+      "isPlayerModel": false,
+      "isPlayerWalkModel": false,
+      "description": "球体模型"
+    },
+    {
+      "id": "tree",
+      "file": "assets/models/tree.glb",
+      "enabled": false,
+      "position": [3.0, 0.0, 0.0],
+      "rotation": [0.0, 0.0, 0.0],
+      "scale": [0.3, 0.3, 0.3],
+      "subdivisionIterations": 0,
+      "playAnimation": false,
+      "animationIndex": 0,
+      "playAllAnimations": false,
+      "isPlayerModel": false,
+      "isPlayerWalkModel": false,
+      "description": "树木模型",
+      "hiddenMeshNames": []
+    },
+    {
+      "id": "stone",
+      "file": "assets/models/stone.gltf",
+      "enabled": false,
+      "position": [5.0, 0.0, 0.0],
+      "rotation": [0.0, 0.0, 0.0],
+      "scale": [1.0, 1.0, 1.0],
+      "subdivisionIterations": 0,
+      "playAnimation": false,
+      "animationIndex": 0,
+      "playAllAnimations": false,
+      "isPlayerModel": false,
+      "isPlayerWalkModel": false,
+      "description": "石头模型（由 StoneSystem 程序化生成）"
+    }
+  ]
+}

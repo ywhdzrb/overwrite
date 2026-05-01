@@ -1,5 +1,4 @@
-#ifndef TEXTURE_H
-#define TEXTURE_H
+#pragma once
 
 #include <vulkan/vulkan.h>
 #include <string>
@@ -172,5 +171,3 @@ private:
 };
 
 } // namespace owengine
-
-#endif // TEXTURE_H

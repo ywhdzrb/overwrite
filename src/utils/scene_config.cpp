@@ -114,8 +114,6 @@ SceneConfig SceneConfigLoader::load(const std::string& filePath) {
                 mc.playAnimation = m.value("playAnimation", false);
                 mc.animationIndex = m.value("animationIndex", 0);
                 mc.playAllAnimations = m.value("playAllAnimations", false);
-                mc.isPlayerModel = m.value("isPlayerModel", false);
-                mc.isPlayerWalkModel = m.value("isPlayerWalkModel", false);
                 mc.description = m.value("description", "");
                 
                 config.models.push_back(mc);
@@ -174,8 +172,6 @@ void SceneConfigLoader::save(const std::string& filePath, const SceneConfig& con
         mj["playAnimation"] = m.playAnimation;
         mj["animationIndex"] = m.animationIndex;
         mj["playAllAnimations"] = m.playAllAnimations;
-        mj["isPlayerModel"] = m.isPlayerModel;
-        mj["isPlayerWalkModel"] = m.isPlayerWalkModel;
         mj["description"] = m.description;
         j["models"].push_back(mj);
     }

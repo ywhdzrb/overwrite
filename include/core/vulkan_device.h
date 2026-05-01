@@ -1,5 +1,4 @@
-#ifndef VULKAN_DEVICE_H
-#define VULKAN_DEVICE_H
+#pragma once
 
 #include <vulkan/vulkan.h>
 #include <GLFW/glfw3.h>
@@ -18,7 +17,8 @@ struct SwapChainSupportDetails {
 
 class VulkanDevice {
 public:
-    VulkanDevice(VkPhysicalDevice physicalDevice, VkDevice device, VkSurfaceKHR surface);
+    VulkanDevice(VkPhysicalDevice physicalDevice, VkDevice device, VkSurfaceKHR surface,
+                 uint32_t graphicsQueueFamily, uint32_t presentQueueFamily);
     ~VulkanDevice();
 
     // 禁止拷贝
@@ -47,6 +47,7 @@ public:
     VkQueue getGraphicsQueue() const { return graphicsQueue; }
     VkQueue getPresentQueue() const { return presentQueue; }
     uint32_t getGraphicsQueueFamily() const { return graphicsQueueFamily; }
+    uint32_t getPresentQueueFamily() const { return presentQueueFamily_; }
     VkCommandPool getCommandPool() const { return commandPool; }
     std::mutex& getQueueMutex() const { return queueMutex_; }
     VkImage getDepthImage() const { return depthImage; }
@@ -64,6 +65,7 @@ private:
     VkQueue graphicsQueue;
     VkQueue presentQueue;
     uint32_t graphicsQueueFamily = 0;
+    uint32_t presentQueueFamily_ = 0;
     VkCommandPool commandPool;
 
     // 呈现模式偏好：true=优先 Mailbox（默认），false=始终使用 Fifo
@@ -81,5 +83,3 @@ private:
 };
 
 } // namespace owengine
-
-#endif // VULKAN_DEVICE_H

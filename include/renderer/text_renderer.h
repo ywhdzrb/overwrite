@@ -1,5 +1,4 @@
-#ifndef TEXT_RENDERER_H
-#define TEXT_RENDERER_H
+#pragma once
 
 #include <vulkan/vulkan.h>
 #include <memory>
@@ -63,5 +62,3 @@ private:
 };
 
 } // namespace owengine
-
-#endif // TEXT_RENDERER_H

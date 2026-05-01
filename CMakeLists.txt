@@ -208,6 +208,7 @@ set(SOURCES
     src/core/light_manager.cpp
     src/core/resource_manager.cpp
     src/core/scene_manager.cpp
+    src/game_session/game_session.cpp
     src/renderer/renderer.cpp
     src/renderer/model.cpp
     src/renderer/mesh.cpp
@@ -302,8 +303,18 @@ add_dependencies(${PROJECT_NAME} compile_shaders)
 # 安装规则
 install(TARGETS ${PROJECT_NAME} OverWriteServerBin DESTINATION bin)
 
+# ==================== 测试 ====================
+option(BUILD_TESTS "Enable unit tests" OFF)
+if(BUILD_TESTS)
+    enable_testing()
+    add_subdirectory(tests)
+endif()
+
 # 输出构建信息
 message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
 message(STATUS "C++ Standard: ${CMAKE_CXX_STANDARD}")
 message(STATUS "Vulkan headers: ${Vulkan_INCLUDE_DIRS}")
 message(STATUS "Targets: ${PROJECT_NAME} (client), overwrite-server (server)")
+if(BUILD_TESTS)
+    message(STATUS "Unit tests: ENABLED")
+endif()

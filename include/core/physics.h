@@ -1,5 +1,4 @@
-#ifndef PHYSICS_H
-#define PHYSICS_H
+#pragma once
 
 #include <glm/glm.hpp>
 #include <vulkan/vulkan.h>
@@ -61,5 +60,3 @@ private:
 };
 
 } // namespace owengine
-
-#endif // PHYSICS_H

@@ -1,5 +1,4 @@
-#ifndef LIGHT_MANAGER_H
-#define LIGHT_MANAGER_H
+#pragma once
 
 #include "renderer/light.h"
 #include <vector>
@@ -252,5 +251,3 @@ private:
 };
 
 } // namespace owengine
-
-#endif // LIGHT_MANAGER_H

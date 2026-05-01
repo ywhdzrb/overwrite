@@ -1,5 +1,4 @@
-#ifndef TERRAIN_QUERY_H
-#define TERRAIN_QUERY_H
+#pragma once
 
 #include <glm/glm.hpp>
 
@@ -19,5 +18,3 @@ private:
 };
 
 } // namespace owengine
-
-#endif // TERRAIN_QUERY_H

@@ -147,10 +147,7 @@ void VulkanInstance::createInstance() {
     }
 }
 
-// 设置调试信使
-// 创建调试消息回调用于接收验证层的调试信息
-// 设置调试信使
-// 创建调试消息回调用于接收验证层的调试信息
+// 设置调试信使并创建回调，接收验证层的调试消息
 void VulkanInstance::setupDebugMessenger() {
     if (!enableValidationLayers) return;
     

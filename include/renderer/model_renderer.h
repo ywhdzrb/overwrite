@@ -1,5 +1,4 @@
-#ifndef MODEL_RENDERER_H
-#define MODEL_RENDERER_H
+#pragma once
 
 #include <vulkan/vulkan.h>
 #include <glm/glm.hpp>
@@ -83,5 +82,3 @@ protected:
 };
 
 } // namespace owengine
-
-#endif // MODEL_RENDERER_H

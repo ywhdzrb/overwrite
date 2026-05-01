@@ -1,5 +1,4 @@
-#ifndef SERVER_WORLD_H
-#define SERVER_WORLD_H
+#pragma once
 
 #include "ecs/systems.h"
 #include <memory>
@@ -96,5 +95,3 @@ private:
 
 } // namespace server
 } // namespace owengine
-
-#endif // SERVER_WORLD_H

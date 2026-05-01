@@ -1,5 +1,4 @@
-#ifndef CAMERA_H
-#define CAMERA_H
+#pragma once
 
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
@@ -248,5 +247,3 @@ private:
 };
 
 } // namespace owengine
-
-#endif // CAMERA_H

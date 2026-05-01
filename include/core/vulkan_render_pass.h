@@ -1,5 +1,4 @@
-#ifndef VULKAN_RENDER_PASS_H
-#define VULKAN_RENDER_PASS_H
+#pragma once
 
 #include <vulkan/vulkan.h>
 #include <memory>
@@ -32,5 +31,3 @@ private:
 };
 
 } // namespace owengine
-
-#endif // VULKAN_RENDER_PASS_H

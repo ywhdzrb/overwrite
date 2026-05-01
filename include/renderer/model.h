@@ -1,5 +1,4 @@
-#ifndef MODEL_H
-#define MODEL_H
+#pragma once
 
 #include <vulkan/vulkan.h>
 #include <vector>
@@ -75,5 +74,3 @@ private:
 };
 
 } // namespace owengine
-
-#endif // MODEL_H

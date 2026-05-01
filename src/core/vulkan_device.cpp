@@ -11,38 +11,15 @@
 namespace owengine {
 
 // VulkanDevice构造函数
-VulkanDevice::VulkanDevice(VkPhysicalDevice physicalDevice, VkDevice device, VkSurfaceKHR surface)
-    : physicalDevice(physicalDevice), device(device), surface(surface) {
-    
-    // 获取队列索引
-    uint32_t queueFamilyCount = 0;
-    vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &queueFamilyCount, nullptr);
-    
-    std::vector<VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
-    vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &queueFamilyCount, queueFamilies.data());
-    
-    uint32_t graphicsFamily = 0;
-    uint32_t presentFamily = 0;
-    
-    for (uint32_t i = 0; i < queueFamilyCount; i++) {
-        if (queueFamilies[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) {
-            graphicsFamily = i;
-        }
-        
-        VkBool32 presentSupport = false;
-        vkGetPhysicalDeviceSurfaceSupportKHR(physicalDevice, i, surface, &presentSupport);
-        
-        if (presentSupport) {
-            presentFamily = i;
-        }
-    }
-    
-    // 存储图形队列族索引
-    graphicsQueueFamily = graphicsFamily;
-    
-    vkGetDeviceQueue(device, graphicsFamily, 0, &graphicsQueue);
-    vkGetDeviceQueue(device, presentFamily, 0, &presentQueue);
-    
+// 直接接收 VulkanInstance 已枚举的队列族索引，避免重复枚举
+VulkanDevice::VulkanDevice(VkPhysicalDevice physicalDevice, VkDevice device, VkSurfaceKHR surface,
+                           uint32_t graphicsQueueFamily, uint32_t presentQueueFamily)
+    : physicalDevice(physicalDevice), device(device), surface(surface),
+      graphicsQueueFamily(graphicsQueueFamily), presentQueueFamily_(presentQueueFamily) {
+
+    vkGetDeviceQueue(device, graphicsQueueFamily, 0, &graphicsQueue);
+    vkGetDeviceQueue(device, presentQueueFamily, 0, &presentQueue);
+
     createCommandPool();
 }
 
@@ -63,27 +40,13 @@ VulkanDevice::~VulkanDevice() {
 }
 
 // 创建命令池
-// 用于分配命令缓冲
+// 使用构造函数中已接收的 graphicsQueueFamily 索引，不需重复枚举
 void VulkanDevice::createCommandPool() {
-    uint32_t queueFamilyCount = 0;
-    vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &queueFamilyCount, nullptr);
-    
-    std::vector<VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
-    vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &queueFamilyCount, queueFamilies.data());
-    
-    uint32_t graphicsFamily = 0;
-    for (uint32_t i = 0; i < queueFamilyCount; i++) {
-        if (queueFamilies[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) {
-            graphicsFamily = i;
-            break;
-        }
-    }
-    
     VkCommandPoolCreateInfo poolInfo{};
     poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
     poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
-    poolInfo.queueFamilyIndex = graphicsFamily;
-    
+    poolInfo.queueFamilyIndex = graphicsQueueFamily;
+
     if (vkCreateCommandPool(device, &poolInfo, nullptr, &commandPool) != VK_SUCCESS) {
         throw std::runtime_error("failed to create command pool!");
     }

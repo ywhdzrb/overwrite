@@ -1,5 +1,4 @@
-#ifndef SERVER_DISCOVERY_H
-#define SERVER_DISCOVERY_H
+#pragma once
 
 #include <string>
 #include <thread>
@@ -103,5 +102,3 @@ private:
 };
 
 } // namespace owengine
-
-#endif // SERVER_DISCOVERY_H

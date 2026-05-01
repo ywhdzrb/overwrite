@@ -1,9 +1,15 @@
-// 渲染器实现
-// 负责管理整个渲染流程，包括窗口创建、Vulkan初始化和渲染循环
+// 渲染器实现 — 纯渲染编排器
+// 负责 Vulkan 管线生命周期、帧缓冲、命令缓冲录制、渲染子系统调度。
+// 游戏逻辑（ECS/物理/碰撞/网络/玩家动画）已提取至 GameSession。
 #include "imgui.h"
 #include "core/renderer.h"
-#include "renderer/skybox_renderer.h"
+#include "core/camera.h"
+#include "core/input.h"
+#include "core/game_session.h"
+#include "ecs/i_game_world.h"
+#include "core/scene_config.h"
 #include "utils/logger.h"
+#include "utils/asset_paths.h"
 #include <nlohmann/json.hpp>
 #include <fstream>
 #include <iostream>
@@ -18,8 +24,6 @@
 #include "renderer/stone_system.h"
 #include "renderer/grass_system.h"
 #include "core/game_config.h"
-#include "ecs/ecs.h"  // 仅 cpp 引用具体类型（dev panel + raw ptr cast）
-#include "ecs/client_systems.h"  // InputSystem 完整定义
 
 namespace owengine {
 
@@ -66,10 +70,13 @@ void Renderer::initVulkan() {
     vulkanInstance = std::make_shared<VulkanInstance>();
     vulkanInstance->initialize(window);
     
+    auto queueIndices = vulkanInstance->getQueueFamilyIndices();
     vulkanDevice = std::make_shared<VulkanDevice>(
         vulkanInstance->getPhysicalDevice(),
         vulkanInstance->getDevice(),
-        vulkanInstance->getSurface()
+        vulkanInstance->getSurface(),
+        queueIndices.graphicsFamily.value(),
+        queueIndices.presentFamily.value()
     );
     
     // 获取设备支持的最大 MSAA 采样数
@@ -122,8 +129,8 @@ void Renderer::initVulkan() {
         vulkanDevice,
         renderPass->getRenderPass(),
         swapchain->getExtent(),
-        "shaders/shader.vert.spv",
-        "shaders/shader.frag.spv",
+        AssetPaths::MAIN_VERT_SHADER,
+        AssetPaths::MAIN_FRAG_SHADER,
         owengine::VertexFormat::POSITION_COLOR,
         descriptorSetLayouts,
         msaaSamples
@@ -158,94 +165,63 @@ void Renderer::initVulkan() {
     syncObjects->create(MAX_FRAMES_IN_FLIGHT);
     
     // 不预先记录命令缓冲，每次drawFrame时动态记录
-    
-    // 初始化游戏逻辑组件
-    camera = std::make_unique<Camera>(windowWidth, windowHeight);
-    input = std::make_unique<Input>(window);
-    physics = std::make_unique<Physics>();
-    
-    // 初始化 ECS 系统（通过 IGameWorld 接口）
-    if (useECS) {
-        auto* clientWorld = new ecs::ClientWorld();
-        rawClientWorld_ = clientWorld;
-        ecsClientWorld.reset(clientWorld);
-        ecsClientWorld->initClientSystems(window, windowWidth, windowHeight);
-        ecsClientWorld->createClientPlayer(windowWidth, windowHeight);
-        std::cout << "[Renderer] ECS 系统初始化完成" << std::endl;
-    }
-    
+
     terrainRenderer = std::make_shared<TerrainRenderer>(vulkanDevice);
     terrainRenderer->create();
-    
-    // 初始更新地形区块
+
+    // 初始更新地形区块（玩家位置随后由 GameSession 驱动）
     terrainRenderer->update(glm::vec3(0.0f, 0.0f, 5.0f));
-    
-    // 设置地形碰撞查询
+
+    // 构建地形高度查询回调（渲染侧共享，GameSession 和 树/石/草系统共用）
     auto weakTerrain = std::weak_ptr<TerrainRenderer>(terrainRenderer);
     auto terrainHeightQuery = [weakTerrain](float x, float z) -> float {
         auto terrain = weakTerrain.lock();
-        if (!terrain) {
-            // 地形渲染器已销毁，返回默认地面高度
-            return 0.0f;
-        }
+        if (!terrain) return 0.0f;
         return terrain->getHeight(x, z);
     };
-    camera->setTerrainQuery(terrainHeightQuery);
-    physics->setTerrainQuery(terrainHeightQuery);
-    
-    // 设置 ECS 物理系统的地形查询
-    if (ecsClientWorld) {
-        ecsClientWorld->setTerrainQuery(terrainHeightQuery);
-    }
-    
+
     // 初始化纹理加载器
     textureLoader = std::make_shared<TextureLoader>(vulkanDevice);
-    
+
     // 初始化光源管理器
     lightManager = std::make_unique<LightManager>();
-    
-    // 初始化天空盒渲染器（在创建天空盒管线之前）
+
+    // 初始化天空盒渲染器
     skyboxRenderer = std::make_unique<SkyboxRenderer>(vulkanDevice);
     skyboxRenderer->create();
-    // 加载天空盒纹理（十字形布局）
     try {
-        skyboxRenderer->loadCubemapFromCrossLayout("assets/textures/skybox.jpg");
+        skyboxRenderer->loadCubemapFromCrossLayout(AssetPaths::SKYBOX_TEXTURE);
     } catch (const std::runtime_error& e) {
-        std::cout << "[Renderer] 天空盒纹理加载失败: " << e.what() << std::endl;
-        std::cout << "[Renderer] 将使用默认黑色背景" << std::endl;
+        Logger::warning("天空盒纹理加载失败: " + std::string(e.what()));
     }
-    
-    // 初始化模型渲染器
+
+    // 初始化模型渲染器（不含玩家模型，玩家模型由 GameSession 管理）
     modelRenderer = std::make_unique<ModelRenderer>(vulkanDevice, textureLoader);
     modelRenderer->create();
-    
-    // 创建天空盒管线（需要天空盒渲染器的描述符集布局）
+
+    // 创建天空盒管线
     skyboxPipeline = std::make_shared<VulkanPipeline>(
         vulkanDevice,
         renderPass->getRenderPass(),
         swapchain->getExtent(),
-        "shaders/skybox.vert.spv",
-        "shaders/skybox.frag.spv",
+        AssetPaths::SKYBOX_VERT_SHADER,
+        AssetPaths::SKYBOX_FRAG_SHADER,
         VertexFormat::POSITION_ONLY,
         std::vector<VkDescriptorSetLayout>{skyboxRenderer->getDescriptorSetLayout()},
         msaaSamples
     );
     skyboxPipeline->create();
-    
-    // 创建描述符集布局
-    createDescriptorSetLayouts();
-    
-    // 基础描述符池：仅非树木模型使用全局池
+
+    // 基础描述符池
     createDescriptorPool(20, 20);
-    
-    // 从 JSON 配置文件加载场景（光源和模型）
-    SceneConfig sceneConfig = loadSceneConfig("assets/models/models.json");
-    
+
+    // 从 JSON 配置文件加载场景（光源和静态模型）
+    SceneConfig sceneConfig = loadSceneConfig(AssetPaths::SCENE_CONFIG);
+
     // 加载光源
     if (!sceneConfig.lights.empty()) {
         loadLightsFromConfig(sceneConfig);
     } else {
-        // 如果配置文件中没有光源，使用默认配置
         Logger::warning("使用默认光源配置");
         lightManager->addDirectionalLight("sun", glm::vec3(0.5f, -1.0f, 0.5f), glm::vec3(1.0f, 1.0f, 1.0f), 1.0f);
         lightManager->addPointLight("point1", glm::vec3(2.0f, 3.0f, 2.0f), glm::vec3(1.0f, 1.0f, 1.0f), 2.0f, 10.0f);
@@ -253,62 +229,41 @@ void Renderer::initVulkan() {
         lightManager->setAmbientColor(glm::vec3(0.5f, 0.5f, 0.5f));
         lightManager->setAmbientIntensity(0.5f);
     }
-    
-    // 加载模型
+
+    // 加载静态模型（不含玩家模型，玩家模型由 GameSession 加载）
     if (!sceneConfig.models.empty()) {
         loadModelsFromConfig(sceneConfig.models);
-    } else {
-        // 如果配置文件中没有模型，使用默认配置
-        Logger::warning("使用默认模型配置");
-        std::vector<ModelConfig> defaultConfigs = {
-            {
-                "player_idle", "assets/models/player.glb", true,
-                glm::vec3(0.0f, 0.0f, -5.0f), glm::vec3(0.0f), glm::vec3(0.3f),
-                0, false, 0, false, true, false, "玩家空闲模型"
-            },
-            {
-                "player_walk", "assets/models/player_walk.glb", true,
-                glm::vec3(0.0f, 0.0f, -5.0f), glm::vec3(0.0f), glm::vec3(0.3f),
-                0, true, 0, true, false, true, "玩家行走模型"
-            }
-        };
-        loadModelsFromConfig(defaultConfigs);
     }
-    
-    // 创建描述符集（创建默认描述符集）
-    createDescriptorSets();
-    
-    // 加载游戏全局配置
-    auto gameConfig = GameConfig::load("assets/configs/game_config.json");
-    const auto& rCfg = gameConfig.renderer;
-    userMovementSpeed = rCfg.movementSpeed;
-    userSensitivity   = rCfg.mouseSensitivity;
-    targetFPS         = rCfg.targetFPS;
 
-    // 初始化树系统（依赖注入 + 配置驱动）
+    // 创建描述符集（默认纹理描述符集 + 光源 uniform buffer）
+    createDescriptorSets();
+
+    // 加载渲染器配置
+    auto gameConfig = GameConfig::load(AssetPaths::GAME_CONFIG);
+    targetFPS = gameConfig.renderer.targetFPS;
+
+    // 初始化树系统
     treeSystem_ = std::make_unique<TreeSystem>(vulkanDevice, textureLoader, textureDescriptorSetLayout);
     treeSystem_->setHeightSampler(terrainHeightQuery);
     treeSystem_->init(gameConfig.tree);
 
-    // 初始化石头系统（与树系统同模式，共享 stone.gltf）
+    // 初始化石头系统
     stoneSystem_ = std::make_unique<StoneSystem>(vulkanDevice, textureLoader, textureDescriptorSetLayout);
     stoneSystem_->setHeightSampler(terrainHeightQuery);
     stoneSystem_->init(gameConfig.stone);
 
-    // 初始化草丛系统（实例化渲染，独立管线）
+    // 初始化草丛系统
     grassSystem_ = std::make_unique<GrassSystem>(vulkanDevice);
     grassSystem_->setHeightSampler(terrainHeightQuery);
     grassSystem_->init(gameConfig.grass, renderPass->getRenderPass(),
                        swapchain->getExtent(), msaaSamples);
 
-    // 接线：树/石邻近查询 → GrassSystem（用于树下/石旁草密度/高度调节）
     grassSystem_->setTreeQuery([this](float x, float z, float radius) {
         return treeSystem_->queryPositions(x, z, radius);
     });
     grassSystem_->setStoneQuery([this](float x, float z, float radius) {
         return stoneSystem_->queryPositions(x, z, radius);
     });
-    // 设置全局光照方向（用于石头背阴面草衰减判定）
     if (auto* sunLight = lightManager->getLightByName("sun")) {
         grassSystem_->setGlobalLightDir(sunLight->getDirection());
     }
@@ -316,8 +271,31 @@ void Renderer::initVulkan() {
     // 初始化 ImGui
     imguiManager = std::make_unique<ImGuiManager>(vulkanDevice, swapchain, renderPass, window, vulkanInstance->getInstance(), msaaSamples);
     imguiManager->init();
-    
-    // 初始化时间
+
+    // 创建游戏会话（持有 ECS/物理/碰撞/网络/动画逻辑）
+    if (externalGameSession_) {
+        gameSession_ = externalGameSession_;
+    } else {
+        ownedGameSession_ = std::make_unique<GameSession>();
+        GameSessionInitParams gsParams;
+        gsParams.window = window;
+        gsParams.windowWidth = windowWidth;
+        gsParams.windowHeight = windowHeight;
+        gsParams.device = vulkanDevice;
+        gsParams.textureLoader = textureLoader;
+        gsParams.terrainRenderer = terrainRenderer;
+        gsParams.treeSystem = treeSystem_.get();
+        gsParams.stoneSystem = stoneSystem_.get();
+        gsParams.grassSystem = grassSystem_.get();
+        gsParams.descriptorPool = descriptorPool;
+        gsParams.textureDescriptorSetLayout = textureDescriptorSetLayout;
+        gsParams.lightDescriptorSetLayout = lightDescriptorSetLayout;
+        gsParams.graphicsPipelineLayout = graphicsPipeline->getPipelineLayout();
+        gsParams.terrainHeightQuery = terrainHeightQuery;
+        ownedGameSession_->init(gsParams);
+        gameSession_ = ownedGameSession_.get();
+    }
+
     lastTime = std::chrono::high_resolution_clock::now();
 }
 
@@ -354,492 +332,75 @@ void Renderer::mainLoop() {
             setMsaaSamples(pendingMsaaSamples);
         }
         
-                // FPS 计算
-        
-                frameCount++;
-        
-                fpsTimer += deltaTime;
-        
-                if (fpsTimer >= 1.0f) {  // 每秒更新一次
-        
-                    currentFPS = frameCount / fpsTimer;
-                    std::cout << "[Renderer] FPS: " << (int)currentFPS
-                              << " L=" << (int)profLogicMs_ << " D=" << (int)profDrawMs_
-                              << " G=" << (int)profGPUMs_ << "ms" << std::endl;
-        
-                    
-        
-                    frameCount = 0;
-        
-                    fpsTimer = 0.0f;
-        
-                    // 重置帧时间统计
-        
-                    minFrameTime = 999.0f;
-        
-                    maxFrameTime = 0.0f;
-        
-                }
-        
-                
-        
-                                glfwPollEvents();
-        
-                
-        
-                                
-        
-                
-        
-                                // 第一帧后捕获鼠标
-        
-                
-        
-                                if (firstFrame) {
-        
-                
-        
-                                    if (useECS && ecsClientWorld->getInputSystem()) {
-        
-                
-        
-                                        ecsClientWorld->getInputSystem()->setCursorCaptured(true);
-        
-                
-        
-                                    } else {
-        
-                
-        
-                                        input->setCursorCaptured(true);
-        
-                
-        
-                                    }
-        
-                
-        
-                                    firstFrame = false;
-        
-                
-        
-                                    glfwPollEvents();
-        
-                
-        
-                                    std::cout << "[Renderer] 鼠标已捕获" << std::endl;
-        
-                
-        
-                                }
-        
-                
-        
-                                
-        
-                
-        
+        glfwPollEvents();
 
-        
-                
-        
-
-        
-                
-        
-                                // 检测按键状态（在update之前，避免状态被重置）
-
-
-                                if (useECS && ecsClientWorld->getInputSystem()) {
-
-
-                                    // ECS 模式：输入由 ECS 系统处理，这里不需要额外操作
-
-
-                                } else {
-
-
-                                    jumpInput = input->isKeyJustPressed(GLFW_KEY_SPACE);
-
-
-                                    freeCameraToggle = false;
-
-
-                                    shiftInput = input->isSprintPressed();
-
-
-                                    spaceHeld = input->isKeyPressed(GLFW_KEY_SPACE);
-
-
-                                    
-
-
-                                    // 更新输入
-
-
-                                    input->update();
-
-
-                                    
-
-
-                                    // 处理鼠标移动
-
-
-                                    double mouseX, mouseY;
-
-
-                                    input->getRawMouseMovement(mouseX, mouseY);
-
-
-                                    
-
-
-                                    if (mouseX != 0.0 || mouseY != 0.0) {
-
-
-                                        camera->processMouseMovement(static_cast<float>(mouseX), static_cast<float>(mouseY));
-
-
-                                    }
-
-
-                                }
-        
-                
-        
-        
-                
-        
-                // 更新 ImGui
-        
-                imguiManager->newFrame();
-        
-                
-        
-                // 显示 FPS 和玩家坐标
-                ImGui::Begin("HUD", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings);
-                ImGui::Text("FPS: %.1f", currentFPS);
-                ImGui::Text("Logic:%.1f Draw:%.1f GPU:%.1f ms", profLogicMs_, profDrawMs_, profGPUMs_);
-                {
-                    glm::vec3 pos = useECS ? ecsClientWorld->getPlayerPosition() : camera->getPosition();
-                    ImGui::Text("Pos: %.1f, %.1f, %.1f", pos.x, pos.y, pos.z);
-                }
-                ImGui::SetWindowPos(ImVec2(10, 10), ImGuiCond_FirstUseEver);
-                ImGui::End();
-        // 更新游戏逻辑（应用时间缩放）
-        if (!pauseGame) {
-            auto t0 = std::chrono::high_resolution_clock::now();
-            updateGameLogic(deltaTime * timeScale);
-            profLogicMs_ = std::chrono::duration<double, std::milli>(std::chrono::high_resolution_clock::now() - t0).count();
+        // 第一帧后捕获鼠标
+        if (firstFrame) {
+            if (gameSession_ && gameSession_->getInput()) {
+                gameSession_->getInput()->setCursorCaptured(true);
+            }
+            firstFrame = false;
+            glfwPollEvents();
         }
-        
+
+        // === ImGui 新帧 + HUD ===
+        imguiManager->newFrame();
+        if (gameSession_) {
+            ImGui::Begin("HUD", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings);
+            ImGui::Text("FPS: %.1f", gameSession_->getCurrentFPS());
+            ImGui::Text("Logic:%.1f Draw:%.1f GPU:%.1f ms",
+                        gameSession_->getProfLogicMs(), profDrawMs_, profGPUMs_);
+            if (auto* ecs = gameSession_->getECSWorld()) {
+                glm::vec3 pos = ecs->getPlayerPosition();
+                ImGui::Text("Pos: %.1f, %.1f, %.1f", pos.x, pos.y, pos.z);
+            }
+            ImGui::SetWindowPos(ImVec2(10, 10), ImGuiCond_FirstUseEver);
+            ImGui::End();
+        }
+
+        // === 更新游戏逻辑（委托给 GameSession） ===
+        if (gameSession_) {
+            float scaledDt = gameSession_->pauseGame ? 0.0f : deltaTime * gameSession_->timeScale;
+            gameSession_->update(scaledDt);
+        }
+
+        // === 渲染帧 ===
         {
             auto t0 = std::chrono::high_resolution_clock::now();
             drawFrame();
             profDrawMs_ = std::chrono::duration<double, std::milli>(std::chrono::high_resolution_clock::now() - t0).count();
         }
-        
-        // 在帧结束时重置"刚刚按下"标志
-        input->resetJustPressedFlags();
-        
-        // 帧率限制（targetFPS<=0 时解除限制）
+
+        // === FPS 统计 ===
+        frameCount++;
+        fpsTimer += deltaTime;
+        if (fpsTimer >= 1.0f) {
+            float fps = float(frameCount) / fpsTimer;
+            std::cout << "[Renderer] FPS: " << (int)fps
+                      << " D=" << (int)profDrawMs_
+                      << " G=" << (int)profGPUMs_ << "ms" << std::endl;
+            frameCount = 0;
+            fpsTimer = 0.0f;
+            minFrameTime = 999.0f;
+            maxFrameTime = 0.0f;
+        }
+
+        // === 帧率限制 ===
         if (targetFPS > 0.0f) {
             nextFrameTime += std::chrono::nanoseconds(static_cast<long long>((1.0 / targetFPS) * 1e9));
         }
         auto frameEndTime = std::chrono::high_resolution_clock::now();
         frameTime = std::chrono::duration<float>(frameEndTime - frameStartTime).count();
-        
-        // 更新帧时间统计
         if (frameTime < minFrameTime) minFrameTime = frameTime;
         if (frameTime > maxFrameTime) maxFrameTime = frameTime;
-        
-        // 如果当前帧结束时间早于下一帧目标时间，睡眠等待
         if (targetFPS > 0.0f && frameEndTime < nextFrameTime) {
             std::this_thread::sleep_until(nextFrameTime);
         } else {
-            // 帧已超时，将下一帧目标前移到当前时间（防止连续追赶）
             nextFrameTime = frameEndTime;
         }
     }
-    
-    vkDeviceWaitIdle(vulkanDevice->getDevice());
-}
 
-void Renderer::updateGameLogic(float deltaTime) {
-    // 更新视锥体（用于剔除）
-    camera->updateFrustum();
-    
-    // 处理网络连接请求
-    if (connectRequested && ecsClientWorld) {
-        std::cout << "[Renderer] 正在连接到 " << serverHost << ":" << serverPort << std::endl;
-        if (ecsClientWorld->connectToServer(serverHost, static_cast<uint16_t>(serverPort))) {
-            std::cout << "[Renderer] 连接成功" << std::endl;
-        } else {
-            std::cerr << "[Renderer] 连接失败" << std::endl;
-        }
-        connectRequested = false;
-    }
-    
-    // 处理断开连接请求
-    if (disconnectRequested && ecsClientWorld) {
-        ecsClientWorld->disconnectFromServer();
-        disconnectRequested = false;
-        std::cout << "[Renderer] 已断开连接" << std::endl;
-    }
-    
-    if (useECS && ecsClientWorld) {
-        // 通过 IGameWorld 接口操作游戏世界，不再直接访问 ECS registry
-        ecsClientWorld->setPlayerSpeed(userMovementSpeed);
-        ecsClientWorld->setPlayerSensitivity(userSensitivity);
-        ecsClientWorld->setPlayerDirection(camera->getFront(), camera->getRight());
-        
-        // === 1) 同步阶段：输入 + 网络接收（必须主线程） ===
-        ecsClientWorld->updateSync(deltaTime);
-        
-        // 拷贝玩家当前位置（异步期间主线程读取，避免数据竞争）
-        glm::vec3 playerPos = ecsClientWorld->getPlayerPosition();
-        
-        // === 1.5) 更新树/石碰撞箱（异步模拟开始前注入，MovementSystem + PhysicsSystem） ===
-        // 注意：ECS 的 PhysicsSystem 将 position.y 设为中心（terrain + colliderHeight/2 = 0.9），
-        // 而 MovementSystem::checkCollision 把 position.y 当作脚底。碰撞箱 Y 要上移 0.9 对齐。
-        if (rawClientWorld_ && rawClientWorld_->getMovementSystem()) {
-            auto* moveSys = rawClientWorld_->getMovementSystem();
-            auto* physSys = rawClientWorld_->getPhysicsSystem();
-            moveSys->clearCollisionBoxes();
-            if (physSys) physSys->clearCollisionBoxes();
-            constexpr float PLAYER_Y_OFFSET = 0.9f;  // colliderHeight(1.8) / 2
-            
-            // 查询玩家附近树木（半径 25m 覆盖移动范围）
-            auto trees = treeSystem_->queryPositions(playerPos.x, playerPos.z, 25.0f);
-            for (const auto& [pos, scale] : trees) {
-                float r = std::max(0.5f, 0.3f * scale);  // 树干碰撞半径
-                float h = 3.0f;                           // 树干高度
-                glm::vec3 boxPos = pos;
-                boxPos.y += PLAYER_Y_OFFSET;              // 对齐到玩家中心 Y
-                moveSys->addCollisionBox(boxPos, glm::vec3(r * 2, h, r * 2));
-                // PhysicsSystem 用物理位置（不加偏移），仅石头的落地支持
-            }
-            
-            // 查询玩家附近石头
-            auto stones = stoneSystem_->queryPositions(playerPos.x, playerPos.z, 25.0f);
-            for (const auto& [pos, scale] : stones) {
-                float r = std::max(0.3f, 0.25f * scale); // 石头碰撞半径
-                float h = 0.8f * scale;                   // 石头高度
-                glm::vec3 boxPos = pos;
-                boxPos.y += PLAYER_Y_OFFSET;              // 对齐到玩家中心 Y
-                moveSys->addCollisionBox(boxPos, glm::vec3(r * 2, h, r * 2));
-                // PhysicsSystem 碰撞箱：物理位置（无 offset），用于 queryTerrainHeight 返回石头顶面
-                if (physSys) {
-                    glm::vec3 physPos = pos;
-                    physPos.y += h * 0.5f;  // 箱子中心 = 石头物理中心
-                    physSys->addCollisionBox(physPos, glm::vec3(r * 2, h, r * 2));
-                }
-            }
-        }
-        
-        // === 2) 异步阶段：纯 CPU 模拟（后台线程） ===
-        auto ecsFuture = std::async(std::launch::async, [this, deltaTime]() {
-            ecsClientWorld->updateAsync(deltaTime);
-        });
-        
-        // === 3) 主线程执行渲染系统更新（4 核 CPU 上 async 开销太大，串行更快） ===
-        terrainRenderer->update(playerPos);
-        if (treeSystem_) treeSystem_->update(playerPos, *camera);
-        if (stoneSystem_) stoneSystem_->update(playerPos, *camera);
-        if (grassSystem_) grassSystem_->update(playerPos, *camera, deltaTime);
-        
-        // === 4) 等待异步模拟完成 ===
-        ecsFuture.wait();
-        
-        // === 5) 发送网络输入 ===
-        ecsClientWorld->sendNetInputs();
-        
-        // 飞行模式（F 键切换）
-        static bool prevF = false;
-        bool curF = glfwGetKey(window, GLFW_KEY_F) == GLFW_PRESS;
-        if (curF && !prevF) ecsClientWorld->setPlayerFlying(!ecsClientWorld->isPlayerFlying());
-        prevF = curF;
-        ecsClientWorld->updateFlight(deltaTime, spaceHeld, shiftInput);
-        
-        // 从 ECS 同步到旧相机系统
-        ecsClientWorld->syncCamera(*camera);
-        
-        // 将 playerIsFlying_ 同步标记
-        playerIsFlying_ = ecsClientWorld->isPlayerFlying();
-    } else {
-        // 使用旧的系统更新
-        float speed = userMovementSpeed;
-        if (input->isSprintPressed()) {
-            speed *= 2.0f;
-        }
-        camera->setMovementSpeed(speed);
-        
-        camera->update(deltaTime,
-                      input->isForwardPressed(),
-                      input->isBackPressed(),
-                      input->isLeftPressed(),
-                      input->isRightPressed(),
-                      jumpInput,
-                      freeCameraToggle,
-                      shiftInput,
-                      spaceHeld);
-        
-        physics->update(deltaTime);
-        
-        // 串行更新树木、石头、草丛（4 核上 async 开销 > 受益）
-        glm::vec3 camPos = camera->getPosition();
-        if (treeSystem_) treeSystem_->update(camPos, *camera);
-        if (stoneSystem_) stoneSystem_->update(camPos, *camera);
-        if (grassSystem_) grassSystem_->update(camPos, *camera, deltaTime);
-    }
-    
-    // 第三人称模式：将 player 模型位置同步到相机目标
-    if (camera->getMode() == Camera::Mode::ThirdPerson) {
-        // 检测玩家是否在移动，并计算移动方向
-        bool isMoving = false;
-        float moveYaw = camera->getYaw();  // 默认面向相机方向
-        
-        if (useECS && ecsClientWorld && ecsClientWorld->isPlayerValid()) {
-            auto* r = ecsClientWorld->getRegistry();
-            auto player = rawClientWorld_->getPlayer();
-            auto* input = r ? r->try_get<ecs::InputStateComponent>(player) : nullptr;
-            if (input) {
-                isMoving = input->moveForward || input->moveBackward || 
-                          input->moveLeft || input->moveRight;      
-                if (isMoving) {
-                    float dirX = 0.0f, dirZ = 0.0f;
-                    glm::vec3 camFront = camera->getFront();
-                    camFront.y = 0.0f;
-                    camFront = glm::normalize(camFront);
-                    glm::vec3 camRight = camera->getRight();
-                    camRight.y = 0.0f;
-                    camRight = glm::normalize(camRight);
-                    if (input->moveForward)  { dirX += camFront.x; dirZ += camFront.z; }
-                    if (input->moveBackward) { dirX -= camFront.x; dirZ -= camFront.z; }
-                    if (input->moveLeft)     { dirX -= camRight.x; dirZ -= camRight.z; }
-                    if (input->moveRight)    { dirX += camRight.x; dirZ += camRight.z; }
-                    if (dirX != 0.0f || dirZ != 0.0f) {
-                        moveYaw = glm::degrees(atan2(-dirX, -dirZ));
-                    }
-                }
-            }
-        }
-        
-        // 选择要渲染的模型（空闲或行走）
-        GLTFModel* activeModel = nullptr;
-        if (isMoving && gltfWalkModel && gltfWalkModel->getMeshCount() > 0) {
-            activeModel = gltfWalkModel.get();
-            // 如果刚切换到移动状态，播放所有行走动画
-            if (!playerWasMoving) {
-                if (gltfWalkModel->getAnimationCount() > 0) {
-                    gltfWalkModel->playAllAnimations(true, 1.0f);
-                }
-            }
-        } else if (gltfModel && gltfModel->getMeshCount() > 0) {
-            activeModel = gltfModel.get();
-        }
-        
-        // 更新活动模型的位置和动画
-        if (activeModel) {
-            activeModel->setPosition(camera->getTarget());
-            // 面向移动方向（静止时面向相机方向）
-            activeModel->setRotation(0.0f, moveYaw, 0.0f);
-            activeModel->updateAnimation(deltaTime);
-        }
-        
-        playerWasMoving = isMoving;
-    } else {
-        // 非第三人称模式也更新动画（用于模型预览等）
-        if (gltfModel) {
-            gltfModel->updateAnimation(deltaTime);
-        }
-        if (gltfWalkModel) {
-            gltfWalkModel->updateAnimation(deltaTime);
-        }
-        // 更新动态加载的模型动画
-        for (auto& [id, model] : models) {
-            if (model) {
-                model->updateAnimation(deltaTime);
-            }
-        }
-    }
-    
-    // 更新远程玩家模型
-    if (ecsClientWorld && ecsClientWorld->isConnectedToServer() && rawClientWorld_) {
-        auto& remotePlayers = rawClientWorld_->getNetworkSystem()->getRemotePlayers();
-        
-        // 移除已离开的玩家模型
-        for (auto it = remotePlayerModels.begin(); it != remotePlayerModels.end(); ) {
-            if (remotePlayers.find(it->first) == remotePlayers.end()) {
-                it = remotePlayerModels.erase(it);
-            } else {
-                ++it;
-            }
-        }
-        
-        // 更新或创建远程玩家模型
-        for (const auto& [clientId, player] : remotePlayers) {
-            if (!player.active) continue;
-            
-            auto it = remotePlayerModels.find(clientId);
-            if (it == remotePlayerModels.end()) {
-                // 创建新模型
-                RemotePlayerModels models;
-                
-                // 空闲模型
-                auto idleModel = std::make_unique<GLTFModel>(vulkanDevice, textureLoader);
-                if (idleModel->loadFromFile("assets/models/player.glb")) {
-                    idleModel->setScale(glm::vec3(0.3f, 0.3f, 0.3f));
-                    idleModel->setPosition(player.position);
-                    models.idleModel = std::move(idleModel);
-                }
-                
-                // 行走模型
-                auto walkModel = std::make_unique<GLTFModel>(vulkanDevice, textureLoader);
-                if (walkModel->loadFromFile("assets/models/player_walk.glb")) {
-                    walkModel->setScale(glm::vec3(0.3f, 0.3f, 0.3f));
-                    walkModel->setPosition(player.position);
-                    if (walkModel->getAnimationCount() > 0) {
-                        walkModel->playAllAnimations(true, 1.0f);
-                    }
-                    models.walkModel = std::move(walkModel);
-                }
-                
-                remotePlayerModels[clientId] = std::move(models);
-            } else {
-                // 更新两个模型的位置和旋转
-                if (it->second.idleModel) {
-                    it->second.idleModel->setPosition(player.position);
-                    // 空闲时面向相机方向
-                    it->second.idleModel->setRotation(0.0f, player.yaw, 0.0f);
-                }
-                if (it->second.walkModel) {
-                    it->second.walkModel->setPosition(player.position);
-                    // 移动时面向移动方向，静止时面向相机方向
-                    float renderYaw = player.isMoving ? player.moveYaw : player.yaw;
-                    it->second.walkModel->setRotation(0.0f, renderYaw, 0.0f);
-                    
-                    // 只有在移动时才播放行走动画，跳跃时保持之前的状态
-                    if (player.isMoving) {
-                        if (!it->second.walkModel->isAnimationPlaying()) {
-                            it->second.walkModel->playAllAnimations(true, 1.0f);
-                        }
-                        it->second.walkModel->updateAnimation(deltaTime);
-                    } else {
-                        if (it->second.walkModel->isAnimationPlaying()) {
-                            it->second.walkModel->stopAnimation();
-                        }
-                    }
-                }
-                
-                it->second.wasMoving = player.isMoving;
-            }
-        }
-    } else {
-        // 未连接时清除所有远程玩家模型
-        remotePlayerModels.clear();
-    }
+    vkDeviceWaitIdle(vulkanDevice->getDevice());
 }
 
 void Renderer::drawFrame() {
@@ -931,117 +492,90 @@ void Renderer::drawFrame() {
     scissor.extent = fsr1Pass_ ? fsr1Pass_->getRenderExtent() : swapchain->getExtent();
     vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
     
+    // 从 GameSession 获取摄像机（渲染所需视口/投影矩阵）
+    Camera* cam = gameSession_ ? gameSession_->getCamera() : nullptr;
+    if (!cam) {
+        vkCmdEndRenderPass(commandBuffer);
+        if (vkEndCommandBuffer(commandBuffer) != VK_SUCCESS) {}
+        return;
+    }
+
     // 先渲染天空盒（背景）
     if (skyboxRenderer && skyboxRenderer->getDescriptorSet() != VK_NULL_HANDLE) {
         vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, skyboxPipeline->getPipeline());
         skyboxRenderer->render(commandBuffer, skyboxRenderer->getPipelineLayout(),
-                             camera->getViewMatrix(), camera->getProjectionMatrix());
-        // 重新绑定主图形管线
+                             cam->getViewMatrix(), cam->getProjectionMatrix());
         vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline->getPipeline());
     }
-    
-    // 更新光源 uniform buffer
+
     updateLightUniformBuffer();
-    
-    // 绑定默认描述符集（用于地板、立方体等）
+
     vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
                            graphicsPipeline->getPipelineLayout(), 0, 1, &textureDescriptorSet, 0, nullptr);
     vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
                            graphicsPipeline->getPipelineLayout(), 1, 1, &lightDescriptorSet, 0, nullptr);
-    
-    // 渲染地形 (位置 10, 0.9, 1, 大小 1x1, 柏林噪声高度图)
+
+    // 渲染地形
     terrainRenderer->render(commandBuffer, graphicsPipeline->getPipelineLayout(),
-                          camera->getViewMatrix(), camera->getProjectionMatrix());
-    
+                          cam->getViewMatrix(), cam->getProjectionMatrix());
+
     // 渲染 OBJ 模型
     if (modelRenderer) {
         modelRenderer->render(commandBuffer, graphicsPipeline->getPipelineLayout(),
-                            camera->getViewMatrix(), camera->getProjectionMatrix());
+                            cam->getViewMatrix(), cam->getProjectionMatrix());
     }
-    
-    // 渲染玩家模型（第三人称模式下选择空闲或行走模型）
-    if (camera->getMode() == Camera::Mode::ThirdPerson) {
-        // 根据移动状态选择模型
-        GLTFModel* activeModel = nullptr;
-        VkDescriptorSet activeDescriptorSet = VK_NULL_HANDLE;
-        if (playerWasMoving && gltfWalkModel && gltfWalkModel->getMeshCount() > 0) {
-            activeModel = gltfWalkModel.get();
-            activeDescriptorSet = gltfWalkModelDescriptorSet;
-        } else if (gltfModel && gltfModel->getMeshCount() > 0) {
-            activeModel = gltfModel.get();
-            activeDescriptorSet = gltfModelDescriptorSet;
-        }
-        
-        if (activeModel) {
-            // 绑定模型的纹理描述符集
-            if (activeDescriptorSet != VK_NULL_HANDLE) {
+
+    // 渲染玩家模型（从 GameSession 获取）
+    if (gameSession_) {
+        GLTFModel* playerModel = gameSession_->getActivePlayerModel();
+        VkDescriptorSet playerDescSet = gameSession_->getActivePlayerDescriptorSet();
+        if (playerModel && playerModel->getMeshCount() > 0) {
+            if (playerDescSet != VK_NULL_HANDLE) {
                 vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                                       graphicsPipeline->getPipelineLayout(), 0, 1, &activeDescriptorSet, 0, nullptr);
+                                       graphicsPipeline->getPipelineLayout(), 0, 1, &playerDescSet, 0, nullptr);
             }
-            activeModel->render(commandBuffer, graphicsPipeline->getPipelineLayout(),
-                              camera->getViewMatrix(), camera->getProjectionMatrix(),
-                              activeModel->getModelMatrix());
+            playerModel->render(commandBuffer, graphicsPipeline->getPipelineLayout(),
+                              cam->getViewMatrix(), cam->getProjectionMatrix(),
+                              playerModel->getModelMatrix());
         }
-    } else if (gltfModel && gltfModel->getMeshCount() > 0) {
-        // 非第三人称模式，渲染空闲模型
-        if (gltfModelDescriptorSet != VK_NULL_HANDLE) {
-            vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                                   graphicsPipeline->getPipelineLayout(), 0, 1, &gltfModelDescriptorSet, 0, nullptr);
-        }
-        gltfModel->render(commandBuffer, graphicsPipeline->getPipelineLayout(),
-                        camera->getViewMatrix(), camera->getProjectionMatrix(),
-                        gltfModel->getModelMatrix());
     }
-    
-    // 渲染动态加载的模型（带视锥体剔除）
+
+    // 渲染动态加载的静态模型（带视锥体剔除）
     for (auto& [id, model] : models) {
         if (model && model->getMeshCount() > 0) {
-            // 视锥体剔除检测
             auto bbox = model->getBoundingBox();
             glm::vec3 worldMin = model->getPosition() + bbox.first * model->getScale();
             glm::vec3 worldMax = model->getPosition() + bbox.second * model->getScale();
-            
-            // 距离剔除（树木生成范围 ±192 单位，留余量设为 250 米）
+
             glm::vec3 modelCenter = (worldMin + worldMax) * 0.5f;
-            float distance = glm::length(modelCenter - camera->getPosition());
-            if (distance > 250.0f) {
-                continue;
-            }
-            
-            // 视锥体剔除
-            if (!camera->getFrustum().isAABBInside(worldMin, worldMax)) {
-                continue;
-            }
-            
-            // 绑定模型的纹理描述符集
+            if (glm::length(modelCenter - cam->getPosition()) > 250.0f) continue;
+            if (!cam->getFrustum().isAABBInside(worldMin, worldMax)) continue;
+
             auto it = modelDescriptorSets.find(id);
             if (it != modelDescriptorSets.end() && it->second != VK_NULL_HANDLE) {
                 vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
                                        graphicsPipeline->getPipelineLayout(), 0, 1, &it->second, 0, nullptr);
             }
             model->render(commandBuffer, graphicsPipeline->getPipelineLayout(),
-                        camera->getViewMatrix(), camera->getProjectionMatrix(),
+                        cam->getViewMatrix(), cam->getProjectionMatrix(),
                         model->getModelMatrix());
         }
     }
 
-    // 渲染树木（由 TreeSystem 统一管理剔除 + 渲染）
-    treeSystem_->render(commandBuffer, graphicsPipeline->getPipelineLayout(), *camera);
+    // 渲染树木/石头/草丛
+    treeSystem_->render(commandBuffer, graphicsPipeline->getPipelineLayout(), *cam);
+    if (stoneSystem_) stoneSystem_->render(commandBuffer, graphicsPipeline->getPipelineLayout(), *cam);
+    if (grassSystem_) grassSystem_->render(commandBuffer, *cam);
 
-    // 渲染石头（由 StoneSystem 统一管理剔除 + 渲染）
-    if (stoneSystem_) stoneSystem_->render(commandBuffer, graphicsPipeline->getPipelineLayout(), *camera);
-
-    // 渲染草丛（实例化渲染，独立管线）
-    if (grassSystem_) grassSystem_->render(commandBuffer, *camera);
-    
-    // 渲染远程玩家模型
-    for (auto& [clientId, models] : remotePlayerModels) {
-        // 根据移动状态选择模型
-        GLTFModel* activeModel = models.wasMoving ? models.walkModel.get() : models.idleModel.get();
-        if (activeModel && activeModel->getMeshCount() > 0) {
-            activeModel->render(commandBuffer, graphicsPipeline->getPipelineLayout(),
-                        camera->getViewMatrix(), camera->getProjectionMatrix(),
-                        activeModel->getModelMatrix());
+    // 渲染远程玩家模型（从 GameSession 获取）
+    if (gameSession_) {
+        for (const auto& [clientId, rp] : gameSession_->getRemotePlayerModels()) {
+            GLTFModel* activeModel = rp.wasMoving ? rp.walkModel.get() : rp.idleModel.get();
+            if (activeModel && activeModel->getMeshCount() > 0) {
+                activeModel->render(commandBuffer, graphicsPipeline->getPipelineLayout(),
+                            cam->getViewMatrix(), cam->getProjectionMatrix(),
+                            activeModel->getModelMatrix());
+            }
         }
     }
     
@@ -1226,9 +760,11 @@ void Renderer::recreateSwapchain() {
     
     // 记录命令缓冲（所有使用 frame buffer 0）
     VkFramebuffer fb = framebuffers->getFramebuffers()[0];
+    Camera* cam = gameSession_ ? gameSession_->getCamera() : nullptr;
+    glm::mat4 viewMat = cam ? cam->getViewMatrix() : glm::mat4(1.0f);
+    glm::mat4 projMat = cam ? cam->getProjectionMatrix() : glm::mat4(1.0f);
     for (size_t i = 0; i < commandBuffers->getCommandBuffers().size(); i++) {
-        commandBuffers->record(i, fb, renderExt,
-                             camera->getViewMatrix(), camera->getProjectionMatrix());
+        commandBuffers->record(i, fb, renderExt, viewMat, projMat);
     }
 }
 
@@ -1238,37 +774,20 @@ void Renderer::cleanup() {
         vkDeviceWaitIdle(vulkanDevice->getDevice());
     }
     
-    // 首先清理所有依赖 Vulkan 设备的资源（必须在 vulkanDevice 销毁之前）
-    // 清理远程玩家模型
-    remotePlayerModels.clear();
-    
+    // 清理游戏会话（必须在 Vulkan 资源销毁前）
+    ownedGameSession_.reset();
+    gameSession_ = nullptr;
+
     // 清理动态加载的模型
     models.clear();
     modelDescriptorSets.clear();
     
-    // 清理 GLTF 模型（包含 Vulkan 缓冲区）
-    gltfWalkModel.reset();
-    gltfModel.reset();
-    
     // 清理 ImGui（使用 Vulkan）
     imguiManager.reset();
     
-    // 清理 ECS 客户端世界
-    if (rawClientWorld_ && rawClientWorld_->getPhysicsSystem()) {
-        rawClientWorld_->getPhysicsSystem()->clearTerrainQuery();
-    }
-    rawClientWorld_ = nullptr;
-    ecsClientWorld.reset();
-    
     modelRenderer.reset();
     skyboxRenderer.reset();
-    // 清除地形查询回调，防止悬空指针
-    if (camera) camera->clearTerrainQuery();
-    if (physics) physics->clearTerrainQuery();
     terrainRenderer.reset();
-    physics.reset();
-    input.reset();
-    camera.reset();
     
     // 清理新系统
     lightManager.reset();
@@ -1502,10 +1021,6 @@ void Renderer::createDescriptorSets() {
         }
     };
 
-    // 为玩家模型创建描述符集
-    createIfNotExists(gltfModel.get(), gltfModelDescriptorSet, "gltfModel");
-    createIfNotExists(gltfWalkModel.get(), gltfWalkModelDescriptorSet, "gltfWalkModel");
-    
     // 保留默认纹理描述符集（用于地板等）
     if (textureDescriptorSet == VK_NULL_HANDLE) {
         VkDescriptorSetAllocateInfo textureAllocInfo{};
@@ -1709,8 +1224,6 @@ SceneConfig Renderer::loadSceneConfig(const std::string& configFile) {
                 config.playAnimation = item.value("playAnimation", false);
                 config.animationIndex = item.value("animationIndex", 0);
                 config.playAllAnimations = item.value("playAllAnimations", false);
-                config.isPlayerModel = item.value("isPlayerModel", false);
-                config.isPlayerWalkModel = item.value("isPlayerWalkModel", false);
                 config.description = item.value("description", "");
                 
                 if (item.contains("hiddenMeshNames")) {
@@ -1805,7 +1318,7 @@ void Renderer::loadLightsFromConfig(const SceneConfig& config) {
 void Renderer::reloadSceneConfig() {
     Logger::info("重新加载场景配置...");
     
-    SceneConfig config = loadSceneConfig("assets/models/models.json");
+    SceneConfig config = loadSceneConfig(AssetPaths::SCENE_CONFIG);
     
     // 重新加载光源
     if (!config.lights.empty()) {
@@ -1901,32 +1414,21 @@ void Renderer::loadModelsFromConfig(const std::vector<ModelConfig>& configs) {
             model->setHiddenNodeNames(config.hiddenMeshNames);
         }
         
+        // 播放动画（必须在 std::move 之前，model 不能为空）
+        if (config.playAllAnimations && model->getAnimationCount() > 0) {
+            model->playAllAnimations(true, 1.0f);
+        } else if (config.playAnimation && model->getAnimationCount() > config.animationIndex) {
+            model->playAnimation(config.animationIndex, true, 1.0f);
+        }
+        
         // 创建纹理描述符集（用于没有材质的 mesh 的回退）
         VkDescriptorSet descriptorSet = createModelDescriptorSet(model.get(), config.id);
         
-        // 处理特殊模型
-        if (config.isPlayerModel) {
-            gltfModel = std::move(model);
-            gltfModelDescriptorSet = descriptorSet;
-            Logger::info("玩家模型已加载: " + config.file);
-        } else if (config.isPlayerWalkModel) {
-            gltfWalkModel = std::move(model);
-            gltfWalkModelDescriptorSet = descriptorSet;
-            Logger::info("玩家行走模型已加载: " + config.file);
-        } else {
-            // 普通模型存入 map
-            models[config.id] = std::move(model);
-            modelDescriptorSets[config.id] = descriptorSet;
-            
-            // 播放动画
-            if (config.playAllAnimations && model->getAnimationCount() > 0) {
-                model->playAllAnimations(true, 1.0f);
-            } else if (config.playAnimation && model->getAnimationCount() > config.animationIndex) {
-                model->playAnimation(config.animationIndex, true, 1.0f);
-            }
-            
-            Logger::info("模型 " + config.id + " 已加载");
-        }
+        // 普通模型存入 map
+        models[config.id] = std::move(model);
+        modelDescriptorSets[config.id] = descriptorSet;
+        
+        Logger::info("模型 " + config.id + " 已加载");
     }
 }
 

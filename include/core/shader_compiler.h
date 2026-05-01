@@ -1,5 +1,4 @@
-#ifndef SHADER_COMPILER_H
-#define SHADER_COMPILER_H
+#pragma once
 
 #include <string>
 #include <vector>
@@ -13,5 +12,3 @@ public:
 };
 
 } // namespace owengine
-
-#endif // SHADER_COMPILER_H

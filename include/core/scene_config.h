@@ -1,5 +1,4 @@
-#ifndef SCENE_CONFIG_H
-#define SCENE_CONFIG_H
+#pragma once
 
 #include <glm/glm.hpp>
 #include <string>
@@ -53,8 +52,6 @@ struct ModelConfig {
     bool playAnimation = false;          // 是否播放动画
     int animationIndex = 0;              // 动画索引
     bool playAllAnimations = false;      // 是否播放所有动画
-    bool isPlayerModel = false;          // 是否是玩家模型
-    bool isPlayerWalkModel = false;      // 是否是玩家行走模型
     std::string description;             // 描述
     std::vector<std::string> hiddenMeshNames;  // 要隐藏的 mesh/节点名称列表
 };
@@ -98,5 +95,3 @@ public:
 };
 
 } // namespace owengine
-
-#endif // SCENE_CONFIG_H

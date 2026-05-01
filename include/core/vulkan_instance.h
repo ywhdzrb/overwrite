@@ -1,5 +1,4 @@
-#ifndef VULKAN_INSTANCE_H
-#define VULKAN_INSTANCE_H
+#pragma once
 
 #include <vulkan/vulkan.h>
 #include <GLFW/glfw3.h>
@@ -79,5 +78,3 @@ private:
 };
 
 } // namespace owengine
-
-#endif // VULKAN_INSTANCE_H

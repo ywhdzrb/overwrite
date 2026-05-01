@@ -9,10 +9,10 @@
 #include <algorithm>
 #include <chrono>
 
-// 地形渲染器实现 — 过程化 Perlin 噪声 + 异步区块生成管线
+ // 地形渲染器实现 — 过程化 Perlin 噪声 + 异步区块生成管线
 //
 // 线程模型：
-//   - 构造函数初始化 perm 并设置 permInitialized=true（阻止 initPerm 重跑）
+//   - 构造函数初始化 perm，之后 perm 只读不再写入
 //   - perlinNoise()/fbm()/getHeight()/computeChunkMesh() 均为 const，仅读取 perm
 //   - update() 每帧在渲染线程调用，使用 std::async 将噪声计算卸到后台线程
 //   - Vulkan 缓冲创建始终在主线程（uploadChunk）
@@ -46,22 +46,6 @@ float grad(int h, float x, float y) {
     return ((hh & 1) == 0 ? u : -u) + ((hh & 2) == 0 ? v : -v);
 }
 
-static std::mt19937 rng(42);
-static std::uniform_int_distribution<int> dist(0, 255);
-static bool permInitialized = false;
-
-void initPerm(std::vector<int>& perm) {
-    if (permInitialized) return;
-    perm.resize(512);
-    for (int i = 0; i < 256; ++i) perm[i] = i;
-    for (int i = 255; i > 0; --i) {
-        int j = dist(rng) % (i + 1);
-        std::swap(perm[i], perm[j]);
-    }
-    for (int i = 0; i < 256; ++i) perm[256 + i] = perm[i];
-    permInitialized = true;
-}
-
 } // anonymous namespace
 
 TerrainRenderer::TerrainRenderer(std::shared_ptr<VulkanDevice> device)
@@ -76,8 +60,7 @@ TerrainRenderer::TerrainRenderer(std::shared_ptr<VulkanDevice> device)
       terrainColor(0.0f, 1.0f, 0.0f),
       created_(false) {
     // 初始化 Perlin 排列表（512 元素，种子 42）。
-    // permInitialized = true 阻止 initPerm() 在 perlinNoise() 中重复运行，
-    // 从而允许 perlinNoise 标记为 const 并在异步线程中安全调用。
+    // 构造函数一次性初始化，之后 perm 只读不写，确保 perlinNoise() 可在异步线程中安全调用。
     static std::mt19937 rng(42);
     static std::uniform_int_distribution<int> dist(0, 255);
     perm.resize(512);
@@ -91,7 +74,6 @@ TerrainRenderer::TerrainRenderer(std::shared_ptr<VulkanDevice> device)
     for (int i = 0; i < 256; ++i) {
         perm[256 + i] = perm[i];
     }
-    permInitialized = true;
 }
 
 TerrainRenderer::~TerrainRenderer() {

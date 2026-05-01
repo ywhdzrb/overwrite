@@ -1,5 +1,4 @@
-#ifndef VULKAN_SWAPCHAIN_H
-#define VULKAN_SWAPCHAIN_H
+#pragma once
 
 #include <vulkan/vulkan.h>
 #include <GLFW/glfw3.h>
@@ -43,5 +42,3 @@ private:
 };
 
 } // namespace owengine
-
-#endif // VULKAN_SWAPCHAIN_H

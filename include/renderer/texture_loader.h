@@ -1,5 +1,4 @@
-#ifndef TEXTURE_LOADER_H
-#define TEXTURE_LOADER_H
+#pragma once
 
 #include <string>
 #include <memory>
@@ -194,5 +193,3 @@ private:
 };
 
 } // namespace owengine
-
-#endif // TEXTURE_LOADER_H

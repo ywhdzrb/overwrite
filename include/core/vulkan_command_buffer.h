@@ -1,5 +1,4 @@
-#ifndef VULKAN_COMMAND_BUFFER_H
-#define VULKAN_COMMAND_BUFFER_H
+#pragma once
 
 #include <vulkan/vulkan.h>
 #include <glm/glm.hpp>
@@ -43,5 +42,3 @@ private:
 };
 
 } // namespace owengine
-
-#endif // VULKAN_COMMAND_BUFFER_H

@@ -1,5 +1,4 @@
-#ifndef RESOURCE_MANAGER_H
-#define RESOURCE_MANAGER_H
+#pragma once
 
 #include <vulkan/vulkan.h>
 #include <memory>
@@ -154,5 +153,3 @@ private:
 };
 
 } // namespace owengine
-
-#endif // RESOURCE_MANAGER_H

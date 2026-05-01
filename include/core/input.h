@@ -1,5 +1,4 @@
-#ifndef INPUT_H
-#define INPUT_H
+#pragma once
 
 #include <GLFW/glfw3.h>
 #include <memory>
@@ -106,5 +105,3 @@ private:
 };
 
 } // namespace owengine
-
-#endif // INPUT_H

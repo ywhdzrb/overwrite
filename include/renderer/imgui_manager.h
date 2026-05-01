@@ -1,5 +1,4 @@
-#ifndef IMGUI_MANAGER_H
-#define IMGUI_MANAGER_H
+#pragma once
 
 #include <vulkan/vulkan.h>
 #include <GLFW/glfw3.h>
@@ -50,5 +49,3 @@ private:
 };
 
 } // namespace owengine
-
-#endif // IMGUI_MANAGER_H

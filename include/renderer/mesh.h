@@ -1,5 +1,4 @@
-#ifndef MESH_H
-#define MESH_H
+#pragma once
 
 #include <vulkan/vulkan.h>
 #include <vector>
@@ -39,5 +38,3 @@ private:
 };
 
 } // namespace owengine
-
-#endif // MESH_H
