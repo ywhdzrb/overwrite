@@ -154,6 +154,7 @@ target_link_libraries(OverWriteClient PUBLIC
     glm::glm
     glfw
     nlohmann_json
+    ixwebsocket
     OpenSSL::SSL
     OpenSSL::Crypto
     Threads::Threads

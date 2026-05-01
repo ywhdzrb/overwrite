@@ -102,7 +102,7 @@ public:
     void setInterpolationSpeed(float speed) { interpolationSpeed_ = speed; }
     
 private:
-    // 内部实现类（PIMPL 模式隐藏 websocketpp 细节）
+    // 内部实现类（PIMPL 模式隐藏 ixwebsocket 细节）
     class Impl;
     std::unique_ptr<Impl> impl_;
     
