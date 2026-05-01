@@ -525,8 +525,10 @@ void Renderer::mainLoop() {
         // 在帧结束时重置"刚刚按下"标志
         input->resetJustPressedFlags();
         
-        // 帧率限制：基于绝对时间戳 sleep_until，避免累计时间漂移
-        nextFrameTime += std::chrono::nanoseconds(static_cast<long long>((1.0 / targetFPS) * 1e9));
+        // 帧率限制（targetFPS<=0 时解除限制）
+        if (targetFPS > 0.0f) {
+            nextFrameTime += std::chrono::nanoseconds(static_cast<long long>((1.0 / targetFPS) * 1e9));
+        }
         auto frameEndTime = std::chrono::high_resolution_clock::now();
         frameTime = std::chrono::duration<float>(frameEndTime - frameStartTime).count();
         
@@ -535,7 +537,7 @@ void Renderer::mainLoop() {
         if (frameTime > maxFrameTime) maxFrameTime = frameTime;
         
         // 如果当前帧结束时间早于下一帧目标时间，睡眠等待
-        if (frameEndTime < nextFrameTime) {
+        if (targetFPS > 0.0f && frameEndTime < nextFrameTime) {
             std::this_thread::sleep_until(nextFrameTime);
         } else {
             // 帧已超时，将下一帧目标前移到当前时间（防止连续追赶）
