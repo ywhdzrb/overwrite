@@ -15,6 +15,7 @@
 #include <thread>
 #include <future>
 #include "renderer/tree_system.h"
+#include "renderer/grass_system.h"
 #include "core/game_config.h"
 #include "ecs/ecs.h"  // 仅 cpp 引用具体类型（dev panel + raw ptr cast）
 #include "ecs/client_systems.h"  // InputSystem 完整定义
@@ -266,6 +267,12 @@ void Renderer::initVulkan() {
     treeSystem_ = std::make_unique<TreeSystem>(vulkanDevice, textureLoader, textureDescriptorSetLayout);
     treeSystem_->setHeightSampler(terrainHeightQuery);
     treeSystem_->init(gameConfig.tree);
+
+    // 初始化草丛系统（实例化渲染，独立管线）
+    grassSystem_ = std::make_unique<GrassSystem>(vulkanDevice);
+    grassSystem_->setHeightSampler(terrainHeightQuery);
+    grassSystem_->init(gameConfig.grass, renderPass->getRenderPass(),
+                       swapchain->getExtent(), msaaSamples);
     
     // 初始化 ImGui
     imguiManager = std::make_unique<ImGuiManager>(vulkanDevice, swapchain, renderPass, window, vulkanInstance->getInstance(), msaaSamples);
@@ -720,6 +727,7 @@ void Renderer::updateGameLogic(float deltaTime) {
         // === 3) 主线程并行工作（与异步模拟同时执行） ===
         terrainRenderer->update(playerPos);
         if (treeSystem_) treeSystem_->update(playerPos, *camera);
+        if (grassSystem_) grassSystem_->update(playerPos, *camera, deltaTime);
         
         // === 4) 等待异步模拟完成 ===
         ecsFuture.wait();
@@ -761,6 +769,7 @@ void Renderer::updateGameLogic(float deltaTime) {
         
         // 按玩家位置动态更新树木区块
         if (treeSystem_) treeSystem_->update(camera->getPosition(), *camera);
+        if (grassSystem_) grassSystem_->update(camera->getPosition(), *camera, deltaTime);
     }
     
     // 第三人称模式：将 player 模型位置同步到相机目标
@@ -1087,6 +1096,9 @@ void Renderer::drawFrame() {
     // 渲染树木（由 TreeSystem 统一管理剔除 + 渲染）
     treeSystem_->render(commandBuffer, graphicsPipeline->getPipelineLayout(), *camera);
     
+    // 渲染草丛（实例化渲染，独立管线）
+    if (grassSystem_) grassSystem_->render(commandBuffer, *camera);
+    
     // 渲染远程玩家模型
     for (auto& [clientId, models] : remotePlayerModels) {
         // 根据移动状态选择模型
@@ -1279,6 +1291,8 @@ void Renderer::cleanup() {
     
     // 清理树木（由 TreeSystem 统一管理）
     treeSystem_.reset();
+    // 清理草丛系统
+    grassSystem_.reset();
 
     // 清理描述符集资源
     if (lightUniformBuffer != VK_NULL_HANDLE) {

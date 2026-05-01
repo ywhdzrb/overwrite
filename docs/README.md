@@ -92,7 +92,7 @@ overwrite/
 ├── external/         # Git submodules 依赖
 ├── docs/             # API 文档
 ├── build/            # 构建输出目录
-└── plot/             # 性能分析数据
+└── plot/             # 设定剧情
 ```
 
 ## 命名空间

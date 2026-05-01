@@ -8,6 +8,8 @@
 
 // TreeConfig 定义在 tree_system.h 中，本文件直接使用
 #include "renderer/tree_system.h"
+// GrassConfig 定义在 grass_system.h 中
+#include "renderer/grass_system.h"
 
 namespace owengine {
 
@@ -23,6 +25,7 @@ struct RendererConfig {
 /// 游戏全局配置，从 JSON 文件加载所有可调参数
 struct GameConfig {
     TreeConfig tree;
+    GrassConfig grass;
     RendererConfig renderer;
 
     /// 从 JSON 文件加载配置；文件缺失或字段不存在时使用 C++ 默认值
@@ -36,6 +39,22 @@ struct GameConfig {
         try {
             nlohmann::json j;
             file >> j;
+
+            // 草丛参数
+            auto& g = j["grass"];
+            if (!g.is_null()) {
+                cfg.grass.chunkSize       = g.value("chunk_size",        cfg.grass.chunkSize);
+                cfg.grass.loadRadius      = g.value("load_radius",       cfg.grass.loadRadius);
+                cfg.grass.maxBlades       = g.value("max_blades",        cfg.grass.maxBlades);
+                cfg.grass.density         = g.value("density",           cfg.grass.density);
+                cfg.grass.renderDistance  = g.value("render_distance",   cfg.grass.renderDistance);
+                cfg.grass.bladeHeightMin  = g.value("blade_height_min",  cfg.grass.bladeHeightMin);
+                cfg.grass.bladeHeightMax  = g.value("blade_height_max",  cfg.grass.bladeHeightMax);
+                cfg.grass.segmentsPerBlade = g.value("segments_per_blade", cfg.grass.segmentsPerBlade);
+                cfg.grass.windStrength    = g.value("wind_strength",     cfg.grass.windStrength);
+                cfg.grass.playerRadius    = g.value("player_radius",     cfg.grass.playerRadius);
+                cfg.grass.playerForce     = g.value("player_force",      cfg.grass.playerForce);
+            }
 
             // 树木参数
             auto& t = j["tree"];

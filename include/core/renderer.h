@@ -254,6 +254,8 @@ private:
 
     // 树系统（独立类，Renderer 不直接管理树木数据）
     std::unique_ptr<class TreeSystem> treeSystem_;
+    // 草丛系统（实例化渲染，独立管线）
+    std::unique_ptr<class GrassSystem> grassSystem_;
     
     static void framebufferResizeCallback(GLFWwindow* window, int width, int height);
 };

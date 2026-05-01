@@ -220,6 +220,7 @@ set(SOURCES
     src/renderer/texture_loader.cpp
     src/renderer/gltf_model.cpp
     src/renderer/tree_system.cpp
+    src/renderer/grass_system.cpp
     src/utils/shader_compiler.cpp
     src/utils/logger.cpp
     src/utils/scene_config.cpp
@@ -260,6 +261,8 @@ set(SHADER_SOURCES
     shaders/shader.frag
     shaders/skybox.vert
     shaders/skybox.frag
+    shaders/grass.vert
+    shaders/grass.frag
 )
 
 foreach(shader_file ${SHADER_SOURCES})
