@@ -5,6 +5,7 @@
 #include "core/vulkan_device.h"
 #include <tiny_obj_loader.h>
 #include <iostream>
+#include <array>
 #include <unordered_map>
 
 namespace owengine {
