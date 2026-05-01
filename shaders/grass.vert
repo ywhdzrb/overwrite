@@ -92,8 +92,9 @@ void main() {
     float playerForce  = push.timeParams.w;
 
     if (instancePushState > 0.001) {
+        // 向外推挤 + 向下压弯（模拟踩踏效果，防止草在脚下变长）
         vec3 pushDir = normalize(toPlayer);
-        pushDir.y = max(pushDir.y, 0.2) + 0.5;
+        pushDir.y = -0.5;  // 强制向下分量，草被踩弯而不是向上窜长
         pushDir = normalize(pushDir);
 
         float pushMag = instancePushState * playerForce * bendFact;
