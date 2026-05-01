@@ -178,6 +178,21 @@ void TreeSystem::render(VkCommandBuffer commandBuffer, VkPipelineLayout pipeline
     }
 }
 
+std::vector<std::pair<glm::vec3, float>> TreeSystem::queryPositions(float x, float z, float radius) const {
+    std::vector<std::pair<glm::vec3, float>> result;
+    float radiusSq = radius * radius;
+    result.reserve(trees_.size() / 8);
+    for (const auto& tree : trees_) {
+        if (tree.id.empty()) continue;
+        float dx = tree.position.x - x;
+        float dz = tree.position.z - z;
+        if (dx * dx + dz * dz < radiusSq) {
+            result.emplace_back(tree.position, tree.scale);
+        }
+    }
+    return result;
+}
+
 void TreeSystem::cleanup() {
     sharedTreeModel_.reset();
     if (sharedTreePool_ != VK_NULL_HANDLE) {

@@ -254,6 +254,8 @@ bool wireframeMode = false;
 
     // 树系统（独立类，Renderer 不直接管理树木数据）
     std::unique_ptr<class TreeSystem> treeSystem_;
+    // 石头系统（独立类，与 TreeSystem 同模式）
+    std::unique_ptr<class StoneSystem> stoneSystem_;
     // 草丛系统（实例化渲染，独立管线）
     std::unique_ptr<class GrassSystem> grassSystem_;
     // FSR1 上采样管线

@@ -220,6 +220,7 @@ set(SOURCES
     src/renderer/texture_loader.cpp
     src/renderer/gltf_model.cpp
     src/renderer/tree_system.cpp
+    src/renderer/stone_system.cpp
     src/renderer/grass_system.cpp
     src/renderer/fsr1_pass.cpp
     src/utils/shader_compiler.cpp

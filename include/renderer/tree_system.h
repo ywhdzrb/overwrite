@@ -87,6 +87,14 @@ public:
     /// 获取共享树木模型指针
     GLTFModel* getSharedModel() const { return sharedTreeModel_.get(); }
 
+    /**
+     * @brief 查询指定半径内的树木位置和缩放
+     * @param x,z   世界坐标
+     * @param radius 查询半径（米）
+     * @return 附近树木的 (位置, 缩放) 列表
+     */
+    std::vector<std::pair<glm::vec3, float>> queryPositions(float x, float z, float radius) const;
+
 private:
     struct TreeChunkKey {
         int x, z;

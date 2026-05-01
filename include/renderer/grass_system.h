@@ -28,8 +28,8 @@ struct GrassConfig {
     int   maxBlades = 1100000;        // 最大草茎实例数
     double density = 3.0;             // 每平米平均草茎数（泊松 λ × 区块面积）
     float renderDistance = 120.0f;    // 渲染最远距离（米）
-    float bladeHeightMin = 0.25f;     // 草茎最小高度（米）
-    float bladeHeightMax = 0.7f;      // 草茎最大高度（米）
+    float bladeHeightMin = 0.05f;     // 草茎最小高度（米）
+    float bladeHeightMax = 1.2f;      // 草茎最大高度（米）
     int   segmentsPerBlade = 4;       // 每根草茎分段数（3~5）
     float bladeWidth = 0.12f;         // 草茎基部宽度（米，0.12 配合降密度保持视觉填充）
     float bladeThickness = 0.008f;    // 草茎基部厚度（米）
@@ -128,6 +128,25 @@ public:
         heightSampler_ = std::move(sampler);
     }
 
+    /** @brief 邻近物体查询回调：输入(x,z,半径)，返回附近物体(位置,缩放)列表 */
+    using ProximityQuery = std::function<std::vector<std::pair<glm::vec3, float>>(float x, float z, float radius)>;
+
+    /**
+     * @brief 设置树木位置查询回调（用于树下草高度/密度调制）
+     */
+    void setTreeQuery(ProximityQuery q) { treeQuery_ = std::move(q); }
+
+    /**
+     * @brief 设置石头位置查询回调（用于石旁草高度/密度调制）
+     */
+    void setStoneQuery(ProximityQuery q) { stoneQuery_ = std::move(q); }
+
+    /**
+     * @brief 设置全局光照方向（用于石头背阴面草衰减）
+     * @param dir 归一化光照方向，从光源指向场景
+     */
+    void setGlobalLightDir(const glm::vec3& dir) { lightDir_ = dir; }
+
     /**
      * @brief 设置玩家世界坐标（用于着色器交互形变）
      */
@@ -145,6 +164,9 @@ public:
     void cleanup();
 
 private:
+    // 上次 LOD 剔除的相机位置（用于移动阈值跳过）
+    glm::vec3 lastCullCameraPos_{0.0f};
+    static constexpr float CULL_MOVE_THRESHOLD = 1.5f;  // 相机移动超过此值才重新剔除
     // ==================== 区块键定义 ====================
 
     struct GrassChunkKey {
@@ -206,10 +228,19 @@ private:
 
     /**
      * @brief 仅生成区块草数据（线程安全，不操作 chunkData_）
+     * @param cfg         配置
+     * @param cx, cz      区块坐标
+     * @param rng         随机数生成器
+     * @param nearbyTrees 邻近树木 (位置, 缩放)，用于树下草调制 [optional]
+     * @param nearbyStones 邻近石头 (位置, 缩放)，用于石旁草调制 [optional]
+     * @param lightDir    全局光照方向，用于石头背阴面草衰减 [optional]
      * @return 区块所有草茎实例数据
      */
     std::vector<GrassInstanceData> generateChunkBlades(
-        const GrassConfig& cfg, int cx, int cz, std::mt19937& rng);
+        const GrassConfig& cfg, int cx, int cz, std::mt19937& rng,
+        const std::vector<std::pair<glm::vec3, float>>& nearbyTrees = {},
+        const std::vector<std::pair<glm::vec3, float>>& nearbyStones = {},
+        const glm::vec3& lightDir = glm::vec3(0.5f, -0.707f, 0.5f));
 
     // ==================== 挤压弹簧状态 ====================
 
@@ -246,6 +277,11 @@ private:
 
     // 地形高度采样器
     std::function<float(float, float)> heightSampler_;
+
+    // 邻近物体查询（树/石 → 草密度/高度调制）
+    ProximityQuery treeQuery_;
+    ProximityQuery stoneQuery_;
+    glm::vec3 lightDir_ = glm::vec3(0.5f, -0.707f, 0.5f); // 默认光照方向
 
     // 玩家位置（用于着色器交互）
     glm::vec3 playerPosition_ = glm::vec3(0.0f);

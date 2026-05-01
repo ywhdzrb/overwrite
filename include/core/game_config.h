@@ -10,6 +10,8 @@
 #include "renderer/tree_system.h"
 // GrassConfig 定义在 grass_system.h 中
 #include "renderer/grass_system.h"
+// StoneConfig 定义在 stone_system.h 中
+#include "renderer/stone_system.h"
 
 namespace owengine {
 
@@ -25,6 +27,7 @@ struct RendererConfig {
 /// 游戏全局配置，从 JSON 文件加载所有可调参数
 struct GameConfig {
     TreeConfig tree;
+    StoneConfig stone;
     GrassConfig grass;
     RendererConfig renderer;
 
@@ -67,6 +70,19 @@ struct GameConfig {
                 cfg.tree.density         = t.value("density",           cfg.tree.density);
                 cfg.tree.renderDistance  = t.value("render_distance",   cfg.tree.renderDistance);
                 cfg.tree.heightThreshold = t.value("height_threshold",  cfg.tree.heightThreshold);
+            }
+
+            // 石头参数
+            auto& s = j["stone"];
+            if (!s.is_null()) {
+                cfg.stone.chunkSize       = s.value("chunk_size",        cfg.stone.chunkSize);
+                cfg.stone.loadRadius      = s.value("load_radius",       cfg.stone.loadRadius);
+                cfg.stone.maxStones       = s.value("max_stones",        cfg.stone.maxStones);
+                cfg.stone.minScale        = s.value("min_scale",         cfg.stone.minScale);
+                cfg.stone.maxScale        = s.value("max_scale",         cfg.stone.maxScale);
+                cfg.stone.density         = s.value("density",           cfg.stone.density);
+                cfg.stone.renderDistance  = s.value("render_distance",   cfg.stone.renderDistance);
+                cfg.stone.heightThreshold = s.value("height_threshold",  cfg.stone.heightThreshold);
             }
 
             // 渲染器参数

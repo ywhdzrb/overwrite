@@ -191,23 +191,70 @@ void GrassSystem::generateGrassInChunk(const GrassConfig& cfg, int cx, int cz,
 
 // 仅生成区块草数据，不操作 chunkData_（线程安全，供 async 调用）
 std::vector<GrassInstanceData> GrassSystem::generateChunkBlades(
-    const GrassConfig& cfg, int cx, int cz, std::mt19937& rng) {
+    const GrassConfig& cfg, int cx, int cz, std::mt19937& rng,
+    const std::vector<std::pair<glm::vec3, float>>& nearbyTrees,
+    const std::vector<std::pair<glm::vec3, float>>& nearbyStones,
+    const glm::vec3& lightDir) {
 
     std::vector<GrassInstanceData> blades;
-    blades.reserve(static_cast<size_t>(cfg.chunkSize * cfg.chunkSize * cfg.density * 1.5f));
 
-    double lambda = cfg.density * cfg.chunkSize * cfg.chunkSize;
+    // 平滑空间噪声（值噪声 + 双线性插值 + smoothstep），用于密度/高度区域一致性
+    // 相邻空间位置返回相近值，避免区块边界突变
+    auto smoothNoise = [](float x, float z, float gridSpacing, int seed) -> float {
+        float gx = x / gridSpacing;
+        float gz = z / gridSpacing;
+        int ix0 = static_cast<int>(std::floor(gx));
+        int iz0 = static_cast<int>(std::floor(gz));
+        float fx = gx - static_cast<float>(ix0);
+        float fz = gz - static_cast<float>(iz0);
+        auto hash = [seed](int ix, int iz) -> float {
+            uint32_t h = static_cast<uint32_t>(ix * 374761393 + iz * 668265263 + seed * 1274126177);
+            h = (h ^ (h >> 13)) * 1274126177;
+            h = h ^ (h >> 16);
+            return static_cast<float>(h) / 4294967296.0f;
+        };
+        float v00 = hash(ix0, iz0);
+        float v10 = hash(ix0 + 1, iz0);
+        float v01 = hash(ix0, iz0 + 1);
+        float v11 = hash(ix0 + 1, iz0 + 1);
+        float sx = fx * fx * (3.0f - 2.0f * fx);
+        float sz = fz * fz * (3.0f - 2.0f * fz);
+        float top = v00 + (v10 - v00) * sx;
+        float bottom = v01 + (v11 - v01) * sx;
+        return top + (bottom - top) * sz;
+    };
+
+    float centerX = (static_cast<float>(cx) + 0.5f) * cfg.chunkSize;
+    float centerZ = (static_cast<float>(cz) + 0.5f) * cfg.chunkSize;
+
+    // P0: 三层噪声叠加 — 48m 粗粒度(大范围肥/贫斑块) + 24m 中粒度 + 12m 细粒度微调
+    // 三层权重 4:4:2，产生从大面积生物群落到局部微气候的多尺度斑驳效果
+    float densityLarge = smoothNoise(centerX, centerZ, 48.0f, 0);
+    float densityCoarse = smoothNoise(centerX, centerZ, 24.0f, 500);
+    float densityFine   = smoothNoise(centerX, centerZ, 12.0f, 1000);
+    float densityNoise  = densityLarge * 0.4f + densityCoarse * 0.4f + densityFine * 0.2f;
+    double densityMult  = 0.02 + densityNoise * 3.98;  // 0.02x ~ 4.0x（更极端的疏密对比）
+    double lambda = cfg.density * cfg.chunkSize * cfg.chunkSize * densityMult;
     std::poisson_distribution<int> poisson(lambda);
     int count = poisson(rng);
     if (count <= 0) return blades;
+
+    // 高度区域基准：三层噪声叠加，产生明显的高草区/矮草区对比
+    float heightLarge  = smoothNoise(centerX, centerZ, 48.0f, 10000);
+    float heightCoarse = smoothNoise(centerX, centerZ, 24.0f, 20000);
+    float heightFine   = smoothNoise(centerX, centerZ, 12.0f, 30000);
+    float heightNoise  = heightLarge * 0.4f + heightCoarse * 0.4f + heightFine * 0.2f;
+    float zoneBase     = cfg.bladeHeightMin + heightNoise * (cfg.bladeHeightMax - cfg.bladeHeightMin);
+
+    blades.reserve(static_cast<size_t>(count));
 
     float worldX0 = static_cast<float>(cx) * cfg.chunkSize;
     float worldZ0 = static_cast<float>(cz) * cfg.chunkSize;
 
     std::uniform_real_distribution<float> posOffset(0.0f, cfg.chunkSize);
-    std::uniform_real_distribution<float> scaleGen(cfg.bladeHeightMin, cfg.bladeHeightMax);
     std::uniform_real_distribution<float> yawGen(0.0f, 6.28318f);
     std::uniform_real_distribution<float> seedGen(0.0f, 1.0f);
+    std::uniform_real_distribution<float> heightNormGen(0.0f, 1.0f);
 
     for (int i = 0; i < count; i++) {
         for (int attempt = 0; attempt < 8; attempt++) {
@@ -218,9 +265,92 @@ std::vector<GrassInstanceData> GrassSystem::generateChunkBlades(
             GrassInstanceData inst;
             inst.position = {wx, y, wz};
             inst.yaw = yawGen(rng);
-            inst.scale = scaleGen(rng);
+            // 区域基准高度 ±40% 波动，区块内仍有明显高度差异
+            float h = (heightNormGen(rng) + heightNormGen(rng)) * 0.5f;
+            float variation = 1.0f + (h - 0.5f) * 0.8f;
+            inst.scale = std::clamp(zoneBase * variation, cfg.bladeHeightMin, cfg.bladeHeightMax);
             inst.windSeed = seedGen(rng);
             inst.pushState = 0.0f;
+
+            // ================ P2: 树邻近影响 ================
+            bool skipByTree = false;
+            for (const auto& [treePos, treeScale] : nearbyTrees) {
+                float dx = wx - treePos.x;
+                float dz = wz - treePos.z;
+                float dist = std::sqrt(dx * dx + dz * dz);
+                // 最小影响半径：即使小树（scale=0.3）也有视觉上可见的草地影响
+                float trunkR  = std::max(0.4f * treeScale, 1.0f);   // 树干周围 ≥1m 不长草
+                float canopyR = std::max(3.5f * treeScale, 5.0f);   // 树冠投影 ≥5m
+                float boostR  = canopyR * 1.4f;                     // 树荫外茂盛区
+
+                if (dist < trunkR) {
+                    skipByTree = true;  // 树干周围：不长草
+                    break;
+                } else if (dist < canopyR) {
+                    // 树荫内：草绝大部分消失，剩下极矮
+                    float t = (dist - trunkR) / (canopyR - trunkR);
+                    float skipProb = 0.95f * (1.0f - t * t * 0.9f);
+                    if (heightNormGen(rng) < skipProb) {
+                        skipByTree = true;
+                        break;
+                    }
+                    inst.scale *= 0.2f + 0.6f * t;  // 树干旁=20%高→边缘=80%高
+                } else if (dist < boostR) {
+                    // 树荫外稍远处：草最茂盛
+                    float t = (dist - canopyR) / (boostR - canopyR);
+                    inst.scale *= 1.0f + 0.4f * (1.0f - t);
+                }
+                // 超出 boostR 范围则不受影响
+            }
+            if (skipByTree) continue;
+
+            // ================ P2+P3: 石头邻近影响 ================
+            bool skipByStone = false;
+            for (const auto& [stonePos, stoneScale] : nearbyStones) {
+                float dx = wx - stonePos.x;
+                float dz = wz - stonePos.z;
+                float dist = std::sqrt(dx * dx + dz * dz);
+                float stoneR = std::max(0.7f * stoneScale, 1.2f);  // 石头影响半径 ≥1.2m
+                float edgeR  = stoneR * 2.0f;                      // 石缝/边缘
+
+                if (dist < stoneR * 0.3f) {
+                    skipByStone = true;  // 贴身：不长草
+                    break;
+                } else if (dist < stoneR) {
+                    // 石头根部附近：草稀矮
+                    float t = (dist - stoneR * 0.3f) / (stoneR * 0.7f);
+                    float skipProb = 0.85f * (1.0f - t * 0.8f);
+                    if (heightNormGen(rng) < skipProb) {
+                        skipByStone = true;
+                        break;
+                    }
+                    inst.scale *= 0.3f + 0.5f * t;
+                } else if (dist < edgeR) {
+                    // 石缝/边缘：草更密更高
+                    float t = (dist - stoneR) / (edgeR - stoneR);
+                    inst.scale *= 1.0f + 0.3f * (1.0f - t);
+                }
+
+                // P3: 石头背阴面草衰减
+                if (dist < edgeR) {
+                    glm::vec2 toStone = glm::normalize(glm::vec2(stonePos.x - wx, stonePos.z - wz));
+                    glm::vec2 light2D = glm::normalize(glm::vec2(lightDir.x, lightDir.z));
+                    // 若草在石头背向光源的一侧，dot > 0 表示草→石方向与光方向同向
+                    float shadowDot = glm::dot(toStone, light2D);
+                    if (shadowDot > 0.2f) {
+                        float shadowStrength = std::min(shadowDot, 1.0f);
+                        inst.scale *= 1.0f - shadowStrength * 0.25f;
+                        // 背阴面额外密度削减：以 30% 概率跳过
+                        if (heightNormGen(rng) < shadowStrength * 0.3f) {
+                            skipByStone = true;
+                            break;
+                        }
+                    }
+                }
+            }
+            if (skipByStone) continue;
+
+            inst.scale = std::clamp(inst.scale, cfg.bladeHeightMin, cfg.bladeHeightMax);
             blades.push_back(inst);
             break;
         }
@@ -292,11 +422,32 @@ void GrassSystem::updateChunks(const glm::vec3& playerPos) {
         std::vector<std::future<GenResult>> futures;
         futures.reserve(newKeys.size());
 
-        for (const auto& key : newKeys) {
+        // 主线程预先查询邻近树/石位置，按区块中心分组传递（线程安全：主线程独占）
+        // 邻近查询半径：最大影响距离 ≈ 树冠茂盛区 boostR 上限 (3.5*maxScale*1.6 ≈ 11m)
+        const float proximityRadius = 15.0f;
+        std::vector<std::vector<std::pair<glm::vec3, float>>> treeDataPerKey(newKeys.size());
+        std::vector<std::vector<std::pair<glm::vec3, float>>> stoneDataPerKey(newKeys.size());
+        if (treeQuery_ || stoneQuery_) {
+            for (size_t ki = 0; ki < newKeys.size(); ki++) {
+                const auto& key = newKeys[ki];
+                float cx = (static_cast<float>(key.x) + 0.5f) * config_.chunkSize;
+                float cz = (static_cast<float>(key.z) + 0.5f) * config_.chunkSize;
+                if (treeQuery_) treeDataPerKey[ki] = treeQuery_(cx, cz, proximityRadius);
+                if (stoneQuery_) stoneDataPerKey[ki] = stoneQuery_(cx, cz, proximityRadius);
+            }
+        }
+
+        for (size_t ki = 0; ki < newKeys.size(); ki++) {
+            const auto& key = newKeys[ki];
+            // 按值捕获邻近数据，线程安全
+            auto nearbyTrees = treeDataPerKey[ki];
+            auto nearbyStones = stoneDataPerKey[ki];
+            auto lightDir = lightDir_;
             futures.push_back(std::async(std::launch::async,
-                [this, key]() -> GenResult {
+                [this, key, nearbyTrees, nearbyStones, lightDir]() -> GenResult {
                     std::mt19937 chunkGen(key.x * 100000 + key.z);
-                    return {key, generateChunkBlades(config_, key.x, key.z, chunkGen)};
+                    return {key, generateChunkBlades(config_, key.x, key.z, chunkGen,
+                                                     nearbyTrees, nearbyStones, lightDir)};
                 }));
         }
 
@@ -359,20 +510,35 @@ void GrassSystem::update(const glm::vec3& playerPos, const Camera& camera,
     // Phase 2: 更新草茎挤压弹簧状态（角色交互恢复动画）
     updatePushStates(playerPos, deltaTime);
 
-    // Phase 3: 多线程并行遍历区块，按 LOD 分层构建可见草茎列表
+    // 若相机未明显移动，跳过 LOD 剔除（保留上一帧结果），减少每帧开销
+    glm::vec3 camPos = camera.getPosition();
+    glm::vec3 camDelta = camPos - lastCullCameraPos_;
+    float camMoveSq = camDelta.x * camDelta.x + camDelta.y * camDelta.y + camDelta.z * camDelta.z;
+    if (camMoveSq < CULL_MOVE_THRESHOLD * CULL_MOVE_THRESHOLD) {
+        // 仍需要更新已上传数据中的 playerPos（用于着色器交互形变）
+        return;
+    }
+    lastCullCameraPos_ = camPos;
+
+    // Phase 3: 单线程遍历区块，按 LOD 分层构建可见草茎列表
+    // 4 核 CPU 上 std::async 线程创建/切换开销 > 并行收益，故强制单线程
     for (int lod = 0; lod < LOD_COUNT; lod++) {
         lodVisibleInstances_[lod].clear();
     }
     size_t totalReserve = std::min(totalLoadedBlades_,
                            static_cast<size_t>(config_.maxBlades));
-    lodVisibleInstances_[0].reserve(totalReserve / 3);
+    lodVisibleInstances_[0].reserve(totalReserve / 2);
     lodVisibleInstances_[1].reserve(totalReserve / 3);
     lodVisibleInstances_[2].reserve(totalReserve / 3);
 
     auto& frustum = camera.getFrustum();
-    glm::vec3 camPos = camera.getPosition();
+    // 相机朝向 XZ 水平投影（用于区块级背面剔除）
+    glm::vec3 camFront3D = camera.getFront();
+    float frontLenSq = camFront3D.x * camFront3D.x + camFront3D.z * camFront3D.z;
+    glm::vec2 camDir2D = frontLenSq > 0.0001f
+        ? glm::vec2(camFront3D.x, camFront3D.z) * (1.0f / std::sqrt(frontLenSq))
+        : glm::vec2(0.0f, 0.0f);
 
-    // 预计算平方距离阈值，避免每根草重复 sqrt
     float renderDistSq = config_.renderDistance * config_.renderDistance;
     float frustumDistSq = 400.0f;
     float densLowDist = config_.renderDistance * 0.2f;
@@ -380,117 +546,44 @@ void GrassSystem::update(const glm::vec3& playerPos, const Camera& camera,
     float lod0Sq = LOD_DIST_0 * LOD_DIST_0;
     float chunkMaxDist = config_.renderDistance + config_.chunkSize * 0.707f;
     float chunkMaxDistSq = chunkMaxDist * chunkMaxDist;
+    float chunkSize = config_.chunkSize;
 
-    // 收集区块键（避免多线程并发遍历 unordered_map）
-    std::vector<GrassChunkKey> chunkKeys;
-    chunkKeys.reserve(chunkData_.size());
     for (const auto& pair : chunkData_) {
-        chunkKeys.push_back(pair.first);
-    }
+        const auto& key = pair.first;
+        const auto& blades = pair.second;
 
-    // 按可用硬件线程数分块处理
-    const size_t numThreads = std::min<size_t>(
-        std::thread::hardware_concurrency(),
-        (chunkKeys.size() + 15) / 16);  // 每线程至少 16 区块
-    const size_t numActive = std::min(numThreads, chunkKeys.size());
+        // 区块中心相对相机偏移（水平 2D）
+        float cx = (static_cast<float>(key.x) + 0.5f) * chunkSize - camPos.x;
+        float cz = (static_cast<float>(key.z) + 0.5f) * chunkSize - camPos.z;
+        float chunkDistSq = cx * cx + cz * cz;
+        if (chunkDistSq > chunkMaxDistSq) continue;
 
-    if (numActive <= 1) {
-        // 单线程回退
-        for (const auto& key : chunkKeys) {
-            auto it = chunkData_.find(key);
-            if (it == chunkData_.end()) continue;
-            const auto& blades = it->second;
-            float cx = (static_cast<float>(key.x) + 0.5f) * config_.chunkSize - camPos.x;
-            float cz = (static_cast<float>(key.z) + 0.5f) * config_.chunkSize - camPos.z;
-            if (cx * cx + cz * cz > chunkMaxDistSq) continue;
-
-            for (const auto& inst : blades) {
-                float dx = inst.position.x - camPos.x;
-                float dy = inst.position.y - camPos.y;
-                float dz = inst.position.z - camPos.z;
-                float distSq = dx * dx + dy * dy + dz * dz;
-                if (distSq > renderDistSq) continue;
-                if (distSq > frustumDistSq && distSq < lod0Sq &&
-                    !frustum.isSphereInside(inst.position, config_.bladeHeightMax)) continue;
-                float dist = std::sqrt(distSq);
-                float keepProb = 1.0f;
-                if (dist > densLowDist) {
-                    float t = std::min((dist - densLowDist) / densRange, 1.0f);
-                    keepProb = 1.0f - t * 0.9f;
-                }
-                if (glm::fract(inst.windSeed * 43758.5453f) > keepProb) continue;
-                if (dist < LOD_DIST_0) lodVisibleInstances_[0].push_back(inst);
-                else if (dist < LOD_DIST_1) lodVisibleInstances_[1].push_back(inst);
-                else if (dist < LOD_DIST_2) lodVisibleInstances_[2].push_back(inst);
-                else lodVisibleInstances_[3].push_back(inst);
-            }
-        }
-    } else {
-        // 多线程并行处理
-        struct CullResult {
-            std::array<std::vector<GrassInstanceData>, LOD_COUNT> lod;
-        };
-
-        const size_t chunksPerThread = (chunkKeys.size() + numActive - 1) / numActive;
-        std::vector<std::future<CullResult>> futures;
-        futures.reserve(numActive);
-
-        // 每个线程处理一段连续区块
-        // 只捕获只读数据避免竞态：chunkData_ 只读、预计算值是纯量
-        for (size_t t = 0; t < numActive; t++) {
-            size_t start = t * chunksPerThread;
-            size_t end = std::min(start + chunksPerThread, chunkKeys.size());
-            futures.push_back(std::async(std::launch::async,
-                [&, start, end]() -> CullResult {
-                    CullResult result;
-                    size_t reserveEst = (end - start) * 3000;
-                    for (int lod = 0; lod < LOD_COUNT; lod++) {
-                        result.lod[lod].reserve(reserveEst / 3);
-                    }
-                    for (size_t i = start; i < end; i++) {
-                        const auto& key = chunkKeys[i];
-                        auto it = chunkData_.find(key);
-                        if (it == chunkData_.end()) continue;
-                        const auto& blades = it->second;
-                        float cx = (static_cast<float>(key.x) + 0.5f) * config_.chunkSize - camPos.x;
-                        float cz = (static_cast<float>(key.z) + 0.5f) * config_.chunkSize - camPos.z;
-                        if (cx * cx + cz * cz > chunkMaxDistSq) continue;
-
-                        for (const auto& inst : blades) {
-                            float dx = inst.position.x - camPos.x;
-                            float dy = inst.position.y - camPos.y;
-                            float dz = inst.position.z - camPos.z;
-                            float distSq = dx * dx + dy * dy + dz * dz;
-                            if (distSq > renderDistSq) continue;
-                            if (distSq > frustumDistSq && distSq < lod0Sq &&
-                                !frustum.isSphereInside(inst.position, config_.bladeHeightMax)) continue;
-                            float dist = std::sqrt(distSq);
-                            float keepProb = 1.0f;
-                            if (dist > densLowDist) {
-                                float t = std::min((dist - densLowDist) / densRange, 1.0f);
-                                keepProb = 1.0f - t * 0.9f;
-                            }
-                            if (glm::fract(inst.windSeed * 43758.5453f) > keepProb) continue;
-                            if (dist < LOD_DIST_0) result.lod[0].push_back(inst);
-                            else if (dist < LOD_DIST_1) result.lod[1].push_back(inst);
-                            else if (dist < LOD_DIST_2) result.lod[2].push_back(inst);
-                            else result.lod[3].push_back(inst);
-                        }
-                    }
-                    return result;
-                }));
+        // 区块级背面剔除：明显在相机后方且不太近时跳过整块
+        if (chunkDistSq > 400.0f) {
+            float chunkDist = std::sqrt(chunkDistSq);
+            float dotHoriz = (cx * camDir2D.x + cz * camDir2D.y) / chunkDist;
+            if (dotHoriz < -0.25f) continue;
         }
 
-        // 合并所有线程结果
-        for (auto& f : futures) {
-            auto result = f.get();
-            for (int lod = 0; lod < LOD_COUNT; lod++) {
-                auto& src = result.lod[lod];
-                if (!src.empty()) {
-                    lodVisibleInstances_[lod].insert(
-                        lodVisibleInstances_[lod].end(), src.begin(), src.end());
-                }
+        for (const auto& inst : blades) {
+            float dx = inst.position.x - camPos.x;
+            float dy = inst.position.y - camPos.y;
+            float dz = inst.position.z - camPos.z;
+            float distSq = dx * dx + dy * dy + dz * dz;
+            if (distSq > renderDistSq) continue;
+            if (distSq > frustumDistSq && distSq < lod0Sq &&
+                !frustum.isSphereInside(inst.position, config_.bladeHeightMax)) continue;
+            float dist = std::sqrt(distSq);
+            float keepProb = 1.0f;
+            if (dist > densLowDist) {
+                float t = std::min((dist - densLowDist) / densRange, 1.0f);
+                keepProb = 1.0f - t * 0.9f;
             }
+            if (glm::fract(inst.windSeed * 43758.5453f) > keepProb) continue;
+            if (dist < LOD_DIST_0) lodVisibleInstances_[0].push_back(inst);
+            else if (dist < LOD_DIST_1) lodVisibleInstances_[1].push_back(inst);
+            else if (dist < LOD_DIST_2) lodVisibleInstances_[2].push_back(inst);
+            else lodVisibleInstances_[3].push_back(inst);
         }
     }
 

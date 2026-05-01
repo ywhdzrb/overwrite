@@ -15,6 +15,7 @@
 #include <thread>
 #include <future>
 #include "renderer/tree_system.h"
+#include "renderer/stone_system.h"
 #include "renderer/grass_system.h"
 #include "core/game_config.h"
 #include "ecs/ecs.h"  // 仅 cpp 引用具体类型（dev panel + raw ptr cast）
@@ -289,11 +290,28 @@ void Renderer::initVulkan() {
     treeSystem_->setHeightSampler(terrainHeightQuery);
     treeSystem_->init(gameConfig.tree);
 
+    // 初始化石头系统（与树系统同模式，共享 stone.gltf）
+    stoneSystem_ = std::make_unique<StoneSystem>(vulkanDevice, textureLoader, textureDescriptorSetLayout);
+    stoneSystem_->setHeightSampler(terrainHeightQuery);
+    stoneSystem_->init(gameConfig.stone);
+
     // 初始化草丛系统（实例化渲染，独立管线）
     grassSystem_ = std::make_unique<GrassSystem>(vulkanDevice);
     grassSystem_->setHeightSampler(terrainHeightQuery);
     grassSystem_->init(gameConfig.grass, renderPass->getRenderPass(),
                        swapchain->getExtent(), msaaSamples);
+
+    // 接线：树/石邻近查询 → GrassSystem（用于树下/石旁草密度/高度调节）
+    grassSystem_->setTreeQuery([this](float x, float z, float radius) {
+        return treeSystem_->queryPositions(x, z, radius);
+    });
+    grassSystem_->setStoneQuery([this](float x, float z, float radius) {
+        return stoneSystem_->queryPositions(x, z, radius);
+    });
+    // 设置全局光照方向（用于石头背阴面草衰减判定）
+    if (auto* sunLight = lightManager->getLightByName("sun")) {
+        grassSystem_->setGlobalLightDir(sunLight->getDirection());
+    }
 
     // 初始化 ImGui
     imguiManager = std::make_unique<ImGuiManager>(vulkanDevice, swapchain, renderPass, window, vulkanInstance->getInstance(), msaaSamples);
@@ -587,22 +605,11 @@ void Renderer::updateGameLogic(float deltaTime) {
             ecsClientWorld->updateAsync(deltaTime);
         });
         
-        // === 3) 主线程并行工作（与异步模拟同时执行） ===
-        // 地形、树木、草丛三者独立互不依赖，并行执行
-        auto terrainFut = std::async(std::launch::async, [this, &playerPos]() {
-            terrainRenderer->update(playerPos);
-        });
-        auto treeFut = std::async(std::launch::async, [this, &playerPos]() {
-            if (treeSystem_) treeSystem_->update(playerPos, *camera);
-        });
-        auto grassFut = std::async(std::launch::async, [this, &playerPos, deltaTime]() {
-            if (grassSystem_) grassSystem_->update(playerPos, *camera, deltaTime);
-        });
-
-        // 等待所有更新完成
-        terrainFut.wait();
-        treeFut.wait();
-        grassFut.wait();
+        // === 3) 主线程执行渲染系统更新（4 核 CPU 上 async 开销太大，串行更快） ===
+        terrainRenderer->update(playerPos);
+        if (treeSystem_) treeSystem_->update(playerPos, *camera);
+        if (stoneSystem_) stoneSystem_->update(playerPos, *camera);
+        if (grassSystem_) grassSystem_->update(playerPos, *camera, deltaTime);
         
         // === 4) 等待异步模拟完成 ===
         ecsFuture.wait();
@@ -642,16 +649,11 @@ void Renderer::updateGameLogic(float deltaTime) {
         
         physics->update(deltaTime);
         
-        // 并行更新树木和草丛
+        // 串行更新树木、石头、草丛（4 核上 async 开销 > 受益）
         glm::vec3 camPos = camera->getPosition();
-        auto treeFut = std::async(std::launch::async, [this, &camPos]() {
-            if (treeSystem_) treeSystem_->update(camPos, *camera);
-        });
-        auto grassFut = std::async(std::launch::async, [this, &camPos, deltaTime]() {
-            if (grassSystem_) grassSystem_->update(camPos, *camera, deltaTime);
-        });
-        treeFut.wait();
-        grassFut.wait();
+        if (treeSystem_) treeSystem_->update(camPos, *camera);
+        if (stoneSystem_) stoneSystem_->update(camPos, *camera);
+        if (grassSystem_) grassSystem_->update(camPos, *camera, deltaTime);
     }
     
     // 第三人称模式：将 player 模型位置同步到相机目标
@@ -987,7 +989,10 @@ void Renderer::drawFrame() {
 
     // 渲染树木（由 TreeSystem 统一管理剔除 + 渲染）
     treeSystem_->render(commandBuffer, graphicsPipeline->getPipelineLayout(), *camera);
-    
+
+    // 渲染石头（由 StoneSystem 统一管理剔除 + 渲染）
+    if (stoneSystem_) stoneSystem_->render(commandBuffer, graphicsPipeline->getPipelineLayout(), *camera);
+
     // 渲染草丛（实例化渲染，独立管线）
     if (grassSystem_) grassSystem_->render(commandBuffer, *camera);
     
@@ -1233,6 +1238,8 @@ void Renderer::cleanup() {
     
     // 清理树木（由 TreeSystem 统一管理）
     treeSystem_.reset();
+    // 清理石头系统
+    stoneSystem_.reset();
     // 清理草丛系统
     grassSystem_.reset();
     // 清理 FSR1 管线
