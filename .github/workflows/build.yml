@@ -34,7 +34,18 @@ jobs:
           libssl-dev \
           zlib1g-dev \
           mesa-vulkan-drivers \
-          xvfb
+          xvfb \
+          software-properties-common
+
+    - name: Install Vulkan SDK (glslc shader compiler)
+      run: |
+        VULKAN_VERSION=$(curl -fsSL https://vulkan.lunarg.com/sdk/latest/linux.txt)
+        curl -fsSL "https://sdk.lunarg.com/sdk/download/${VULKAN_VERSION}/linux/vulkan_sdk.tar.xz" \
+          -o /tmp/vulkan_sdk.tar.xz
+        sudo mkdir -p /opt/vulkan-sdk
+        sudo tar -Jxf /tmp/vulkan_sdk.tar.xz --strip-components=1 -C /opt/vulkan-sdk
+        echo "/opt/vulkan-sdk/x86_64/bin" >> $GITHUB_PATH
+        rm -f /tmp/vulkan_sdk.tar.xz
 
     - name: Set compiler
       run: |

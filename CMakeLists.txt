@@ -30,6 +30,7 @@ find_package(OpenSSL REQUIRED)
 find_package(glfw3 REQUIRED)
 find_package(glm REQUIRED)
 find_package(ZLIB REQUIRED)
+find_package(Threads REQUIRED)
 
 # ==================== EnTT (header-only) ====================
 add_library(EnTT INTERFACE)
