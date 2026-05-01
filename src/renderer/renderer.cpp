@@ -601,16 +601,21 @@ void Renderer::updateGameLogic(float deltaTime) {
         glm::vec3 playerPos = ecsClientWorld->getPlayerPosition();
         
         // === 1.5) 更新树/石碰撞箱（异步模拟开始前注入，MovementSystem 读取） ===
+        // 注意：ECS 的 PhysicsSystem 将 position.y 设为中心（terrain + colliderHeight/2 = 0.9），
+        // 而 MovementSystem::checkCollision 把 position.y 当作脚底。碰撞箱 Y 要上移 0.9 对齐。
         if (rawClientWorld_ && rawClientWorld_->getMovementSystem()) {
             auto* moveSys = rawClientWorld_->getMovementSystem();
             moveSys->clearCollisionBoxes();
+            constexpr float PLAYER_Y_OFFSET = 0.9f;  // colliderHeight(1.8) / 2
             
             // 查询玩家附近树木（半径 25m 覆盖移动范围）
             auto trees = treeSystem_->queryPositions(playerPos.x, playerPos.z, 25.0f);
             for (const auto& [pos, scale] : trees) {
                 float r = std::max(0.5f, 0.3f * scale);  // 树干碰撞半径
                 float h = 3.0f;                           // 树干高度
-                moveSys->addCollisionBox(pos, glm::vec3(r * 2, h, r * 2));
+                glm::vec3 boxPos = pos;
+                boxPos.y += PLAYER_Y_OFFSET;              // 对齐到玩家中心 Y
+                moveSys->addCollisionBox(boxPos, glm::vec3(r * 2, h, r * 2));
             }
             
             // 查询玩家附近石头
@@ -618,7 +623,9 @@ void Renderer::updateGameLogic(float deltaTime) {
             for (const auto& [pos, scale] : stones) {
                 float r = std::max(0.3f, 0.25f * scale); // 石头碰撞半径
                 float h = 0.8f * scale;                   // 石头高度
-                moveSys->addCollisionBox(pos, glm::vec3(r * 2, h, r * 2));
+                glm::vec3 boxPos = pos;
+                boxPos.y += PLAYER_Y_OFFSET;              // 对齐到玩家中心 Y
+                moveSys->addCollisionBox(boxPos, glm::vec3(r * 2, h, r * 2));
             }
         }
         
