@@ -291,6 +291,19 @@ size_t getMaterialCount() const;
 std::shared_ptr<Texture> getFirstTexture() const;
 ```
 
+#### 描述符集管理
+
+```cpp
+// 创建 mesh 描述符集，需要在管线创建后调用
+void createMeshDescriptorSets(VkDescriptorSetLayout descriptorSetLayout, VkDescriptorPool descriptorPool);
+
+// 清理 mesh 描述符集
+void cleanupDescriptorSets(VkDevice device);
+
+// 设置要隐藏的节点名称（跳过渲染）
+void setHiddenNodeNames(const std::vector<std::string>& hiddenNames);
+```
+
 #### 变换
 
 ```cpp

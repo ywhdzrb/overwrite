@@ -69,7 +69,8 @@ bool compileToSpirV(const std::string& sourceFile,
 ### 运行时编译
 
 ```cpp
-using namespace vgame;
+// 头文件路径说明：ShaderCompiler 位于 include/core/shader_compiler.h，请在代码中使用 include/core/shader_compiler.h 引用头文件
+using namespace owengine;
 
 // 编译顶点着色器
 auto vertShader = ShaderCompiler::compileShader("shaders/shader.vert", "vert");

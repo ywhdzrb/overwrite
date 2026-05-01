@@ -43,7 +43,7 @@ private:
 ### 使用示例
 
 ```cpp
-using namespace vgame;
+using namespace owengine;
 
 // 基本日志
 Logger::debug("Debug message");      // [DEBUG] 2024-01-01 12:00:00 - Debug message

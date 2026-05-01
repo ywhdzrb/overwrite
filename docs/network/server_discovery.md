@@ -63,7 +63,7 @@ private:
 ### 使用示例
 
 ```cpp
-using namespace vgame;
+using namespace owengine;
 
 // 创建广播器（游戏端口 9002）
 ServerDiscoveryBroadcaster broadcaster(9002, "My Game Server");
@@ -140,7 +140,7 @@ private:
 ### 使用示例
 
 ```cpp
-using namespace vgame;
+using namespace owengine;
 
 // 创建扫描器
 ServerDiscoveryScanner scanner;

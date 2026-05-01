@@ -6,9 +6,10 @@
 
 ## Push Constants
 
-所有渲染器使用相同的 Push Constants 结构：
+FloorRenderer 和 ModelRenderer 使用相同的 Push Constants 结构，SkyboxRenderer 使用简化的 Push Constants（仅包含 view/proj）：
 
 ```cpp
+// FloorRenderer / ModelRenderer 通用 Push Constants
 struct PushConstants {
     glm::mat4 model;        // 模型矩阵
     glm::mat4 view;         // 视图矩阵
@@ -19,6 +20,12 @@ struct PushConstants {
     int hasTexture;         // 是否有纹理
     float _pad0;            // 填充
 };
+
+// SkyboxRenderer 专用 Push Constants（仅需视图和投影，无模型变换）
+// struct SkyboxRenderer::PushConstants {
+//     glm::mat4 view;
+//     glm::mat4 proj;
+// };
 ```
 
 ---
@@ -30,18 +37,29 @@ struct PushConstants {
 ### 类定义
 
 ```cpp
-class FloorRenderer {
+class FloorRenderer : public IRenderer {
 public:
-    FloorRenderer(std::shared_ptr<VulkanDevice> device);
-    ~FloorRenderer();
+    explicit FloorRenderer(std::shared_ptr<VulkanDevice> device);
+    ~FloorRenderer() override;
     
-    void create();
-    void cleanup();
+    // IRenderer 接口实现
+    void create() override;
+    void cleanup() override;
+    void render(VkCommandBuffer commandBuffer, VkPipelineLayout pipelineLayout,
+                const glm::mat4& viewMatrix, const glm::mat4& projectionMatrix) override;
+    std::string getName() const override { return "FloorRenderer"; }
+    bool isCreated() const override { return created_; }
     
-    void render(VkCommandBuffer commandBuffer, 
-                VkPipelineLayout pipelineLayout,
-                const glm::mat4& viewMatrix, 
-                const glm::mat4& projectionMatrix);
+    struct PushConstants {
+        glm::mat4 model;
+        glm::mat4 view;
+        glm::mat4 proj;
+        glm::vec3 baseColor;
+        float metallic;
+        float roughness;
+        int hasTexture;
+        float _pad0;  // 填充到16字节对齐
+    };
 };
 ```
 
@@ -63,59 +81,6 @@ floorRenderer->render(commandBuffer, pipelineLayout, viewMatrix, projectionMatri
 
 ---
 
-## CubeRenderer
-
-渲染立方体。
-
-### 类定义
-
-```cpp
-class CubeRenderer {
-public:
-    CubeRenderer(std::shared_ptr<VulkanDevice> device);
-    ~CubeRenderer();
-    
-    void create();
-    void cleanup();
-    
-    void render(VkCommandBuffer commandBuffer, 
-                VkPipelineLayout pipelineLayout,
-                const glm::mat4& viewMatrix, 
-                const glm::mat4& projectionMatrix);
-    
-    void setPosition(const glm::vec3& position);
-    
-    // 碰撞体
-    glm::vec3 getColliderSize() const;   // 返回 (5.0f, 5.0f, 5.0f)
-    glm::vec3 getColliderCenter() const;
-};
-```
-
-### 使用示例
-
-```cpp
-auto cubeRenderer = std::make_unique<CubeRenderer>(device);
-cubeRenderer->create();
-
-// 设置位置
-cubeRenderer->setPosition(glm::vec3(10.0f, 0.0f, 5.0f));
-
-// 渲染
-cubeRenderer->render(commandBuffer, pipelineLayout, viewMatrix, projectionMatrix);
-
-// 碰撞检测
-glm::vec3 cubePos = cubeRenderer->getColliderCenter();
-glm::vec3 cubeSize = cubeRenderer->getColliderSize();
-```
-
-### 特点
-
-- 固定大小的立方体（5.0 单位）
-- 支持碰撞检测
-- 用于障碍物或测试物体
-
----
-
 ## SkyboxRenderer
 
 渲染天空盒。
@@ -123,13 +88,18 @@ glm::vec3 cubeSize = cubeRenderer->getColliderSize();
 ### 类定义
 
 ```cpp
-class SkyboxRenderer {
+class SkyboxRenderer : public IRenderer {
 public:
-    SkyboxRenderer(std::shared_ptr<VulkanDevice> device);
-    ~SkyboxRenderer();
+    explicit SkyboxRenderer(std::shared_ptr<VulkanDevice> device);
+    ~SkyboxRenderer() override;
     
-    void create();
-    void cleanup();
+    // IRenderer 接口实现
+    void create() override;
+    void cleanup() override;
+    void render(VkCommandBuffer commandBuffer, VkPipelineLayout pipelineLayout,
+                const glm::mat4& viewMatrix, const glm::mat4& projectionMatrix) override;
+    std::string getName() const override { return "SkyboxRenderer"; }
+    bool isCreated() const override { return created_; }
     
     // 从 6 张纹理加载立方体贴图
     // 顺序: 右(+X), 左(-X), 上(+Y), 下(-Y), 前(+Z), 后(-Z)
@@ -138,16 +108,16 @@ public:
     // 从十字形布局纹理加载
     void loadCubemapFromCrossLayout(const std::string& imagePath);
     
-    // 渲染
-    void render(VkCommandBuffer commandBuffer, 
-                VkPipelineLayout pipelineLayout,
-                const glm::mat4& viewMatrix, 
-                const glm::mat4& projectionMatrix);
+    // SkyboxRenderer 专用 Push Constants（仅 view/proj，无 model 变换）
+    struct PushConstants {
+        glm::mat4 view;
+        glm::mat4 proj;
+    };
     
     // 获取器
-    VkPipelineLayout getPipelineLayout() const;
-    VkDescriptorSet getDescriptorSet() const;
-    VkDescriptorSetLayout getDescriptorSetLayout() const;
+    VkPipelineLayout getPipelineLayout() const { return pipelineLayout; }
+    VkDescriptorSet getDescriptorSet() const { return descriptorSet; }
+    VkDescriptorSetLayout getDescriptorSetLayout() const { return descriptorSetLayout; }
 };
 ```
 
@@ -206,14 +176,19 @@ modelRenderer->render(...);
 ### 类定义
 
 ```cpp
-class ModelRenderer {
+class ModelRenderer : public IRenderer {
 public:
     ModelRenderer(std::shared_ptr<VulkanDevice> device,
                   std::shared_ptr<TextureLoader> textureLoader);
-    ~ModelRenderer();
+    ~ModelRenderer() override;
     
-    void create();
-    void cleanup();
+    // IRenderer 接口实现
+    void create() override;
+    void cleanup() override;
+    void render(VkCommandBuffer commandBuffer, VkPipelineLayout pipelineLayout,
+                const glm::mat4& viewMatrix, const glm::mat4& projectionMatrix) override;
+    std::string getName() const override { return "ModelRenderer"; }
+    bool isCreated() const override { return created_; }
     
     void loadModel(const std::string& filename);
     
@@ -226,11 +201,6 @@ public:
     
     void setUseTexture(bool use);
     bool isUsingTexture() const;
-    
-    void render(VkCommandBuffer commandBuffer, 
-                VkPipelineLayout pipelineLayout,
-                const glm::mat4& viewMatrix, 
-                const glm::mat4& projectionMatrix);
 };
 ```
 
@@ -423,7 +393,6 @@ void renderFrame() {
     
     // 3. 不透明物体
     floorRenderer->render(...);
-    cubeRenderer->render(...);
     
     // 4. 模型
     for (auto& model : models) {

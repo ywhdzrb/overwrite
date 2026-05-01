@@ -8,7 +8,6 @@
 |------|------|------|
 | `Renderer` | `include/core/renderer.h` | 主渲染器类 |
 | `FloorRenderer` | `include/renderer/floor_renderer.h` | 地板渲染器 |
-| `CubeRenderer` | `include/renderer/cube_renderer.h` | 立方体渲染器 |
 | `SkyboxRenderer` | `include/renderer/skybox_renderer.h` | 天空盒渲染器 |
 | `ModelRenderer` | `include/renderer/model_renderer.h` | 模型渲染器 |
 | `TextRenderer` | `include/renderer/text_renderer.h` | 文本渲染器 |
@@ -133,7 +132,7 @@ private:
 
 ```cpp
 int main() {
-    vgame::Renderer renderer(1280, 720, "OverWrite");
+    owengine::Renderer renderer(1280, 720, "OverWrite");
     renderer.run();
     return 0;
 }
@@ -148,18 +147,32 @@ int main() {
 ### 类方法
 
 ```cpp
-class FloorRenderer {
+class FloorRenderer : public IRenderer {
 public:
     FloorRenderer(std::shared_ptr<VulkanDevice> device);
-    ~FloorRenderer();
+    ~FloorRenderer() override;
     
-    void create();
-    void cleanup();
+    void create() override;
+    void cleanup() override;
     
     void render(VkCommandBuffer commandBuffer, 
                 VkPipelineLayout pipelineLayout,
                 const glm::mat4& viewMatrix, 
-                const glm::mat4& projectionMatrix);
+                const glm::mat4& projectionMatrix) override;
+    
+    std::string getName() const override { return "FloorRenderer"; }
+    bool isCreated() const override { return created_; }
+    
+    struct PushConstants {
+        glm::mat4 model;
+        glm::mat4 view;
+        glm::mat4 proj;
+        glm::vec3 baseColor;
+        float metallic;
+        float roughness;
+        int hasTexture;
+        float _pad0;  // 填充到16字节对齐
+    };
 };
 ```
 
@@ -180,36 +193,6 @@ struct PushConstants {
 
 ---
 
-## CubeRenderer
-
-渲染立方体。
-
-### 类方法
-
-```cpp
-class CubeRenderer {
-public:
-    CubeRenderer(std::shared_ptr<VulkanDevice> device);
-    ~CubeRenderer();
-    
-    void create();
-    void cleanup();
-    
-    void render(VkCommandBuffer commandBuffer, 
-                VkPipelineLayout pipelineLayout,
-                const glm::mat4& viewMatrix, 
-                const glm::mat4& projectionMatrix);
-    
-    void setPosition(const glm::vec3& position);
-    
-    // 碰撞体
-    glm::vec3 getColliderSize() const;
-    glm::vec3 getColliderCenter() const;
-};
-```
-
----
-
 ## SkyboxRenderer
 
 渲染天空盒。
@@ -217,13 +200,13 @@ public:
 ### 类方法
 
 ```cpp
-class SkyboxRenderer {
+class SkyboxRenderer : public IRenderer {
 public:
     SkyboxRenderer(std::shared_ptr<VulkanDevice> device);
-    ~SkyboxRenderer();
+    ~SkyboxRenderer() override;
     
-    void create();
-    void cleanup();
+    void create() override;
+    void cleanup() override;
     
     // 从 6 张纹理文件加载立方体贴图
     // 顺序: 右, 左, 上, 下, 前, 后
@@ -232,16 +215,24 @@ public:
     // 从十字形纹理加载立方体贴图
     void loadCubemapFromCrossLayout(const std::string& imagePath);
     
-    // 渲染
+    // 渲染天空盒
     void render(VkCommandBuffer commandBuffer, 
                 VkPipelineLayout pipelineLayout,
                 const glm::mat4& viewMatrix, 
-                const glm::mat4& projectionMatrix);
+                const glm::mat4& projectionMatrix) override;
     
-    // 获取器
-    VkPipelineLayout getPipelineLayout() const;
-    VkDescriptorSet getDescriptorSet() const;
-    VkDescriptorSetLayout getDescriptorSetLayout() const;
+    std::string getName() const override { return "SkyboxRenderer"; }
+    bool isCreated() const override { return created_; }
+    
+    struct PushConstants {
+        glm::mat4 view;
+        glm::mat4 proj;
+    };
+    
+    VkPipelineLayout getPipelineLayout() const { return pipelineLayout; }
+    VkDescriptorSet getDescriptorSet() const { return descriptorSet; }
+    VkDescriptorSetLayout getDescriptorSetLayout() const { return descriptorSetLayout; }
+ 
 };
 ```
 
@@ -275,14 +266,15 @@ skybox->render(commandBuffer, pipelineLayout, viewMatrix, projectionMatrix);
 ### 类方法
 
 ```cpp
-class ModelRenderer {
+class ModelRenderer : public IRenderer {
 public:
     ModelRenderer(std::shared_ptr<VulkanDevice> device,
                   std::shared_ptr<TextureLoader> textureLoader);
-    ~ModelRenderer();
+    ~ModelRenderer() override;
     
-    void create();
-    void cleanup();
+    // IRenderer 接口实现
+    void create() override;
+    void cleanup() override;
     
     void loadModel(const std::string& filename);
     
@@ -408,7 +400,6 @@ void drawFrame() {
     // 渲染场景
     skyboxRenderer->render(...);
     floorRenderer->render(...);
-    cubeRenderer->render(...);
     modelRenderer->render(...);
     
     // 渲染 UI

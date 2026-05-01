@@ -41,15 +41,15 @@ client/
 ### 命名空间
 
 ```cpp
-namespace vgame::ecs {
+namespace owengine {
     // 共享 ECS 代码
 }
 
-namespace vgame::client {
+namespace owengine::client {
     // 客户端专用代码
 }
 
-namespace vgame::server {
+namespace owengine::server {
     // 服务端专用代码
 }
 ```
@@ -226,7 +226,7 @@ private:
 
 ```cpp
 // 创建客户端世界
-auto world = std::make_unique<ecs::ClientWorld>();
+auto world = std::make_unique<owengine::ecs::ClientWorld>();
 world->initClientSystems(window, 1280, 720);
 ```
 
@@ -237,7 +237,7 @@ world->initClientSystems(window, 1280, 720);
 entt::entity player = world->createClientPlayer(1280, 720);
 
 // 设置初始位置
-auto& transform = world->registry().get<ecs::TransformComponent>(player);
+auto& transform = world->registry().get<owengine::ecs::TransformComponent>(player);
 transform.position = glm::vec3(0.0f, 0.0f, 10.0f);
 ```
 

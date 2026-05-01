@@ -50,7 +50,7 @@ enum class NetworkState {
 ### 类定义
 
 ```cpp
-namespace vgame::client {
+namespace owengine::client {
 
 class NetworkSystem {
 public:
@@ -100,7 +100,7 @@ public:
     void setInterpolationSpeed(float speed);
 };
 
-} // namespace vgame::client
+} // namespace owengine::client
 ```
 
 ### 使用示例
@@ -108,7 +108,7 @@ public:
 #### 基本连接
 
 ```cpp
-using namespace vgame::client;
+using namespace owengine::client;
 
 auto network = std::make_unique<NetworkSystem>();
 
@@ -330,7 +330,7 @@ void NetworkSystem::interpolateRemotePlayers(float deltaTime) {
 #include "network/network_system.h"
 #include <iostream>
 
-using namespace vgame::client;
+using namespace owengine::client;
 
 class GameClient {
 public:

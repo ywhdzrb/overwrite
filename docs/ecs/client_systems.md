@@ -182,7 +182,7 @@ void CameraSystem::update(float deltaTime) {
 ### 类定义
 
 ```cpp
-class ClientWorld : public World {
+class ClientWorld : public World, public IGameWorld {
 public:
     ClientWorld();
     ~ClientWorld();
@@ -191,7 +191,15 @@ public:
     void initClientSystems(GLFWwindow* window, int viewportWidth, int viewportHeight);
     
     // 更新所有客户端系统
+    // 同步更新（用于网络输入/状态的同步）
     void updateClientSystems(float deltaTime);
+    void updateClientSystemsSync(float deltaTime);
+    void updateClientSystemsAsync(float deltaTime);
+    void sendNetworkInputs();
+    
+    CameraControllerSystem* getCameraControllerSystem() { return cameraControllerSystem_.get(); }
+    void setTerrainQuery(TerrainHeightQuery query);
+    
     
     // 获取客户端系统
     InputSystem* getInputSystem() { return inputSystem_.get(); }
@@ -223,6 +231,7 @@ private:
     
     int viewportWidth_{800};
     int viewportHeight_{600};
+    bool isFlying_{false};
 };
 ```
 
@@ -313,12 +322,12 @@ int main() {
     glfwMakeContextCurrent(window);
     
     // 创建客户端世界
-    auto world = std::make_unique<vgame::ecs::ClientWorld>();
+    auto world = std::make_unique<owengine::ecs::ClientWorld>();
     world->initClientSystems(window, 1280, 720);
     
     // 创建玩家
     auto player = world->createClientPlayer(1280, 720);
-    auto& transform = world->registry().get<vgame::ecs::TransformComponent>(player);
+    auto& transform = world->registry().get<owengine::ecs::TransformComponent>(player);
     transform.position = glm::vec3(0.0f, 0.0f, 10.0f);
     
     // 设置物理地形
@@ -363,18 +372,18 @@ int main() {
 ## 与渲染器集成
 
 ```cpp
-void render(vgame::ecs::ClientWorld& world, VkCommandBuffer cmdBuffer) {
+void render(owengine::ecs::ClientWorld& world, VkCommandBuffer cmdBuffer) {
     // 获取相机矩阵
     auto* cameraSystem = world.getCameraSystem();
     glm::mat4 view = cameraSystem->getMainViewMatrix();
     glm::mat4 proj = cameraSystem->getMainProjectionMatrix();
     
     // 渲染所有有 RenderComponent 的实体
-    auto view = world.registry().view<vgame::ecs::RenderComponent, vgame::ecs::TransformComponent>();
+    auto view = world.registry().view<owengine::ecs::RenderComponent, owengine::ecs::TransformComponent>();
     
     for (auto entity : view) {
-        auto& render = view.get<vgame::ecs::RenderComponent>(entity);
-        auto& transform = view.get<vgame::ecs::TransformComponent>(entity);
+        auto& render = view.get<owengine::ecs::RenderComponent>(entity);
+        auto& transform = view.get<owengine::ecs::TransformComponent>(entity);
         
         if (render.visible) {
             glm::mat4 model = transform.getModelMatrix();

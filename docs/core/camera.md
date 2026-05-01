@@ -96,11 +96,15 @@ void update(float deltaTime,
 #### 模式切换
 
 ```cpp
-// 切换自由视角模式
-void toggleFreeCamera();
+// 切换自由视角模式（可选：切回时设置的目标位置）
+void toggleFreeCamera(const glm::vec3& targetPos = glm::vec3(0.0f));
 
 // 检查是否在自由视角模式
 bool isFreeCameraMode() const;
+
+// 检查是否需要跳过同步（仅一次）
+bool needsSyncSkip() const;
+void clearSyncSkip();
 
 // 设置/获取相机模式
 void setMode(Mode m);
