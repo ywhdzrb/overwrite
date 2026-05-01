@@ -8,6 +8,8 @@
 #include <cstring>
 #include <fstream>
 #include <unordered_set>
+#include <future>
+#include <thread>
 
 namespace owengine {
 
@@ -61,14 +63,19 @@ void GrassSystem::init(const GrassConfig& cfg, VkRenderPass renderPass,
     if (initialized_) return;
     config_ = cfg;
 
-    generateBladeMesh(config_.segmentsPerBlade, bladeVertices_, bladeIndices_);
-    Logger::info("[GrassSystem] 草茎网格: " +
-                 std::to_string(bladeVertices_.size()) + " 顶点, " +
-                 std::to_string(bladeIndices_.size()) + " 索引, " +
-                 "纯色弯曲面片");
+    // 生成三层 LOD 网格
+    for (int lod = 0; lod < LOD_COUNT; lod++) {
+        generateBladeMesh(lod, lodVertices_[lod], lodIndices_[lod]);
+        Logger::info("[GrassSystem] LOD" + std::to_string(lod) + ": " +
+                     std::to_string(lodVertices_[lod].size()) + " 顶点, " +
+                     std::to_string(lodIndices_[lod].size()) + " 索引");
+    }
 
     createPipeline(renderPass, extent, msaaSamples);
-    createBladeBuffers();
+    // 为每层 LOD 创建顶点/索引缓冲
+    for (int lod = 0; lod < LOD_COUNT; lod++) {
+        createSingleLodBuffers(lod);
+    }
     createInstanceBuffer(config_.maxBlades);
 
     // 生成初始区块（以原点为中心）
@@ -78,65 +85,84 @@ void GrassSystem::init(const GrassConfig& cfg, VkRenderPass renderPass,
     initialized_ = true;
 }
 
-void GrassSystem::generateBladeMesh(int segments,
+void GrassSystem::generateBladeMesh(int lod,
                                      std::vector<GrassVertex>& vertices,
                                      std::vector<uint32_t>& indices) {
     vertices.clear();
     indices.clear();
 
-    if (segments < 2) segments = 2;
-    int rings = segments + 1;
-
-    vertices.reserve(static_cast<size_t>(rings) * 4);
-    indices.reserve(static_cast<size_t>(segments) * 12);
-
     float halfW = config_.bladeWidth * 0.5f;
-    float curveStrength = 0.18f;
 
-    for (int quad = 0; quad < 2; quad++) {
-        uint32_t baseIdx = static_cast<uint32_t>(vertices.size());
+    if (lod == 0) {
+        // LOD0：弯曲叶片（20 顶点，48 索引）
+        int segments = 4;     // 使用固定 4 分段
+        int rings = segments + 1;
+        vertices.reserve(static_cast<size_t>(rings) * 4);
+        indices.reserve(static_cast<size_t>(segments) * 12);
 
-        for (int i = 0; i < rings; i++) {
-            float t = static_cast<float>(i) / static_cast<float>(segments);
-
-            // 宽度锥度：基部最宽(0.7~1.0)，尖端收窄到 0
-            float widthScale;
-            if (t < 0.15f) {
-                float bt = t / 0.15f;
-                widthScale = 0.7f + bt * 0.3f;
-            } else {
-                float taperT = (t - 0.15f) / 0.85f;
-                widthScale = 1.0f - taperT * taperT;
+        float curveStrength = 0.18f;
+        for (int quad = 0; quad < 2; quad++) {
+            uint32_t baseIdx = static_cast<uint32_t>(vertices.size());
+            for (int i = 0; i < rings; i++) {
+                float t = static_cast<float>(i) / static_cast<float>(segments);
+                float widthScale;
+                if (t < 0.15f) {
+                    float bt = t / 0.15f;
+                    widthScale = 0.7f + bt * 0.3f;
+                } else {
+                    float taperT = (t - 0.15f) / 0.85f;
+                    widthScale = 1.0f - taperT * taperT;
+                }
+                float w = halfW * widthScale;
+                float bend = curveStrength * t * t;
+                float y = t;
+                if (quad == 0) {
+                    vertices.push_back({{-w, y, bend}, {0.0f, t}});
+                    vertices.push_back({{ w, y, bend}, {1.0f, t}});
+                } else {
+                    vertices.push_back({{bend, y, -w}, {0.0f, t}});
+                    vertices.push_back({{bend, y,  w}, {1.0f, t}});
+                }
             }
-            float w = halfW * widthScale;
-
-            // 二次曲线：圆滑弯曲，底部直尖端弯曲最大
-            float bend = curveStrength * t * t;
-            float y = t;
-
-            if (quad == 0) {
-                vertices.push_back({{-w, y, bend}, {0.0f, t}});
-                vertices.push_back({{ w, y, bend}, {1.0f, t}});
-            } else {
-                vertices.push_back({{bend, y, -w}, {0.0f, t}});
-                vertices.push_back({{bend, y,  w}, {1.0f, t}});
+            for (int i = 0; i < segments; i++) {
+                uint32_t bl = baseIdx + i * 2;
+                uint32_t br = baseIdx + i * 2 + 1;
+                uint32_t tl = baseIdx + (i + 1) * 2;
+                uint32_t tr = baseIdx + (i + 1) * 2 + 1;
+                indices.push_back(bl); indices.push_back(br); indices.push_back(tl);
+                indices.push_back(br); indices.push_back(tr); indices.push_back(tl);
             }
         }
-
-        for (int i = 0; i < segments; i++) {
-            uint32_t bl = baseIdx + i * 2;
-            uint32_t br = baseIdx + i * 2 + 1;
-            uint32_t tl = baseIdx + (i + 1) * 2;
-            uint32_t tr = baseIdx + (i + 1) * 2 + 1;
-
-            indices.push_back(bl);
-            indices.push_back(br);
-            indices.push_back(tl);
-
-            indices.push_back(br);
-            indices.push_back(tr);
-            indices.push_back(tl);
-        }
+    } else if (lod == 1) {
+        // LOD1：十字交叉面片（8 顶点，12 索引），无弯曲
+        vertices.reserve(8);
+        indices.reserve(12);
+        // Quad 1: XY 平面
+        vertices.push_back({{-halfW, 0.0f, 0.0f}, {0.0f, 0.0f}});
+        vertices.push_back({{-halfW, 1.0f, 0.0f}, {0.0f, 1.0f}});
+        vertices.push_back({{ halfW, 1.0f, 0.0f}, {1.0f, 1.0f}});
+        vertices.push_back({{ halfW, 0.0f, 0.0f}, {1.0f, 0.0f}});
+        // Quad 2: ZY 平面
+        vertices.push_back({{0.0f, 0.0f, -halfW}, {0.0f, 0.0f}});
+        vertices.push_back({{0.0f, 1.0f, -halfW}, {0.0f, 1.0f}});
+        vertices.push_back({{0.0f, 1.0f,  halfW}, {1.0f, 1.0f}});
+        vertices.push_back({{0.0f, 0.0f,  halfW}, {1.0f, 0.0f}});
+        // 索引
+        indices.push_back(0); indices.push_back(1); indices.push_back(2);
+        indices.push_back(0); indices.push_back(2); indices.push_back(3);
+        indices.push_back(4); indices.push_back(5); indices.push_back(6);
+        indices.push_back(4); indices.push_back(6); indices.push_back(7);
+    } else {
+        // LOD2：单面片（4 顶点，6 索引），略宽
+        float w = halfW * 1.2f;
+        vertices.reserve(4);
+        indices.reserve(6);
+        vertices.push_back({{-w, 0.0f, 0.0f}, {0.0f, 0.0f}});
+        vertices.push_back({{-w, 1.0f, 0.0f}, {0.0f, 1.0f}});
+        vertices.push_back({{ w, 1.0f, 0.0f}, {1.0f, 1.0f}});
+        vertices.push_back({{ w, 0.0f, 0.0f}, {1.0f, 0.0f}});
+        indices.push_back(0); indices.push_back(1); indices.push_back(2);
+        indices.push_back(0); indices.push_back(2); indices.push_back(3);
     }
 }
 
@@ -145,17 +171,22 @@ void GrassSystem::generateGrassInChunk(const GrassConfig& cfg, int cx, int cz,
     GrassChunkKey key{cx, cz};
     if (chunkData_.count(key)) return;
 
+    auto blades = generateChunkBlades(cfg, cx, cz, rng);
+    totalLoadedBlades_ += blades.size();
+    chunkData_[key] = std::move(blades);
+}
+
+// 仅生成区块草数据，不操作 chunkData_（线程安全，供 async 调用）
+std::vector<GrassInstanceData> GrassSystem::generateChunkBlades(
+    const GrassConfig& cfg, int cx, int cz, std::mt19937& rng) {
+
     std::vector<GrassInstanceData> blades;
     blades.reserve(static_cast<size_t>(cfg.chunkSize * cfg.chunkSize * cfg.density * 1.5f));
 
-    // λ = 每平米密度 × 区块面积，使密度描述与实际生成数一致
     double lambda = cfg.density * cfg.chunkSize * cfg.chunkSize;
     std::poisson_distribution<int> poisson(lambda);
     int count = poisson(rng);
-    if (count <= 0) {
-        chunkData_[key] = std::move(blades);
-        return;
-    }
+    if (count <= 0) return blades;
 
     float worldX0 = static_cast<float>(cx) * cfg.chunkSize;
     float worldZ0 = static_cast<float>(cz) * cfg.chunkSize;
@@ -181,9 +212,7 @@ void GrassSystem::generateGrassInChunk(const GrassConfig& cfg, int cx, int cz,
             break;
         }
     }
-
-    totalLoadedBlades_ += blades.size();
-    chunkData_[key] = std::move(blades);
+    return blades;
 }
 
 void GrassSystem::updateChunks(const glm::vec3& playerPos) {
@@ -218,6 +247,7 @@ void GrassSystem::updateChunks(const glm::vec3& playerPos) {
     }
 
     // 加载新进入范围的区块（按距离从近到远排序，确保玩家附近优先）
+    // 且使用 std::async 并行生成，减少帧时间抖动
     std::vector<GrassChunkKey> sortedKeys;
     sortedKeys.reserve(keep.size());
     for (const auto& k : keep) sortedKeys.push_back(k);
@@ -227,16 +257,42 @@ void GrassSystem::updateChunks(const glm::vec3& playerPos) {
             int db = (b.x - px) * (b.x - px) + (b.z - pz) * (b.z - pz);
             return da < db;
         });
+
+    // 收集需要生成的新区块
+    std::vector<GrassChunkKey> newKeys;
     for (const auto& key : sortedKeys) {
         if (chunkData_.count(key)) continue;
-        // 检查总草茎数是否达到上限，避免撑爆显存缓冲
         if (totalLoadedBlades_ >= static_cast<size_t>(config_.maxBlades)) {
             Logger::warning("[GrassSystem] 草茎总数已达上限 " +
                          std::to_string(config_.maxBlades) + "，停止加载新区块");
             break;
         }
-        std::mt19937 chunkGen(key.x * 100000 + key.z);
-        generateGrassInChunk(config_, key.x, key.z, chunkGen);
+        newKeys.push_back(key);
+    }
+
+    if (!newKeys.empty()) {
+        // 并行生成区块数据（线程安全：generateChunkBlades 不修改 chunkData_）
+        struct GenResult {
+            GrassChunkKey key;
+            std::vector<GrassInstanceData> blades;
+        };
+        std::vector<std::future<GenResult>> futures;
+        futures.reserve(newKeys.size());
+
+        for (const auto& key : newKeys) {
+            futures.push_back(std::async(std::launch::async,
+                [this, key]() -> GenResult {
+                    std::mt19937 chunkGen(key.x * 100000 + key.z);
+                    return {key, generateChunkBlades(config_, key.x, key.z, chunkGen)};
+                }));
+        }
+
+        // 主线程依次插入结果
+        for (auto& f : futures) {
+            auto result = f.get();
+            totalLoadedBlades_ += result.blades.size();
+            chunkData_[result.key] = std::move(result.blades);
+        }
     }
 }
 
@@ -244,13 +300,27 @@ void GrassSystem::updatePushStates(const glm::vec3& playerPos, float deltaTime) 
     float playerRadius = config_.playerRadius * 1.5f;
     float attackSpeed = 5.0f;   // 挤压蓄力速度（越快草茎响应越灵敏）
     float decayRate  = 3.0f;    // 弹簧恢复速率（越大回弹越快）
+    float radiusSq = playerRadius * playerRadius;
+    // 只有玩家附近几个区块可能有交互，快速跳过远区块
+    float chunkSkipDist = playerRadius + config_.chunkSize;
+    float chunkSkipDistSq = chunkSkipDist * chunkSkipDist;
 
     for (auto& [key, blades] : chunkData_) {
+        // 区块级快速跳过：计算区块中心到玩家的平方距离
+        float cx = (static_cast<float>(key.x) + 0.5f) * config_.chunkSize - playerPos.x;
+        float cz = (static_cast<float>(key.z) + 0.5f) * config_.chunkSize - playerPos.z;
+        if (cx * cx + cz * cz > chunkSkipDistSq) {
+            // 整个区块超出交互范围，pushState 保持 0，无需处理
+            continue;
+        }
         for (auto& inst : blades) {
-            float dist = glm::length(inst.position - playerPos);
+            float dx = inst.position.x - playerPos.x;
+            float dy = inst.position.y - playerPos.y;
+            float dz = inst.position.z - playerPos.z;
+            float distSq = dx * dx + dy * dy + dz * dz;
 
-            if (dist < playerRadius) {
-                // 玩家在交互半径内：pushState 趋向 1.0
+            if (distSq < radiusSq) {
+                float dist = std::sqrt(distSq);
                 float influence = 1.0f - (dist / playerRadius);
                 float target = influence * influence;
                 inst.pushState = std::min(1.0f,
@@ -276,79 +346,180 @@ void GrassSystem::update(const glm::vec3& playerPos, const Camera& camera,
     // Phase 2: 更新草茎挤压弹簧状态（角色交互恢复动画）
     updatePushStates(playerPos, deltaTime);
 
-    // Phase 2: 遍历所有已加载区块，构建可见草茎列表（含剔除）
-    visibleInstances_.clear();
-    visibleInstances_.reserve(std::min(totalLoadedBlades_,
-                              static_cast<size_t>(config_.maxBlades)));
+    // Phase 3: 多线程并行遍历区块，按 LOD 分层构建可见草茎列表
+    for (int lod = 0; lod < LOD_COUNT; lod++) {
+        lodVisibleInstances_[lod].clear();
+    }
+    size_t totalReserve = std::min(totalLoadedBlades_,
+                           static_cast<size_t>(config_.maxBlades));
+    lodVisibleInstances_[0].reserve(totalReserve / 3);
+    lodVisibleInstances_[1].reserve(totalReserve / 3);
+    lodVisibleInstances_[2].reserve(totalReserve / 3);
 
     auto& frustum = camera.getFrustum();
     glm::vec3 camPos = camera.getPosition();
 
-    for (const auto& [key, blades] : chunkData_) {
-        // 区块级粗略剔除：检查区块中心距离
-        float chunkCenterX = (static_cast<float>(key.x) + 0.5f) * config_.chunkSize;
-        float chunkCenterZ = (static_cast<float>(key.z) + 0.5f) * config_.chunkSize;
-        float chunkDist = std::sqrt(
-            (chunkCenterX - camPos.x) * (chunkCenterX - camPos.x) +
-            (chunkCenterZ - camPos.z) * (chunkCenterZ - camPos.z));
-        if (chunkDist - config_.chunkSize * 0.707f > config_.renderDistance) continue;
+    // 预计算平方距离阈值，避免每根草重复 sqrt
+    float renderDistSq = config_.renderDistance * config_.renderDistance;
+    float frustumDistSq = 400.0f;
+    float densLowDist = config_.renderDistance * 0.2f;
+    float densRange = config_.renderDistance * 0.8f;
+    float lod0Sq = LOD_DIST_0 * LOD_DIST_0;
+    float chunkMaxDist = config_.renderDistance + config_.chunkSize * 0.707f;
+    float chunkMaxDistSq = chunkMaxDist * chunkMaxDist;
 
-        for (const auto& inst : blades) {
-            float dist = glm::length(inst.position - camPos);
-            if (dist > config_.renderDistance) continue;
+    // 收集区块键（避免多线程并发遍历 unordered_map）
+    std::vector<GrassChunkKey> chunkKeys;
+    chunkKeys.reserve(chunkData_.size());
+    for (const auto& pair : chunkData_) {
+        chunkKeys.push_back(pair.first);
+    }
 
-            // 视锥剔除（近处不剔除避免闪烁）
-            if (dist > 20.0f &&
-                !frustum.isSphereInside(inst.position, config_.bladeHeightMax)) {
-                continue;
+    // 按可用硬件线程数分块处理
+    const size_t numThreads = std::min<size_t>(
+        std::thread::hardware_concurrency(),
+        (chunkKeys.size() + 15) / 16);  // 每线程至少 16 区块
+    const size_t numActive = std::min(numThreads, chunkKeys.size());
+
+    if (numActive <= 1) {
+        // 单线程回退
+        for (const auto& key : chunkKeys) {
+            auto it = chunkData_.find(key);
+            if (it == chunkData_.end()) continue;
+            const auto& blades = it->second;
+            float cx = (static_cast<float>(key.x) + 0.5f) * config_.chunkSize - camPos.x;
+            float cz = (static_cast<float>(key.z) + 0.5f) * config_.chunkSize - camPos.z;
+            if (cx * cx + cz * cz > chunkMaxDistSq) continue;
+
+            for (const auto& inst : blades) {
+                float dx = inst.position.x - camPos.x;
+                float dy = inst.position.y - camPos.y;
+                float dz = inst.position.z - camPos.z;
+                float distSq = dx * dx + dy * dy + dz * dz;
+                if (distSq > renderDistSq) continue;
+                if (distSq > frustumDistSq && distSq < lod0Sq &&
+                    !frustum.isSphereInside(inst.position, config_.bladeHeightMax)) continue;
+                float dist = std::sqrt(distSq);
+                float keepProb = 1.0f;
+                if (dist > densLowDist) {
+                    float t = std::min((dist - densLowDist) / densRange, 1.0f);
+                    keepProb = 1.0f - t * 0.9f;
+                }
+                if (glm::fract(inst.windSeed * 43758.5453f) > keepProb) continue;
+                if (dist < LOD_DIST_0) lodVisibleInstances_[0].push_back(inst);
+                else if (dist < LOD_DIST_1) lodVisibleInstances_[1].push_back(inst);
+                else lodVisibleInstances_[2].push_back(inst);
             }
+        }
+    } else {
+        // 多线程并行处理
+        struct CullResult {
+            std::array<std::vector<GrassInstanceData>, LOD_COUNT> lod;
+        };
 
-            // 渐进式 LOD：随距离增长平滑减少密度
-            // 40% 距离内全密度→100% 距离只剩 35%
-            float keepProb = 1.0f;
-            if (dist > config_.renderDistance * 0.4f) {
-                float t = (dist - config_.renderDistance * 0.4f) /
-                          (config_.renderDistance * 0.6f);
-                t = std::min(t, 1.0f);
-                keepProb = (1.0f - t * 0.65f);
+        const size_t chunksPerThread = (chunkKeys.size() + numActive - 1) / numActive;
+        std::vector<std::future<CullResult>> futures;
+        futures.reserve(numActive);
+
+        // 每个线程处理一段连续区块
+        // 只捕获只读数据避免竞态：chunkData_ 只读、预计算值是纯量
+        for (size_t t = 0; t < numActive; t++) {
+            size_t start = t * chunksPerThread;
+            size_t end = std::min(start + chunksPerThread, chunkKeys.size());
+            futures.push_back(std::async(std::launch::async,
+                [&, start, end]() -> CullResult {
+                    CullResult result;
+                    size_t reserveEst = (end - start) * 3000;
+                    for (int lod = 0; lod < LOD_COUNT; lod++) {
+                        result.lod[lod].reserve(reserveEst / 3);
+                    }
+                    for (size_t i = start; i < end; i++) {
+                        const auto& key = chunkKeys[i];
+                        auto it = chunkData_.find(key);
+                        if (it == chunkData_.end()) continue;
+                        const auto& blades = it->second;
+                        float cx = (static_cast<float>(key.x) + 0.5f) * config_.chunkSize - camPos.x;
+                        float cz = (static_cast<float>(key.z) + 0.5f) * config_.chunkSize - camPos.z;
+                        if (cx * cx + cz * cz > chunkMaxDistSq) continue;
+
+                        for (const auto& inst : blades) {
+                            float dx = inst.position.x - camPos.x;
+                            float dy = inst.position.y - camPos.y;
+                            float dz = inst.position.z - camPos.z;
+                            float distSq = dx * dx + dy * dy + dz * dz;
+                            if (distSq > renderDistSq) continue;
+                            if (distSq > frustumDistSq && distSq < lod0Sq &&
+                                !frustum.isSphereInside(inst.position, config_.bladeHeightMax)) continue;
+                            float dist = std::sqrt(distSq);
+                            float keepProb = 1.0f;
+                            if (dist > densLowDist) {
+                                float t = std::min((dist - densLowDist) / densRange, 1.0f);
+                                keepProb = 1.0f - t * 0.9f;
+                            }
+                            if (glm::fract(inst.windSeed * 43758.5453f) > keepProb) continue;
+                            if (dist < LOD_DIST_0) result.lod[0].push_back(inst);
+                            else if (dist < LOD_DIST_1) result.lod[1].push_back(inst);
+                            else result.lod[2].push_back(inst);
+                        }
+                    }
+                    return result;
+                }));
+        }
+
+        // 合并所有线程结果
+        for (auto& f : futures) {
+            auto result = f.get();
+            for (int lod = 0; lod < LOD_COUNT; lod++) {
+                auto& src = result.lod[lod];
+                if (!src.empty()) {
+                    lodVisibleInstances_[lod].insert(
+                        lodVisibleInstances_[lod].end(), src.begin(), src.end());
+                }
             }
-            if (glm::fract(inst.windSeed * 43758.5453f) > keepProb) continue;
-
-            visibleInstances_.push_back(inst);
         }
     }
 
-    // Phase 3: 上传可见实例到 GPU
-    if (!visibleInstances_.empty() && instanceBuffer_ != VK_NULL_HANDLE) {
-        VkDeviceSize uploadSize = visibleInstances_.size() * sizeof(GrassInstanceData);
-        VkDeviceSize bufferSize = static_cast<VkDeviceSize>(instanceBufferCapacity_) *
+    // Phase 4: 上传可见实例到 GPU（双缓冲交替写入）
+    currentInstanceBuffer_ = (currentInstanceBuffer_ + 1) % INSTANCE_BUFFER_COUNT;
+    void* mappedBuf = mappedInstanceDatas_[currentInstanceBuffer_];
+    VkDeviceSize totalUpload = 0;
+    for (int lod = 0; lod < LOD_COUNT; lod++) {
+        totalUpload += lodVisibleInstances_[lod].size() * sizeof(GrassInstanceData);
+    }
+    if (totalUpload > 0 && mappedBuf != nullptr) {
+        VkDeviceSize bufferBytes = static_cast<VkDeviceSize>(instanceBufferCapacity_) *
                                    sizeof(GrassInstanceData);
-
-        if (uploadSize > bufferSize) {
-            Logger::warning("[GrassSystem] 可见草茎数 " +
-                         std::to_string(visibleInstances_.size()) +
-                         " 超过缓冲容量 " + std::to_string(instanceBufferCapacity_));
-            visibleInstances_.resize(instanceBufferCapacity_);
-            uploadSize = bufferSize;
+        if (totalUpload > bufferBytes) {
+            Logger::warning("[GrassSystem] 可见草茎数超过缓冲容量 " +
+                         std::to_string(instanceBufferCapacity_));
+            while (totalUpload > bufferBytes && !lodVisibleInstances_[2].empty()) {
+                totalUpload -= sizeof(GrassInstanceData);
+                lodVisibleInstances_[2].pop_back();
+            }
         }
-
-        void* data;
-        vkMapMemory(device_->getDevice(), instanceBufferMemory_, 0,
-                    VK_WHOLE_SIZE, 0, &data);
-        memcpy(data, visibleInstances_.data(), static_cast<size_t>(uploadSize));
-        vkUnmapMemory(device_->getDevice(), instanceBufferMemory_);
+        VkDeviceSize offset = 0;
+        for (int lod = 0; lod < LOD_COUNT; lod++) {
+            lodInstanceOffsets_[lod] = offset;
+            size_t bytes = lodVisibleInstances_[lod].size() * sizeof(GrassInstanceData);
+            if (bytes > 0) {
+                memcpy(static_cast<char*>(mappedBuf) + offset,
+                       lodVisibleInstances_[lod].data(), bytes);
+            }
+            offset += bytes;
+        }
     }
 }
 
 void GrassSystem::render(VkCommandBuffer commandBuffer, const Camera& camera) {
-    if (!initialized_ || visibleInstances_.empty()) return;
+    if (!initialized_) return;
+    // 检查是否有任何 LOD 层可见
+    bool anyVisible = false;
+    for (int lod = 0; lod < LOD_COUNT; lod++) {
+        if (!lodVisibleInstances_[lod].empty()) { anyVisible = true; break; }
+    }
+    if (!anyVisible) return;
 
     vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_);
-
-    VkBuffer vbs[] = {bladeVertexBuffer_, instanceBuffer_};
-    VkDeviceSize offsets[] = {0, 0};
-    vkCmdBindVertexBuffers(commandBuffer, 0, 2, vbs, offsets);
-    vkCmdBindIndexBuffer(commandBuffer, bladeIndexBuffer_, 0, VK_INDEX_TYPE_UINT32);
 
     PushBlock push;
     push.view = camera.getViewMatrix();
@@ -361,9 +532,20 @@ void GrassSystem::render(VkCommandBuffer commandBuffer, const Camera& camera) {
                        VK_SHADER_STAGE_VERTEX_BIT,
                        0, sizeof(PushBlock), &push);
 
-    vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(bladeIndices_.size()),
-                     static_cast<uint32_t>(visibleInstances_.size()),
-                     0, 0, 0);
+    // 逐 LOD 层绘制
+    for (int lod = 0; lod < LOD_COUNT; lod++) {
+        size_t count = lodVisibleInstances_[lod].size();
+        if (count == 0) continue;
+
+        VkBuffer vbs[] = {lodVertexBuffers_[lod], instanceBuffers_[currentInstanceBuffer_]};
+        VkDeviceSize offsets[] = {0, lodInstanceOffsets_[lod]};
+        vkCmdBindVertexBuffers(commandBuffer, 0, 2, vbs, offsets);
+        vkCmdBindIndexBuffer(commandBuffer, lodIndexBuffers_[lod], 0, VK_INDEX_TYPE_UINT32);
+
+        vkCmdDrawIndexed(commandBuffer,
+                         static_cast<uint32_t>(lodIndices_[lod].size()),
+                         static_cast<uint32_t>(count), 0, 0, 0);
+    }
 }
 
 void GrassSystem::createPipeline(VkRenderPass renderPass, VkExtent2D extent,
@@ -517,14 +699,14 @@ void GrassSystem::createPipeline(VkRenderPass renderPass, VkExtent2D extent,
     vkDestroyShaderModule(device_->getDevice(), fragModule, nullptr);
 }
 
-void GrassSystem::createBladeBuffers() {
+void GrassSystem::createSingleLodBuffers(int lod) {
     VkDevice dev = device_->getDevice();
-    VkDeviceSize vbSize = sizeof(GrassVertex) * bladeVertices_.size();
-    VkDeviceSize ibSize = sizeof(uint32_t) * bladeIndices_.size();
+    VkDeviceSize vbSize = sizeof(GrassVertex) * lodVertices_[lod].size();
+    VkDeviceSize ibSize = sizeof(uint32_t) * lodIndices_[lod].size();
 
-    auto createAndUpload = [&](VkBuffer& buf, VkDeviceMemory& mem,
-                               VkDeviceSize size, VkBufferUsageFlags usage,
-                               const void* data) {
+    auto uploadBuffer = [&](VkBuffer& buf, VkDeviceMemory& mem,
+                            VkDeviceSize size, VkBufferUsageFlags usage,
+                            const void* data) {
         VkBufferCreateInfo info{};
         info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
         info.size = size;
@@ -552,12 +734,12 @@ void GrassSystem::createBladeBuffers() {
         return true;
     };
 
-    createAndUpload(bladeVertexBuffer_, bladeVertexBufferMemory_,
-                    vbSize, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
-                    bladeVertices_.data());
-    createAndUpload(bladeIndexBuffer_, bladeIndexBufferMemory_,
-                    ibSize, VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
-                    bladeIndices_.data());
+    uploadBuffer(lodVertexBuffers_[lod], lodVertexBufferMemories_[lod],
+                 vbSize, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+                 lodVertices_[lod].data());
+    uploadBuffer(lodIndexBuffers_[lod], lodIndexBufferMemories_[lod],
+                 ibSize, VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
+                 lodIndices_[lod].data());
 }
 
 void GrassSystem::createInstanceBuffer(int maxBlades) {
@@ -569,19 +751,29 @@ void GrassSystem::createInstanceBuffer(int maxBlades) {
     info.size = size;
     info.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
     info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    if (vkCreateBuffer(dev, &info, nullptr, &instanceBuffer_) != VK_SUCCESS) return;
 
-    VkMemoryRequirements req;
-    vkGetBufferMemoryRequirements(dev, instanceBuffer_, &req);
-    VkMemoryAllocateInfo alloc{};
-    alloc.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-    alloc.allocationSize = req.size;
-    alloc.memoryTypeIndex = device_->findMemoryType(
-        req.memoryTypeBits,
-        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-    if (vkAllocateMemory(dev, &alloc, nullptr, &instanceBufferMemory_) != VK_SUCCESS) return;
-    vkBindBufferMemory(dev, instanceBuffer_, instanceBufferMemory_, 0);
+    for (int i = 0; i < INSTANCE_BUFFER_COUNT; i++) {
+        if (vkCreateBuffer(dev, &info, nullptr, &instanceBuffers_[i]) != VK_SUCCESS) {
+            Logger::error("[GrassSystem] 实例缓冲 " + std::to_string(i) + " 创建失败");
+            return;
+        }
+        VkMemoryRequirements req;
+        vkGetBufferMemoryRequirements(dev, instanceBuffers_[i], &req);
+        VkMemoryAllocateInfo alloc{};
+        alloc.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+        alloc.allocationSize = req.size;
+        alloc.memoryTypeIndex = device_->findMemoryType(
+            req.memoryTypeBits,
+            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+        if (vkAllocateMemory(dev, &alloc, nullptr, &instanceBufferMemories_[i]) != VK_SUCCESS) {
+            Logger::error("[GrassSystem] 实例缓冲内存 " + std::to_string(i) + " 分配失败");
+            return;
+        }
+        vkBindBufferMemory(dev, instanceBuffers_[i], instanceBufferMemories_[i], 0);
+        vkMapMemory(dev, instanceBufferMemories_[i], 0, VK_WHOLE_SIZE, 0, &mappedInstanceDatas_[i]);
+    }
     instanceBufferCapacity_ = maxBlades;
+    currentInstanceBuffer_ = 0;
 }
 
 void GrassSystem::cleanup() {
@@ -590,18 +782,30 @@ void GrassSystem::cleanup() {
     if (pipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(dev, pipeline_, nullptr); pipeline_ = VK_NULL_HANDLE; }
     if (pipelineLayout_ != VK_NULL_HANDLE) { vkDestroyPipelineLayout(dev, pipelineLayout_, nullptr); pipelineLayout_ = VK_NULL_HANDLE; }
 
+    // 清理三层 LOD 的顶点/索引缓冲
     auto destroyBuf = [&](VkBuffer& b, VkDeviceMemory& m) {
         if (b != VK_NULL_HANDLE) { vkDestroyBuffer(dev, b, nullptr); b = VK_NULL_HANDLE; }
         if (m != VK_NULL_HANDLE) { vkFreeMemory(dev, m, nullptr); m = VK_NULL_HANDLE; }
     };
-    destroyBuf(bladeVertexBuffer_, bladeVertexBufferMemory_);
-    destroyBuf(bladeIndexBuffer_, bladeIndexBufferMemory_);
-    destroyBuf(instanceBuffer_, instanceBufferMemory_);
+    for (int lod = 0; lod < LOD_COUNT; lod++) {
+        destroyBuf(lodVertexBuffers_[lod], lodVertexBufferMemories_[lod]);
+        destroyBuf(lodIndexBuffers_[lod], lodIndexBufferMemories_[lod]);
+    }
+    // 清理双缓冲实例缓冲
+    for (int i = 0; i < INSTANCE_BUFFER_COUNT; i++) {
+        if (mappedInstanceDatas_[i] != nullptr) {
+            vkUnmapMemory(dev, instanceBufferMemories_[i]);
+            mappedInstanceDatas_[i] = nullptr;
+        }
+        destroyBuf(instanceBuffers_[i], instanceBufferMemories_[i]);
+    }
 
-    visibleInstances_.clear();
+    for (int lod = 0; lod < LOD_COUNT; lod++) {
+        lodVisibleInstances_[lod].clear();
+        lodVertices_[lod].clear();
+        lodIndices_[lod].clear();
+    }
     chunkData_.clear();
-    bladeVertices_.clear();
-    bladeIndices_.clear();
     totalLoadedBlades_ = 0;
     initialized_ = false;
 }

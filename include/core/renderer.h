@@ -64,11 +64,7 @@ private:
     void recreateSwapchain();
     void updateGameLogic(float deltaTime);
     
-    /**
-     * @brief 渲染开发者面板
-     */
-    void renderDeveloperPanel();
-    
+
     /**
      * @brief 创建描述符集布局
      */
@@ -212,9 +208,7 @@ private:
     float maxFrameTime = 0.0f;
     float targetFPS = 60.0f;
     
-    // 开发者模式
-    bool developerMode = false;
-    bool wireframeMode = false;
+bool wireframeMode = false;
     bool pauseGame = false;
     float timeScale = 1.0f;
     float userMovementSpeed = 5.0f;

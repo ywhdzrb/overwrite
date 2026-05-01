@@ -84,11 +84,7 @@ public:
      */
     void reloadScene();
     
-    // ========== 开发者功能 ==========
-    
-    void setDeveloperMode(bool enabled) { developerMode_ = enabled; }
-    bool isDeveloperMode() const { return developerMode_; }
-    
+
     void setWireframeMode(bool enabled) { wireframeMode_ = enabled; }
     bool isWireframeMode() const { return wireframeMode_; }
     
@@ -134,7 +130,6 @@ private:
     float frameTime_ = 0.0f;
     
     // 开发者状态
-    bool developerMode_ = false;
     bool wireframeMode_ = false;
     bool paused_ = false;
     float timeScale_ = 1.0f;

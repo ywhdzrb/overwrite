@@ -294,7 +294,18 @@ ChunkMesh TerrainRenderer::computeChunkMesh(int chunkX, int chunkZ) const {
             
             float height01 = (height - baseHeight) / heightScale;
             height01 = glm::clamp(height01 * 0.5f + 0.5f, 0.0f, 1.0f);
-            glm::vec3 color(height01 * terrainColor.x, height01 * terrainColor.y, height01 * terrainColor.z);
+            // 高度多色渐变：低处褐色 → 中段绿色 → 高处黄绿色
+            glm::vec3 lowColor(0.35f, 0.25f, 0.12f);    // 低处：泥土褐色
+            glm::vec3 midColor(0.18f, 0.65f, 0.14f);    // 中段：鲜绿色
+            glm::vec3 highColor(0.55f, 0.78f, 0.25f);   // 高处：浅黄绿
+            glm::vec3 color;
+            if (height01 < 0.5f) {
+                float t = height01 / 0.5f;
+                color = glm::mix(lowColor, midColor, t);
+            } else {
+                float t = (height01 - 0.5f) / 0.5f;
+                color = glm::mix(midColor, highColor, t);
+            }
             
             TerrainVertex vert;
             vert.pos = glm::vec3(worldX, height, worldZ);
@@ -491,7 +502,7 @@ void TerrainRenderer::render(VkCommandBuffer commandBuffer, VkPipelineLayout pip
     pushConstants.proj = projectionMatrix;
     pushConstants.baseColor = terrainColor;
     pushConstants.metallic = 0.0f;
-    pushConstants.roughness = 1.0f;
+    pushConstants.roughness = 0.35f;  // 降低粗糙度产生镜面高光，地形呈现光滑感
     pushConstants.hasTexture = 0;
     pushConstants._pad0 = 0.0f;
     

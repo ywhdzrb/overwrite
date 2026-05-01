@@ -399,231 +399,75 @@ void Renderer::mainLoop() {
         
                 
         
-                                // 检测 ESC 键切换开发者模式
+
         
                 
         
-                                bool escPressed = (useECS && ecsClientWorld->getInputSystem()) 
-        
-                
-        
-                                    ? ecsClientWorld->getInputSystem()->isKeyJustPressed(GLFW_KEY_ESCAPE)
-        
-                
-        
-                                    : input->isKeyJustPressed(GLFW_KEY_ESCAPE);
-        
-                
-        
-                                    
-        
-                
-        
-                                if (escPressed) {
-        
-                
-        
-                                    developerMode = !developerMode;
-        
-                
-        
-                                    if (developerMode) {
-        
-                
-        
-                                        if (useECS && ecsClientWorld->getInputSystem()) {
-        
-                
-        
-                                            ecsClientWorld->getInputSystem()->setCursorCaptured(false);
-        
-                
-        
-                                        } else {
-        
-                
-        
-                                            input->setCursorCaptured(false);
-        
-                
-        
-                                        }
-        
-                
-        
-                                        std::cout << "[Renderer] 开发者模式已开启，鼠标已释放" << std::endl;
-        
-                
-        
-                                    } else {
-        
-                
-        
-                                        if (useECS && ecsClientWorld->getInputSystem()) {
-        
-                
-        
-                                            ecsClientWorld->getInputSystem()->setCursorCaptured(true);
-        
-                
-        
-                                        } else {
-        
-                
-        
-                                            input->setCursorCaptured(true);
-        
-                
-        
-                                        }
-        
-                
-        
-                                        std::cout << "[Renderer] 开发者模式已关闭，鼠标已捕获" << std::endl;
-        
-                
-        
-                                    }
-        
-                
-        
-                                }
-        
-                
-        
-                                
+
         
                 
         
                                 // 检测按键状态（在update之前，避免状态被重置）
-        
-                
-        
-                                if (!developerMode) {
-        
-                
-        
-                                    if (useECS && ecsClientWorld->getInputSystem()) {
-        
-                
-        
-                                        // ECS 模式：输入由 ECS 系统处理，这里不需要额外操作
-        
-                
-        
-                                    } else {
-        
-                
-        
-                                        jumpInput = input->isKeyJustPressed(GLFW_KEY_SPACE);
-        
-                
-        
-                                        freeCameraToggle = false;
-        
-                
-        
-                                        shiftInput = input->isSprintPressed();
-        
-                
-        
-                                        spaceHeld = input->isKeyPressed(GLFW_KEY_SPACE);
-        
-                
-        
-                                        
-        
-                
-        
-                                        // 更新输入
-        
-                
-        
-                                        input->update();
-        
-                
-        
-                                        
-        
-                
-        
-                                        // 处理鼠标移动
-        
-                
-        
-                                        double mouseX, mouseY;
-        
-                
-        
-                                        input->getRawMouseMovement(mouseX, mouseY);
-        
-                
-        
-                                        
-        
-                
-        
-                                        if (mouseX != 0.0 || mouseY != 0.0) {
-        
-                
-        
-                                            camera->processMouseMovement(static_cast<float>(mouseX), static_cast<float>(mouseY));
-        
-                
-        
-                                        }
-        
-                
-        
-                                    }
-        
-                
-        
+
+
+                                if (useECS && ecsClientWorld->getInputSystem()) {
+
+
+                                    // ECS 模式：输入由 ECS 系统处理，这里不需要额外操作
+
+
                                 } else {
-        
-                
-        
-                                    // 开发者模式下重置输入状态
-        
-                
-        
-                                    jumpInput = false;
-        
-                
-        
+
+
+                                    jumpInput = input->isKeyJustPressed(GLFW_KEY_SPACE);
+
+
                                     freeCameraToggle = false;
-        
-                
-        
-                                    shiftInput = false;
-        
-                
-        
-                                    spaceHeld = false;
-        
-                
-        
-                                    if (useECS && ecsClientWorld->getInputSystem()) {
-        
-                
-        
-                                        // ECS 模式下不需要额外操作
-        
-                
-        
-                                    } else {
-        
-                
-        
-                                        input->update();
-        
-                
-        
+
+
+                                    shiftInput = input->isSprintPressed();
+
+
+                                    spaceHeld = input->isKeyPressed(GLFW_KEY_SPACE);
+
+
+                                    
+
+
+                                    // 更新输入
+
+
+                                    input->update();
+
+
+                                    
+
+
+                                    // 处理鼠标移动
+
+
+                                    double mouseX, mouseY;
+
+
+                                    input->getRawMouseMovement(mouseX, mouseY);
+
+
+                                    
+
+
+                                    if (mouseX != 0.0 || mouseY != 0.0) {
+
+
+                                        camera->processMouseMovement(static_cast<float>(mouseX), static_cast<float>(mouseY));
+
+
                                     }
+
+
+                                }
         
                 
         
-                                }
         
                 
         
@@ -633,27 +477,15 @@ void Renderer::mainLoop() {
         
                 
         
-                // 开发者模式下显示开发者面板，否则显示简单的FPS
-        
-                if (developerMode) {
-        
-                    renderDeveloperPanel();
-        
-                } else {
-        
-                    // 简单 FPS 显示
-        
-                    ImGui::Begin("FPS", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings);
-        
-                    ImGui::Text("FPS: %.1f", currentFPS);
-        
-                    ImGui::Text("Press ESC for Dev Mode");
-        
-                    ImGui::SetWindowPos(ImVec2(10, 10), ImGuiCond_FirstUseEver);
-        
-                    ImGui::End();
-        
+                // 显示 FPS 和玩家坐标
+                ImGui::Begin("HUD", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings);
+                ImGui::Text("FPS: %.1f", currentFPS);
+                {
+                    glm::vec3 pos = useECS ? ecsClientWorld->getPlayerPosition() : camera->getPosition();
+                    ImGui::Text("Pos: %.1f, %.1f, %.1f", pos.x, pos.y, pos.z);
                 }
+                ImGui::SetWindowPos(ImVec2(10, 10), ImGuiCond_FirstUseEver);
+                ImGui::End();
         // 更新游戏逻辑（应用时间缩放）
         if (!pauseGame) {
             updateGameLogic(deltaTime * timeScale);
@@ -725,9 +557,21 @@ void Renderer::updateGameLogic(float deltaTime) {
         });
         
         // === 3) 主线程并行工作（与异步模拟同时执行） ===
-        terrainRenderer->update(playerPos);
-        if (treeSystem_) treeSystem_->update(playerPos, *camera);
-        if (grassSystem_) grassSystem_->update(playerPos, *camera, deltaTime);
+        // 地形、树木、草丛三者独立互不依赖，并行执行
+        auto terrainFut = std::async(std::launch::async, [this, &playerPos]() {
+            terrainRenderer->update(playerPos);
+        });
+        auto treeFut = std::async(std::launch::async, [this, &playerPos]() {
+            if (treeSystem_) treeSystem_->update(playerPos, *camera);
+        });
+        auto grassFut = std::async(std::launch::async, [this, &playerPos, deltaTime]() {
+            if (grassSystem_) grassSystem_->update(playerPos, *camera, deltaTime);
+        });
+
+        // 等待所有更新完成
+        terrainFut.wait();
+        treeFut.wait();
+        grassFut.wait();
         
         // === 4) 等待异步模拟完成 ===
         ecsFuture.wait();
@@ -750,7 +594,7 @@ void Renderer::updateGameLogic(float deltaTime) {
     } else {
         // 使用旧的系统更新
         float speed = userMovementSpeed;
-        if (!developerMode && input->isSprintPressed()) {
+        if (input->isSprintPressed()) {
             speed *= 2.0f;
         }
         camera->setMovementSpeed(speed);
@@ -767,9 +611,16 @@ void Renderer::updateGameLogic(float deltaTime) {
         
         physics->update(deltaTime);
         
-        // 按玩家位置动态更新树木区块
-        if (treeSystem_) treeSystem_->update(camera->getPosition(), *camera);
-        if (grassSystem_) grassSystem_->update(camera->getPosition(), *camera, deltaTime);
+        // 并行更新树木和草丛
+        glm::vec3 camPos = camera->getPosition();
+        auto treeFut = std::async(std::launch::async, [this, &camPos]() {
+            if (treeSystem_) treeSystem_->update(camPos, *camera);
+        });
+        auto grassFut = std::async(std::launch::async, [this, &camPos, deltaTime]() {
+            if (grassSystem_) grassSystem_->update(camPos, *camera, deltaTime);
+        });
+        treeFut.wait();
+        grassFut.wait();
     }
     
     // 第三人称模式：将 player 模型位置同步到相机目标
@@ -1632,571 +1483,6 @@ void Renderer::updateLightUniformBuffer() {
 
     vkUnmapMemory(vulkanDevice->getDevice(), lightUniformBufferMemory);
 }
-
-void Renderer::renderDeveloperPanel() {
-    // 设置 ImGui 窗口样式
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 5.0f);
-    ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.1f, 0.1f, 0.15f, 0.95f));
-    
-    // 主菜单栏
-    if (ImGui::BeginMainMenuBar()) {
-        if (ImGui::BeginMenu("开发者工具")) {
-            ImGui::MenuItem("性能统计", nullptr, true);
-            ImGui::MenuItem("相机控制", nullptr, true);
-            ImGui::MenuItem("光源管理", nullptr, true);
-            ImGui::MenuItem("模型控制", nullptr, true);
-            ImGui::MenuItem("物理设置", nullptr, true);
-            ImGui::MenuItem("渲染设置", nullptr, true);
-            ImGui::Separator();
-            if (ImGui::MenuItem("关闭开发者模式 (ESC)")) {
-                developerMode = false;
-                input->setCursorCaptured(true);
-            }
-            ImGui::EndMenu();
-        }
-        ImGui::EndMainMenuBar();
-    }
-    
-    // ==================== 性能统计窗口 ====================
-    ImGui::SetNextWindowPos(ImVec2(10, 30), ImGuiCond_FirstUseEver);
-    ImGui::SetNextWindowSize(ImVec2(300, 180), ImGuiCond_FirstUseEver);
-    ImGui::Begin("性能统计", nullptr, ImGuiWindowFlags_None);
-    
-    ImGui::TextColored(ImVec4(0.4f, 1.0f, 0.4f, 1.0f), "FPS: %.1f", currentFPS);
-    ImGui::Text("帧时间: %.2f ms", frameTime * 1000.0f);
-    ImGui::Text("最小帧时间: %.2f ms", minFrameTime * 1000.0f);
-    ImGui::Text("最大帧时间: %.2f ms", maxFrameTime * 1000.0f);
-    ImGui::Separator();
-    ImGui::Text("时间缩放: %.2fx", timeScale);
-    ImGui::SameLine();
-    if (ImGui::Button("-##time")) timeScale = std::max(0.1f, timeScale - 0.1f);
-    ImGui::SameLine();
-    if (ImGui::Button("+##time")) timeScale = std::min(4.0f, timeScale + 0.1f);
-    ImGui::SameLine();
-    if (ImGui::Button("重置")) timeScale = 1.0f;
-    
-    if (ImGui::Checkbox("暂停游戏", &pauseGame)) {
-        // 暂停状态切换
-    }
-    
-    ImGui::End();
-    
-    // ==================== 相机控制窗口 ====================
-    ImGui::SetNextWindowPos(ImVec2(10, 220), ImGuiCond_FirstUseEver);
-    ImGui::SetNextWindowSize(ImVec2(300, 200), ImGuiCond_FirstUseEver);
-    ImGui::Begin("相机控制", nullptr, ImGuiWindowFlags_None);
-    
-    glm::vec3 camPos = camera->getPosition();
-    glm::vec3 camFront = camera->getFront();
-    
-    ImGui::Text("位置: (%.2f, %.2f, %.2f)", camPos.x, camPos.y, camPos.z);
-    ImGui::Text("朝向: (%.2f, %.2f, %.2f)", camFront.x, camFront.y, camFront.z);
-    
-    if (ImGui::SliderFloat("移动速度", &userMovementSpeed, 1.0f, 50.0f)) {
-        camera->setMovementSpeed(userMovementSpeed);
-    }
-    
-    if (ImGui::SliderFloat("鼠标灵敏度", &userSensitivity, 0.01f, 1.0f)) {
-        camera->setMouseSensitivity(userSensitivity);
-    }
-    
-    bool freeCam = camera->isFreeCameraMode();
-    if (ImGui::Checkbox("自由视角模式", &freeCam)) {
-        if (freeCam) camera->toggleFreeCamera();
-        else camera->toggleFreeCamera();
-    }
-    
-    if (ImGui::Button("重置相机位置")) {
-        camera->setPosition(glm::vec3(0.0f, 1.0f, 5.0f));
-    }
-    
-    ImGui::End();
-    
-    // ==================== 场景管理窗口 ====================
-    ImGui::SetNextWindowPos(ImVec2(320, 30), ImGuiCond_FirstUseEver);
-    ImGui::SetNextWindowSize(ImVec2(380, 600), ImGuiCond_FirstUseEver);
-    ImGui::Begin("场景管理", nullptr, ImGuiWindowFlags_None);
-    
-    // ==================== 环境光 ====================
-    if (ImGui::CollapsingHeader("环境光", ImGuiTreeNodeFlags_DefaultOpen)) {
-        glm::vec3 ambient = lightManager->getAmbientColor();
-        float ambientIntensity = lightManager->getAmbientIntensity();
-        
-        if (ImGui::ColorEdit3("颜色##ambient", &ambient.x)) {
-            lightManager->setAmbientColor(ambient);
-        }
-        if (ImGui::SliderFloat("强度##ambient", &ambientIntensity, 0.0f, 2.0f)) {
-            lightManager->setAmbientIntensity(ambientIntensity);
-        }
-    }
-    
-    // ==================== 光源管理 ====================
-    if (ImGui::CollapsingHeader("光源", ImGuiTreeNodeFlags_DefaultOpen)) {
-        ImGui::Text("光源列表 (%zu/%d)", lightManager->getLightCount(), LightManager::getMaxLights());
-        
-        const auto& lights = lightManager->getLights();
-        static int selectedLight = -1;
-        
-        // 光源列表
-        for (size_t i = 0; i < lights.size(); i++) {
-            const Light* light = lights[i].get();
-            if (!light) continue;
-            
-            bool selected = (selectedLight == (int)i);
-            std::string label = light->getName() + " (" + 
-                std::string(light->getType() == LightType::DIRECTIONAL ? "方向光" :
-                           light->getType() == LightType::POINT ? "点光源" : "聚光灯") + ")";
-            
-            if (ImGui::Selectable(label.c_str(), selected)) {
-                selectedLight = i;
-            }
-            
-            // 右键菜单
-            if (ImGui::BeginPopupContextItem()) {
-                if (ImGui::MenuItem("删除")) {
-                    lightManager->removeLight(lightManager->getNextLightId() - lights.size() + i);
-                    if (selectedLight >= (int)lights.size()) selectedLight = -1;
-                }
-                ImGui::EndPopup();
-            }
-        }
-        
-        // 编辑选中的光源
-        if (selectedLight >= 0 && selectedLight < (int)lights.size()) {
-            Light* light = lightManager->getLight(lightManager->getNextLightId() - lights.size() + selectedLight);
-            if (light) {
-                ImGui::Separator();
-                ImGui::Indent();
-                
-                ImGui::TextColored(ImVec4(0.8f, 0.8f, 0.2f, 1.0f), "%s", light->getName().c_str());
-                
-                bool enabled = light->isEnabled();
-                if (ImGui::Checkbox("启用##light", &enabled)) {
-                    light->setEnabled(enabled);
-                }
-                ImGui::SameLine();
-                
-                const char* typeStr = light->getType() == LightType::DIRECTIONAL ? "方向光" :
-                                     light->getType() == LightType::POINT ? "点光源" : "聚光灯";
-                ImGui::TextColored(ImVec4(0.5f, 0.8f, 0.5f, 1.0f), "[%s]", typeStr);
-                
-                glm::vec3 color = light->getColor();
-                if (ImGui::ColorEdit3("颜色##light", &color.x)) {
-                    light->setColor(color);
-                }
-                
-                float intensity = light->getIntensity();
-                if (ImGui::SliderFloat("强度##light", &intensity, 0.0f, 10.0f)) {
-                    light->setIntensity(intensity);
-                }
-                
-                if (light->getType() != LightType::DIRECTIONAL) {
-                    glm::vec3 pos = light->getPosition();
-                    if (ImGui::DragFloat3("位置##light", &pos.x, 0.1f)) {
-                        light->setPosition(pos);
-                    }
-                }
-                
-                if (light->getType() == LightType::DIRECTIONAL || light->getType() == LightType::SPOT) {
-                    glm::vec3 dir = light->getDirection();
-                    if (ImGui::DragFloat3("方向##light", &dir.x, 0.1f)) {
-                        light->setDirection(dir);
-                    }
-                }
-                
-                if (light->getType() == LightType::POINT || light->getType() == LightType::SPOT) {
-                    if (ImGui::TreeNode("衰减参数")) {
-                        float constant = light->getConstant();
-                        float linear = light->getLinear();
-                        float quadratic = light->getQuadratic();
-                        
-                        if (ImGui::SliderFloat("常数项##atten", &constant, 0.0f, 2.0f)) {
-                            light->setConstant(constant);
-                        }
-                        if (ImGui::SliderFloat("线性项##atten", &linear, 0.0f, 1.0f)) {
-                            light->setLinear(linear);
-                        }
-                        if (ImGui::SliderFloat("二次项##atten", &quadratic, 0.0f, 1.0f)) {
-                            light->setQuadratic(quadratic);
-                        }
-                        ImGui::TreePop();
-                    }
-                }
-                
-                if (light->getType() == LightType::SPOT) {
-                    if (ImGui::TreeNode("聚光灯参数")) {
-                        float innerCutoff = light->getInnerCutoff();
-                        float outerCutoff = light->getOuterCutoff();
-                        
-                        if (ImGui::SliderFloat("内切角", &innerCutoff, 0.0f, 90.0f)) {
-                            light->setInnerCutoff(innerCutoff);
-                        }
-                        if (ImGui::SliderFloat("外切角", &outerCutoff, 0.0f, 90.0f)) {
-                            light->setOuterCutoff(outerCutoff);
-                        }
-                        ImGui::TreePop();
-                    }
-                }
-                
-                if (ImGui::TreeNode("阴影参数")) {
-                    bool shadowEnabled = light->isShadowEnabled();
-                    if (ImGui::Checkbox("启用阴影", &shadowEnabled)) {
-                        light->setShadowEnabled(shadowEnabled);
-                    }
-                    
-                    float shadowIntensity = light->getShadowIntensity();
-                    if (ImGui::SliderFloat("阴影强度", &shadowIntensity, 0.0f, 1.0f)) {
-                        light->setShadowIntensity(shadowIntensity);
-                    }
-                    ImGui::TreePop();
-                }
-                
-                ImGui::Unindent();
-            }
-        }
-        
-        // 添加光源按钮
-        ImGui::Separator();
-        if (ImGui::Button("添加方向光")) {
-            lightManager->addDirectionalLight("dir_light_" + std::to_string(lightManager->getLightCount()),
-                                              glm::vec3(0.0f, -1.0f, 0.0f));
-        }
-        ImGui::SameLine();
-        if (ImGui::Button("添加点光源")) {
-            lightManager->addPointLight("point_light_" + std::to_string(lightManager->getLightCount()),
-                                       camera->getPosition() + camera->getFront() * 3.0f);
-        }
-        ImGui::SameLine();
-        if (ImGui::Button("添加聚光灯")) {
-            lightManager->addSpotLight("spot_light_" + std::to_string(lightManager->getLightCount()),
-                                      camera->getPosition(), camera->getFront());
-        }
-    }
-    
-    // ==================== 模型管理 ====================
-    if (ImGui::CollapsingHeader("模型", ImGuiTreeNodeFlags_DefaultOpen)) {
-        // OBJ 模型控制
-        if (modelRenderer) {
-            if (ImGui::TreeNode("OBJ 模型")) {
-                static glm::vec3 modelPos(0.0f, 0.0f, -10.0f);
-                static glm::vec3 modelRot(0.0f, 180.0f, 0.0f);
-                static glm::vec3 modelScale(1.0f, 1.0f, 1.0f);
-                
-                if (ImGui::DragFloat3("位置##obj", &modelPos.x, 0.1f)) {
-                    modelRenderer->setPosition(modelPos);
-                }
-                if (ImGui::DragFloat3("旋转##obj", &modelRot.x, 1.0f)) {
-                    modelRenderer->setRotation(modelRot.x, modelRot.y, modelRot.z);
-                }
-                if (ImGui::DragFloat3("缩放##obj", &modelScale.x, 0.01f)) {
-                    modelRenderer->setScale(modelScale);
-                }
-                ImGui::TreePop();
-            }
-        }
-        
-        // 玩家模型控制
-        if (gltfModel && gltfModel->getMeshCount() > 0) {
-            if (ImGui::TreeNode("玩家模型 (GLTF)")) {
-                glm::vec3 pos = gltfModel->getPosition();
-                glm::vec3 rot = gltfModel->getRotation();
-                glm::vec3 scale = gltfModel->getScale();
-                
-                if (ImGui::DragFloat3("位置##player", &pos.x, 0.1f)) {
-                    gltfModel->setPosition(pos);
-                }
-                if (ImGui::DragFloat3("旋转##player", &rot.x, 1.0f)) {
-                    gltfModel->setRotation(rot.x, rot.y, rot.z);
-                }
-                if (ImGui::DragFloat3("缩放##player", &scale.x, 0.01f)) {
-                    gltfModel->setScale(scale);
-                }
-                
-                ImGui::Text("网格数: %zu", gltfModel->getMeshCount());
-                ImGui::Text("动画数: %zu", gltfModel->getAnimationCount());
-                ImGui::TreePop();
-            }
-        }
-        
-        // 动态加载的模型
-        if (!models.empty()) {
-            if (ImGui::TreeNode("场景模型")) {
-                for (auto& [id, model] : models) {
-                    if (ImGui::TreeNode(id.c_str())) {
-                        glm::vec3 pos = model->getPosition();
-                        glm::vec3 rot = model->getRotation();
-                        glm::vec3 scale = model->getScale();
-                        
-                        if (ImGui::DragFloat3(("位置##" + id).c_str(), &pos.x, 0.1f)) {
-                            model->setPosition(pos);
-                        }
-                        if (ImGui::DragFloat3(("旋转##" + id).c_str(), &rot.x, 1.0f)) {
-                            model->setRotation(rot.x, rot.y, rot.z);
-                        }
-                        if (ImGui::DragFloat3(("缩放##" + id).c_str(), &scale.x, 0.01f)) {
-                            model->setScale(scale);
-                        }
-                        
-                        ImGui::Text("网格数: %zu", model->getMeshCount());
-                        
-                        if (model->getAnimationCount() > 0) {
-                            ImGui::Text("动画数: %zu", model->getAnimationCount());
-                            bool playing = model->isAnimationPlaying();
-                            if (ImGui::Checkbox(("播放##" + id).c_str(), &playing)) {
-                                if (playing) {
-                                    model->playAllAnimations(true);
-                                } else {
-                                    model->stopAnimation();
-                                }
-                            }
-                        }
-                        ImGui::TreePop();
-                    }
-                }
-                ImGui::TreePop();
-            }
-        }
-        
-    }
-    
-    // 从配置文件重新加载
-    ImGui::Separator();
-    if (ImGui::Button("从 JSON 重新加载配置")) {
-        reloadSceneConfig();
-    }
-    ImGui::TextColored(ImVec4(0.6f, 0.6f, 0.6f, 1.0f), "配置文件: assets/models/models.json");
-    ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.5f, 1.0f), "修改仅在内存中生效");
-    
-    ImGui::End();
-        // ==================== 物理设置窗口 ====================
-    ImGui::SetNextWindowPos(ImVec2(680, 30), ImGuiCond_FirstUseEver);
-    ImGui::SetNextWindowSize(ImVec2(280, 220), ImGuiCond_FirstUseEver);
-    ImGui::Begin("物理设置", nullptr, ImGuiWindowFlags_None);
-    
-    float gravity = camera->getGravity();
-    if (ImGui::SliderFloat("重力", &gravity, 0.0f, 50.0f)) {
-        camera->setGravity(gravity);
-        physics->setGravity(gravity);
-    }
-    
-    float groundHeight = camera->getDefaultGroundHeight();
-    if (ImGui::SliderFloat("默认地面高度", &groundHeight, -10.0f, 10.0f)) {
-        camera->setDefaultGroundHeight(groundHeight);
-        physics->setGroundHeight(groundHeight);
-        // 同步到 ECS
-        if (useECS && rawClientWorld_ && ecsClientWorld->isPlayerValid()) {
-            auto* r = ecsClientWorld->getRegistry();
-            auto player = rawClientWorld_->getPlayer();
-            if (r && r->valid(player)) {
-                r->get<ecs::PhysicsComponent>(player).groundHeight = groundHeight;
-            }
-        }
-    }
-    
-    float jumpForce = camera->getJumpForce();
-    if (ImGui::SliderFloat("跳跃力", &jumpForce, 0.0f, 20.0f)) {
-        camera->setJumpForce(jumpForce);
-        // 同步到 ECS
-        if (useECS && rawClientWorld_ && ecsClientWorld->isPlayerValid()) {
-            auto* r = ecsClientWorld->getRegistry();
-            auto player = rawClientWorld_->getPlayer();
-            if (r && r->valid(player)) {
-                r->get<ecs::PhysicsComponent>(player).jumpForce = jumpForce;
-            }
-        }
-    }
-    
-    ImGui::Text("碰撞体数量: %zu", physics->getCollisionBoxes().size());
-    
-    // 帧率控制
-    ImGui::Separator();
-    ImGui::Text("帧率: %.0f FPS", currentFPS);
-    ImGui::SliderFloat("目标帧率", &targetFPS, 30.0f, 144.0f, "%.0f");
-    
-    if (ImGui::Button("添加碰撞体")) {
-        physics->addCollisionBox(camera->getPosition() + camera->getFront() * 3.0f, 
-                                glm::vec3(1.0f, 1.0f, 1.0f));
-    }
-    ImGui::SameLine();
-    if (ImGui::Button("清空碰撞体")) {
-        physics->clearCollisionBoxes();
-    }
-    
-    ImGui::End();
-    
-    // ==================== 渲染设置窗口 ====================
-    ImGui::SetNextWindowPos(ImVec2(680, 220), ImGuiCond_FirstUseEver);
-    ImGui::SetNextWindowSize(ImVec2(280, 200), ImGuiCond_FirstUseEver);
-    ImGui::Begin("渲染设置", nullptr, ImGuiWindowFlags_None);
-    
-    // MSAA 设置 - 根据设备支持动态构建选项
-    std::vector<const char*> msaaLevelNames;
-    std::vector<VkSampleCountFlagBits> msaaLevelValues;
-    
-    msaaLevelNames.push_back("关闭");
-    msaaLevelValues.push_back(VK_SAMPLE_COUNT_1_BIT);
-    
-    if (maxMsaaSamples >= VK_SAMPLE_COUNT_2_BIT) {
-        msaaLevelNames.push_back("2x");
-        msaaLevelValues.push_back(VK_SAMPLE_COUNT_2_BIT);
-    }
-    if (maxMsaaSamples >= VK_SAMPLE_COUNT_4_BIT) {
-        msaaLevelNames.push_back("4x");
-        msaaLevelValues.push_back(VK_SAMPLE_COUNT_4_BIT);
-    }
-    if (maxMsaaSamples >= VK_SAMPLE_COUNT_8_BIT) {
-        msaaLevelNames.push_back("8x");
-        msaaLevelValues.push_back(VK_SAMPLE_COUNT_8_BIT);
-    }
-    if (maxMsaaSamples >= VK_SAMPLE_COUNT_16_BIT) {
-        msaaLevelNames.push_back("16x");
-        msaaLevelValues.push_back(VK_SAMPLE_COUNT_16_BIT);
-    }
-    
-    int currentMsaa = 0;
-    for (size_t i = 0; i < msaaLevelValues.size(); i++) {
-        if (msaaSamples == msaaLevelValues[i]) {
-            currentMsaa = i;
-            break;
-        }
-    }
-    
-    if (ImGui::Combo("MSAA", &currentMsaa, msaaLevelNames.data(), msaaLevelNames.size())) {
-        if (currentMsaa >= 0 && currentMsaa < (int)msaaLevelValues.size()) {
-            // 延迟到下一帧开始时应用，避免在 ImGui 渲染过程中重建交换链
-            pendingMsaaSamples = msaaLevelValues[currentMsaa];
-            pendingMsaaChange = true;
-        }
-    }
-    
-    ImGui::Text("设备最大支持: %s", 
-        maxMsaaSamples == VK_SAMPLE_COUNT_64_BIT ? "64x" :
-        maxMsaaSamples == VK_SAMPLE_COUNT_32_BIT ? "32x" :
-        maxMsaaSamples == VK_SAMPLE_COUNT_16_BIT ? "16x" :
-        maxMsaaSamples == VK_SAMPLE_COUNT_8_BIT ? "8x" :
-        maxMsaaSamples == VK_SAMPLE_COUNT_4_BIT ? "4x" :
-        maxMsaaSamples == VK_SAMPLE_COUNT_2_BIT ? "2x" : "无");
-    
-    // 线框模式
-    ImGui::Checkbox("线框模式", &wireframeMode);
-    
-    bool useMailbox = vulkanDevice->getPreferMailbox();
-    if (ImGui::Checkbox("MAILBOX 模式 (低延迟)", &useMailbox)) {
-        vulkanDevice->setPreferMailbox(useMailbox);
-        framebufferResized = true; // forcing swapchain recreation to apply new present mode
-    }
-    ImGui::SameLine();
-    ImGui::TextDisabled("(?)");
-    if (ImGui::IsItemHovered()) {
-        ImGui::SetTooltip("MAILBOX=三重缓冲低延迟，FIFO=垂直同步稳定帧间隔");
-    }
-    
-    // 窗口大小
-    ImGui::Text("窗口: %d x %d", windowWidth, windowHeight);
-    
-    // Vulkan 信息
-    ImGui::Separator();
-    ImGui::Text("Vulkan 信息");
-    ImGui::Text("当前帧: %u / %u", currentFrame, MAX_FRAMES_IN_FLIGHT);
-    ImGui::Text("交换链图像: %zu", swapchain->getImageViews().size());
-    
-    ImGui::End();
-    
-    // ==================== 网络连接窗口 ====================
-    ImGui::SetNextWindowPos(ImVec2(680, 30), ImGuiCond_FirstUseEver);
-    ImGui::SetNextWindowSize(ImVec2(300, 280), ImGuiCond_FirstUseEver);
-    ImGui::Begin("网络连接", nullptr, ImGuiWindowFlags_None);
-    
-    bool isConnected = ecsClientWorld && ecsClientWorld->isConnectedToServer();
-    
-    // 连接状态
-    if (isConnected) {
-        ImGui::TextColored(ImVec4(0.2f, 1.0f, 0.2f, 1.0f), "已连接到服务器");
-        ImGui::Text("服务器: %s:%d", serverHost, serverPort);
-        
-        // 显示远程玩家数量
-        auto remotePlayers2 = ecsClientWorld->getRemotePlayers();
-        (void)remotePlayers2;
-        ImGui::Text("远程玩家: %zu", rawClientWorld_ ? rawClientWorld_->getNetworkSystem()->getRemotePlayers().size() : 0);
-        
-        if (ImGui::Button("断开连接")) {
-            disconnectRequested = true;
-        }
-    } else {
-        // 服务器发现
-        ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.2f, 1.0f), "未连接");
-        
-        ImGui::Separator();
-        ImGui::Text("发现的服务器:");
-        
-        // 获取发现的服务器列表
-        static int selectedServer = -1;
-        if (ecsClientWorld) {
-            auto servers = ecsClientWorld->getDiscoveredServers();
-            
-            if (servers.empty()) {
-                ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.5f, 1.0f), "正在搜索...");
-                
-                // 自动启动扫描
-                static bool discoveryStarted = false;
-                if (!discoveryStarted) {
-                    ecsClientWorld->startServerDiscovery();
-                    discoveryStarted = true;
-                }
-            } else {
-                for (int i = 0; i < (int)servers.size(); i++) {
-                    const auto& server = servers[i];
-                    
-                    std::string label = server.name + " (" + server.host + ":" + std::to_string(server.port) + ")";
-                    label += " [" + std::to_string(server.currentPlayers) + "/" + std::to_string(server.maxPlayers) + "]";
-                    
-                    if (ImGui::Selectable(label.c_str(), selectedServer == i)) {
-                        selectedServer = i;
-                        strncpy(serverHost, server.host.c_str(), sizeof(serverHost) - 1);
-                        serverPort = server.port;
-                    }
-                }
-            }
-        }
-        
-        ImGui::Separator();
-        ImGui::Text("手动连接:");
-        ImGui::InputText("服务器", serverHost, sizeof(serverHost));
-        ImGui::InputInt("端口", &serverPort);
-        
-        if (serverPort < 1) serverPort = 1;
-        if (serverPort > 65535) serverPort = 65535;
-        
-        if (ImGui::Button("连接")) {
-            connectRequested = true;
-        }
-    }
-    
-    ImGui::End();
-    
-    // ==================== 快捷键帮助窗口 ====================
-    ImGui::SetNextWindowPos(ImVec2(680, 430), ImGuiCond_FirstUseEver);
-    ImGui::SetNextWindowSize(ImVec2(280, 150), ImGuiCond_FirstUseEver);
-    ImGui::Begin("快捷键帮助", nullptr, ImGuiWindowFlags_None);
-    
-    ImGui::Text("ESC - 开启/关闭开发者模式");
-    ImGui::Text("WASD - 移动");
-    ImGui::Text("Space - 跳跃/上升");
-    ImGui::Text("Shift - 加速");
-    ImGui::Text("R - 切换自由视角");
-    ImGui::Text("Mouse - 视角控制");
-    
-    ImGui::End();
-    
-
- ImGui::PopStyleColor();
-    ImGui::PopStyleVar();
-}
-
-// void Renderer::framebufferResizeCallback(GLFWwindow* window, int width, int height) {
-//     auto renderer = reinterpret_cast<Renderer*>(glfwGetWindowUserPointer(window));
-//     renderer->framebufferResized = true;
-// }
 
 // ==================== 场景配置加载 ====================
 

@@ -67,6 +67,11 @@ layout(push_constant) uniform PushConstants {
     float _pad0;
 } pushConstants;
 
+// 从粗糙度计算镜面高光指数：低粗糙度 = 高光泽度 = 更亮更锐利的高光
+float calcShininess() {
+    return max(2.0, (1.0 - pushConstants.roughness) * 128.0);
+}
+
 // 计算方向光
 vec3 calculateDirectionalLight(Light light, vec3 normal, vec3 viewDir, vec3 albedo) {
     vec3 lightDir = normalize(-light.direction);
@@ -75,9 +80,10 @@ vec3 calculateDirectionalLight(Light light, vec3 normal, vec3 viewDir, vec3 albe
     float diff = max(dot(normal, lightDir), 0.0);
     vec3 diffuse = light.color * diff * albedo;
 
-    // 镜面反射（Blinn-Phong）
+    // 镜面反射（Blinn-Phong，粗糙度控制高光锐度）
     vec3 halfwayDir = normalize(lightDir + viewDir);
-    float spec = pow(max(dot(normal, halfwayDir), 0.0), 32.0);
+    float shininess = calcShininess();
+    float spec = pow(max(dot(normal, halfwayDir), 0.0), shininess);
     vec3 specular = light.color * spec * 0.5;
 
     return (diffuse + specular) * light.intensity;
@@ -91,9 +97,10 @@ vec3 calculatePointLight(Light light, vec3 normal, vec3 viewDir, vec3 fragPositi
     float diff = max(dot(normal, lightDir), 0.0);
     vec3 diffuse = light.color * diff * albedo;
 
-    // 镜面反射（Blinn-Phong）
+    // 镜面反射（Blinn-Phong，粗糙度控制高光锐度）
     vec3 halfwayDir = normalize(lightDir + viewDir);
-    float spec = pow(max(dot(normal, halfwayDir), 0.0), 32.0);
+    float shininess = calcShininess();
+    float spec = pow(max(dot(normal, halfwayDir), 0.0), shininess);
     vec3 specular = light.color * spec * 0.5;
 
     // 衰减
@@ -115,9 +122,10 @@ vec3 calculateSpotLight(Light light, vec3 normal, vec3 viewDir, vec3 fragPositio
         float diff = max(dot(normal, lightDir), 0.0);
         vec3 diffuse = light.color * diff * albedo;
 
-        // 镜面反射（Blinn-Phong）
+        // 镜面反射（Blinn-Phong，粗糙度控制高光锐度）
         vec3 halfwayDir = normalize(lightDir + viewDir);
-        float spec = pow(max(dot(normal, halfwayDir), 0.0), 32.0);
+        float shininess = calcShininess();
+        float spec = pow(max(dot(normal, halfwayDir), 0.0), shininess);
         vec3 specular = light.color * spec * 0.5;
 
         // 衰减

@@ -4,6 +4,7 @@
 #include <glm/glm.hpp>
 #include <memory>
 #include <vector>
+#include <array>
 #include <unordered_map>
 #include <functional>
 #include <string>
@@ -23,20 +24,20 @@ class Camera;
  */
 struct GrassConfig {
     float chunkSize = 16.0f;          // 区块边长（米）
-    int   loadRadius = 5;             // 加载半径（区块数）
-    int   maxBlades = 350000;         // 最大草茎实例数（显存缓冲容量）
-    double density = 25.0;            // 每平米平均草茎数（泊松 λ × 区块面积）
+    int   loadRadius = 7;             // 加载半径（区块数，覆盖摄像机 100m far plane）
+    int   maxBlades = 1100000;        // 最大草茎实例数
+    double density = 18.0;            // 每平米平均草茎数（泊松 λ × 区块面积）
     float renderDistance = 120.0f;    // 渲染最远距离（米）
     float bladeHeightMin = 0.25f;     // 草茎最小高度（米）
     float bladeHeightMax = 0.7f;      // 草茎最大高度（米）
     int   segmentsPerBlade = 4;       // 每根草茎分段数（3~5）
-    float bladeWidth = 0.10f;         // 草茎基部宽度（米，面片草 0.10 为宜）
+    float bladeWidth = 0.12f;         // 草茎基部宽度（米，0.12 配合降密度保持视觉填充）
     float bladeThickness = 0.008f;    // 草茎基部厚度（米）
     float windStrength = 0.5f;        // 风场强度系数
     float playerRadius = 2.5f;        // 角色交互半径（米）
     float playerForce = 1.5f;         // 角色下压力度
-    int   lodSegments = 2;            // LOD 分段数（远距离简化使用）
-    float lodDistance = 60.0f;        // LOD 切换距离（米）
+    int   lodSegments = 2;            // 未使用（LOD 由几何体层数决定）
+    float lodDistance = 60.0f;        // 未使用（LOD 阈值固定为 35m/70m）
 };
 
 /**
@@ -135,8 +136,10 @@ public:
     /** @brief 获取当前已加载草茎总数（所有区块，包含被遮挡的） */
     size_t getBladeCount() const { return totalLoadedBlades_; }
 
-    /** @brief 获取当前可见草茎数（剔除后） */
-    size_t getVisibleBladeCount() const { return visibleInstances_.size(); }
+    /** @brief 获取当前可见草茎数（剔除后，所有 LOD 之和） */
+    size_t getVisibleBladeCount() const {
+        return lodVisibleInstances_[0].size() + lodVisibleInstances_[1].size() + lodVisibleInstances_[2].size();
+    }
 
     /** @brief 清理所有 GPU 资源 */
     void cleanup();
@@ -156,23 +159,22 @@ private:
         }
     };
 
-    // ==================== 草茎网格生成 ====================
+    // ==================== 草茎网格生成（三层 LOD）====================
+
+    /// LOD 距离阈值（米）
+    static constexpr float LOD_DIST_0 = 35.0f;   // LOD0 全细节
+    static constexpr float LOD_DIST_1 = 70.0f;   // LOD1 中等
+                                                // LOD2 低细节（>70m）
+    /// LOD 层级数
+    static constexpr int LOD_COUNT = 3;
 
     /**
-     * @brief 生成单根草茎的几何体（三角棱柱分段结构）
-     *
-     * 设计细节：
-     * - 三角棱柱截面：3 个顶点（背面顶点 + 正面两个顶点）形成扁平三角
-     * - 从根部到顶部逐步收窄（97% 锥度），顶部几近闭合
-     * - 法线由各面法线加权平均计算，非硬编码
-     * - 自然曲率：顶部轻微前倾（quadratic curve）
-     * - 6 个三角形/段：3 侧面各 2 三角
-     *
-     * @param segments  分段数（3~5）
+     * @brief 生成指定 LOD 层级的草茎几何体
+     * @param lod      LOD 层级 (0=全细节, 1=中等, 2=低)
      * @param vertices  输出顶点数组
      * @param indices   输出索引数组
      */
-    void generateBladeMesh(int segments,
+    void generateBladeMesh(int lod,
                            std::vector<GrassVertex>& vertices,
                            std::vector<uint32_t>& indices);
 
@@ -200,6 +202,13 @@ private:
     void generateGrassInChunk(const GrassConfig& cfg, int cx, int cz,
                               std::mt19937& rng);
 
+    /**
+     * @brief 仅生成区块草数据（线程安全，不操作 chunkData_）
+     * @return 区块所有草茎实例数据
+     */
+    std::vector<GrassInstanceData> generateChunkBlades(
+        const GrassConfig& cfg, int cx, int cz, std::mt19937& rng);
+
     // ==================== 挤压弹簧状态 ====================
 
     /**
@@ -217,10 +226,10 @@ private:
     void createPipeline(VkRenderPass renderPass, VkExtent2D extent,
                         VkSampleCountFlagBits msaaSamples);
 
-    /** @brief 创建草茎网格的顶点/索引缓冲 */
-    void createBladeBuffers();
+    /** @brief 创建指定 LOD 层的顶点/索引缓冲 */
+    void createSingleLodBuffers(int lod);
 
-    /** @brief 创建实例数据缓冲（动态，HOST_VISIBLE，每帧更新） */
+    /** @brief 创建实例数据缓冲（动态，HOST_VISIBLE，持久映射） */
     void createInstanceBuffer(int maxBlades);
 
 
@@ -245,8 +254,10 @@ private:
     std::unordered_map<GrassChunkKey, std::vector<GrassInstanceData>,
                        GrassChunkKeyHash> chunkData_;
 
-    // 当前帧可见草茎（剔除后），直接上传 GPU
-    std::vector<GrassInstanceData> visibleInstances_;
+    // 当前帧各 LOD 层可见草茎（剔除后），直接上传 GPU
+    std::array<std::vector<GrassInstanceData>, LOD_COUNT> lodVisibleInstances_;
+    // 各 LOD 层在实例缓冲中的字节偏移（每帧更新）
+    VkDeviceSize lodInstanceOffsets_[LOD_COUNT] = {};
 
     // 已加载草茎总数（所有区块之和，用于 getBladeCount()）
     size_t totalLoadedBlades_ = 0;
@@ -256,10 +267,10 @@ private:
     int lastPlayerChunkZ_ = 0;
     bool chunkPositionInitialized_ = false;
 
-    // --- 草茎网格几何体（单根模板，共享给所有实例） ---
+    // --- 草茎网格几何体（三层 LOD，共享给所有实例） ---
 
-    std::vector<GrassVertex> bladeVertices_;
-    std::vector<uint32_t> bladeIndices_;
+    std::array<std::vector<GrassVertex>, LOD_COUNT> lodVertices_;
+    std::array<std::vector<uint32_t>, LOD_COUNT> lodIndices_;
 
     // --- Vulkan 资源 ---
 
@@ -267,16 +278,19 @@ private:
     VkPipeline pipeline_ = VK_NULL_HANDLE;
     VkPipelineLayout pipelineLayout_ = VK_NULL_HANDLE;
 
-    // 草茎网格缓冲
-    VkBuffer bladeVertexBuffer_ = VK_NULL_HANDLE;
-    VkDeviceMemory bladeVertexBufferMemory_ = VK_NULL_HANDLE;
-    VkBuffer bladeIndexBuffer_ = VK_NULL_HANDLE;
-    VkDeviceMemory bladeIndexBufferMemory_ = VK_NULL_HANDLE;
+    // 三层 LOD 的草茎网格缓冲
+    std::array<VkBuffer, LOD_COUNT> lodVertexBuffers_ = {};
+    std::array<VkDeviceMemory, LOD_COUNT> lodVertexBufferMemories_ = {};
+    std::array<VkBuffer, LOD_COUNT> lodIndexBuffers_ = {};
+    std::array<VkDeviceMemory, LOD_COUNT> lodIndexBufferMemories_ = {};
 
-    // 实例数据缓冲（动态，HOST_VISIBLE）
-    VkBuffer instanceBuffer_ = VK_NULL_HANDLE;
-    VkDeviceMemory instanceBufferMemory_ = VK_NULL_HANDLE;
-    int instanceBufferCapacity_ = 0;   // 当前缓冲可容纳的最大实例数
+    // 实例数据缓冲（双缓冲，避免 GPU/CPU 数据竞争）
+    static constexpr int INSTANCE_BUFFER_COUNT = 2;
+    std::array<VkBuffer, INSTANCE_BUFFER_COUNT> instanceBuffers_ = {};
+    std::array<VkDeviceMemory, INSTANCE_BUFFER_COUNT> instanceBufferMemories_ = {};
+    std::array<void*, INSTANCE_BUFFER_COUNT> mappedInstanceDatas_ = {};
+    int instanceBufferCapacity_ = 0;   // 当前每个缓冲可容纳的最大实例数
+    int currentInstanceBuffer_ = 0;    // 当前帧写入的缓冲索引
 
     // 状态
     bool created_ = false;
