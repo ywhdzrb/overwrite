@@ -24,13 +24,13 @@ class Camera;
 struct GrassConfig {
     float chunkSize = 16.0f;          // 区块边长（米）
     int   loadRadius = 5;             // 加载半径（区块数）
-    int   maxBlades = 200000;         // 最大草茎实例数（显存缓冲容量）
-    double density = 15.0;            // 每平米平均草茎数（泊松 λ × 区块面积）
+    int   maxBlades = 350000;         // 最大草茎实例数（显存缓冲容量）
+    double density = 25.0;            // 每平米平均草茎数（泊松 λ × 区块面积）
     float renderDistance = 120.0f;    // 渲染最远距离（米）
     float bladeHeightMin = 0.25f;     // 草茎最小高度（米）
     float bladeHeightMax = 0.7f;      // 草茎最大高度（米）
     int   segmentsPerBlade = 4;       // 每根草茎分段数（3~5）
-    float bladeWidth = 0.05f;         // 草茎基部宽度（米，面片草 0.05 为宜）
+    float bladeWidth = 0.10f;         // 草茎基部宽度（米，面片草 0.10 为宜）
     float bladeThickness = 0.008f;    // 草茎基部厚度（米）
     float windStrength = 0.5f;        // 风场强度系数
     float playerRadius = 2.5f;        // 角色交互半径（米）
