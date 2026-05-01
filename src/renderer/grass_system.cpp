@@ -152,7 +152,7 @@ void GrassSystem::generateBladeMesh(int lod,
         indices.push_back(0); indices.push_back(2); indices.push_back(3);
         indices.push_back(4); indices.push_back(5); indices.push_back(6);
         indices.push_back(4); indices.push_back(6); indices.push_back(7);
-    } else {
+    } else if (lod == 2) {
         // LOD2：单面片（4 顶点，6 索引），略宽
         float w = halfW * 1.2f;
         vertices.reserve(4);
@@ -161,6 +161,19 @@ void GrassSystem::generateBladeMesh(int lod,
         vertices.push_back({{-w, 1.0f, 0.0f}, {0.0f, 1.0f}});
         vertices.push_back({{ w, 1.0f, 0.0f}, {1.0f, 1.0f}});
         vertices.push_back({{ w, 0.0f, 0.0f}, {1.0f, 0.0f}});
+        indices.push_back(0); indices.push_back(1); indices.push_back(2);
+        indices.push_back(0); indices.push_back(2); indices.push_back(3);
+    } else {
+        // LOD3：草簇（4 顶点，6 索引）— 宽扁面片模拟草堆
+        // 宽度翻倍，高度减半，看起来像一丛草
+        float cw = halfW * 3.0f;
+        float ch = 0.4f;
+        vertices.reserve(4);
+        indices.reserve(6);
+        vertices.push_back({{-cw, 0.0f, 0.0f}, {0.0f, 0.0f}});
+        vertices.push_back({{-cw,   ch, 0.0f}, {0.0f, 1.0f}});
+        vertices.push_back({{ cw,   ch, 0.0f}, {1.0f, 1.0f}});
+        vertices.push_back({{ cw, 0.0f, 0.0f}, {1.0f, 0.0f}});
         indices.push_back(0); indices.push_back(1); indices.push_back(2);
         indices.push_back(0); indices.push_back(2); indices.push_back(3);
     }
@@ -408,7 +421,8 @@ void GrassSystem::update(const glm::vec3& playerPos, const Camera& camera,
                 if (glm::fract(inst.windSeed * 43758.5453f) > keepProb) continue;
                 if (dist < LOD_DIST_0) lodVisibleInstances_[0].push_back(inst);
                 else if (dist < LOD_DIST_1) lodVisibleInstances_[1].push_back(inst);
-                else lodVisibleInstances_[2].push_back(inst);
+                else if (dist < LOD_DIST_2) lodVisibleInstances_[2].push_back(inst);
+                else lodVisibleInstances_[3].push_back(inst);
             }
         }
     } else {
@@ -459,7 +473,8 @@ void GrassSystem::update(const glm::vec3& playerPos, const Camera& camera,
                             if (glm::fract(inst.windSeed * 43758.5453f) > keepProb) continue;
                             if (dist < LOD_DIST_0) result.lod[0].push_back(inst);
                             else if (dist < LOD_DIST_1) result.lod[1].push_back(inst);
-                            else result.lod[2].push_back(inst);
+                            else if (dist < LOD_DIST_2) result.lod[2].push_back(inst);
+                            else result.lod[3].push_back(inst);
                         }
                     }
                     return result;

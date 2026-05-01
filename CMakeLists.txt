@@ -221,6 +221,7 @@ set(SOURCES
     src/renderer/gltf_model.cpp
     src/renderer/tree_system.cpp
     src/renderer/grass_system.cpp
+    src/renderer/fsr1_pass.cpp
     src/utils/shader_compiler.cpp
     src/utils/logger.cpp
     src/utils/scene_config.cpp
@@ -263,6 +264,8 @@ set(SHADER_SOURCES
     shaders/skybox.frag
     shaders/grass.vert
     shaders/grass.frag
+    shaders/fsr1_easu.comp
+    shaders/fsr1_rcas.comp
 )
 
 foreach(shader_file ${SHADER_SOURCES})
@@ -273,6 +276,8 @@ foreach(shader_file ${SHADER_SOURCES})
         set(shader_type vert)
     elseif(shader_ext STREQUAL ".frag")
         set(shader_type frag)
+    elseif(shader_ext STREQUAL ".comp")
+        set(shader_type comp)
     else()
         message(FATAL_ERROR "Unknown shader extension: ${shader_ext}")
     endif()
@@ -281,7 +286,7 @@ foreach(shader_file ${SHADER_SOURCES})
     
     add_custom_command(
         OUTPUT ${output_file}
-        COMMAND glslc ${CMAKE_CURRENT_SOURCE_DIR}/${shader_file} -o ${output_file}
+        COMMAND glslc -I${CMAKE_CURRENT_SOURCE_DIR}/shaders ${CMAKE_CURRENT_SOURCE_DIR}/${shader_file} -o ${output_file}
         DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/${shader_file}
         COMMENT "Compiling shader ${shader_file}"
     )

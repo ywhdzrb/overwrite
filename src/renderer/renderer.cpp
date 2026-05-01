@@ -91,11 +91,22 @@ void Renderer::initVulkan() {
     
     std::cout << "[Renderer] 设备支持的最大 MSAA: " << maxMsaaSamples << std::endl;
     
+    // FSR1 开启时禁用 MSAA（低分辨率无需抗锯齿，也避免 resolve 不匹配）
+    if (fsrScale_ < 1.0f) {
+        msaaSamples = VK_SAMPLE_COUNT_1_BIT;
+    }
+    bool useFsrFb = false;  // FSR1 framebuffer 有性能问题，临时禁用
+    
     swapchain = std::make_shared<VulkanSwapchain>(vulkanDevice, window);
     swapchain->create();
+    if (useFsrFb) msaaSamples = VK_SAMPLE_COUNT_1_BIT;
     
     renderPass = std::make_shared<VulkanRenderPass>(vulkanDevice, swapchain->getImageFormat(), msaaSamples);
     renderPass->create();
+    
+    // FSR1 管线
+    fsr1Pass_ = std::make_unique<Fsr1Pass>(vulkanDevice, swapchain->getImageFormat(), swapchain->getExtent(), fsrScale_);
+    fsr1Pass_->init();
     
     // 创建多重采样颜色资源（如果使用MSAA）
     if (msaaSamples > VK_SAMPLE_COUNT_1_BIT) {
@@ -118,11 +129,21 @@ void Renderer::initVulkan() {
     );
     graphicsPipeline->create();
     
-    // 创建深度资源（如果使用MSAA，也需要多重采样深度资源）
-    vulkanDevice->createDepthResources(swapchain->getExtent(), msaaSamples);
+    // 创建深度资源
+    VkExtent2D renderExt = useFsrFb
+        ? VkExtent2D{std::max(1u, (uint32_t)(swapchain->getExtent().width * fsrScale_)),
+                     std::max(1u, (uint32_t)(swapchain->getExtent().height * fsrScale_))}
+        : swapchain->getExtent();
+    vulkanDevice->createDepthResources(renderExt, msaaSamples);
     
+    std::vector<VkImageView> colorAttachments;
+    if (useFsrFb) {
+        colorAttachments.push_back(fsr1Pass_->getColorImageView());
+    } else {
+        colorAttachments = swapchain->getImageViews();
+    }
     framebuffers = std::make_shared<VulkanFramebuffer>(vulkanDevice, renderPass->getRenderPass());
-    framebuffers->create(swapchain->getImageViews(), swapchain->getExtent(), colorImageView);
+    framebuffers->create(colorAttachments, useFsrFb ? renderExt : swapchain->getExtent(), colorImageView);
     
     commandBuffers = std::make_shared<VulkanCommandBuffer>(
         vulkanDevice,
@@ -130,7 +151,7 @@ void Renderer::initVulkan() {
         graphicsPipeline->getPipeline(),
         graphicsPipeline->getPipelineLayout()
     );
-    commandBuffers->create(swapchain->getImageViews().size());
+    commandBuffers->create(MAX_FRAMES_IN_FLIGHT);
     
     syncObjects = std::make_shared<VulkanSync>(vulkanDevice);
     syncObjects->create(MAX_FRAMES_IN_FLIGHT);
@@ -273,7 +294,7 @@ void Renderer::initVulkan() {
     grassSystem_->setHeightSampler(terrainHeightQuery);
     grassSystem_->init(gameConfig.grass, renderPass->getRenderPass(),
                        swapchain->getExtent(), msaaSamples);
-    
+
     // 初始化 ImGui
     imguiManager = std::make_unique<ImGuiManager>(vulkanDevice, swapchain, renderPass, window, vulkanInstance->getInstance(), msaaSamples);
     imguiManager->init();
@@ -324,8 +345,9 @@ void Renderer::mainLoop() {
                 if (fpsTimer >= 1.0f) {  // 每秒更新一次
         
                     currentFPS = frameCount / fpsTimer;
-        
-                    std::cout << "[Renderer] FPS: " << static_cast<int>(currentFPS) << std::endl;
+                    std::cout << "[Renderer] FPS: " << (int)currentFPS
+                              << " L=" << (int)profLogicMs_ << " D=" << (int)profDrawMs_
+                              << " G=" << (int)profGPUMs_ << "ms" << std::endl;
         
                     
         
@@ -480,6 +502,7 @@ void Renderer::mainLoop() {
                 // 显示 FPS 和玩家坐标
                 ImGui::Begin("HUD", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings);
                 ImGui::Text("FPS: %.1f", currentFPS);
+                ImGui::Text("Logic:%.1f Draw:%.1f GPU:%.1f ms", profLogicMs_, profDrawMs_, profGPUMs_);
                 {
                     glm::vec3 pos = useECS ? ecsClientWorld->getPlayerPosition() : camera->getPosition();
                     ImGui::Text("Pos: %.1f, %.1f, %.1f", pos.x, pos.y, pos.z);
@@ -488,10 +511,16 @@ void Renderer::mainLoop() {
                 ImGui::End();
         // 更新游戏逻辑（应用时间缩放）
         if (!pauseGame) {
+            auto t0 = std::chrono::high_resolution_clock::now();
             updateGameLogic(deltaTime * timeScale);
+            profLogicMs_ = std::chrono::duration<double, std::milli>(std::chrono::high_resolution_clock::now() - t0).count();
         }
         
-        drawFrame();
+        {
+            auto t0 = std::chrono::high_resolution_clock::now();
+            drawFrame();
+            profDrawMs_ = std::chrono::duration<double, std::milli>(std::chrono::high_resolution_clock::now() - t0).count();
+        }
         
         // 在帧结束时重置"刚刚按下"标志
         input->resetJustPressedFlags();
@@ -772,7 +801,9 @@ void Renderer::updateGameLogic(float deltaTime) {
 }
 
 void Renderer::drawFrame() {
+    auto fenceT0 = std::chrono::high_resolution_clock::now();
     vkWaitForFences(vulkanDevice->getDevice(), 1, &syncObjects->getInFlightFences()[currentFrame], VK_TRUE, UINT64_MAX);
+    profGPUMs_ = std::chrono::duration<double, std::milli>(std::chrono::high_resolution_clock::now() - fenceT0).count();
     
     uint32_t imageIndex;
     VkResult result = vkAcquireNextImageKHR(
@@ -796,6 +827,11 @@ void Renderer::drawFrame() {
     }
     
     vkResetFences(vulkanDevice->getDevice(), 1, &syncObjects->getInFlightFences()[currentFrame]);
+    
+    // 更新 FSR1 输出描述符指向当前 swapchain 图像（必须在 cmd buffer 录制前）
+    if (fsr1Pass_ && fsrScale_ < 1.0f && imageIndex < swapchain->getImageViews().size()) {
+        fsr1Pass_->updateOutputDescriptor(swapchain->getImageViews()[imageIndex]);
+    }
     
     vkResetCommandBuffer(commandBuffers->getCommandBuffers()[currentFrame], /*VkCommandBufferResetFlagBits*/ 0);
     
@@ -839,15 +875,18 @@ void Renderer::drawFrame() {
     VkViewport viewport{};
     viewport.x = 0.0f;
     viewport.y = 0.0f;
-    viewport.width = (float) swapchain->getExtent().width;
-    viewport.height = (float) swapchain->getExtent().height;
+    {
+        VkExtent2D vpExt = fsr1Pass_ ? fsr1Pass_->getRenderExtent() : swapchain->getExtent();
+        viewport.width = (float)vpExt.width;
+        viewport.height = (float)vpExt.height;
+    }
     viewport.minDepth = 0.0f;
     viewport.maxDepth = 1.0f;
     vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
     
     VkRect2D scissor{};
     scissor.offset = {0, 0};
-    scissor.extent = swapchain->getExtent();
+    scissor.extent = fsr1Pass_ ? fsr1Pass_->getRenderExtent() : swapchain->getExtent();
     vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
     
     // 先渲染天空盒（背景）
@@ -965,7 +1004,30 @@ void Renderer::drawFrame() {
     imguiManager->render(commandBuffer);
     
     vkCmdEndRenderPass(commandBuffer);
-    
+
+    // FSR1 上采样（仅 fsrScale_ < 1.0 时生效）
+    if (fsr1Pass_ && fsrScale_ < 1.0f) {
+        VkImageMemoryBarrier b{};
+        b.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        b.image = swapchain->getImages()[imageIndex];
+        b.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+        b.oldLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+        b.newLayout = VK_IMAGE_LAYOUT_GENERAL;
+        b.srcAccessMask = 0;
+        b.dstAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+        vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+                             VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1, &b);
+
+        fsr1Pass_->dispatch(commandBuffer);
+
+        b.oldLayout = VK_IMAGE_LAYOUT_GENERAL;
+        b.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+        b.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+        b.dstAccessMask = 0;
+        vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                             VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0, nullptr, 0, nullptr, 1, &b);
+    }
+
     if (vkEndCommandBuffer(commandBuffer) != VK_SUCCESS) {
         throw std::runtime_error("failed to record command buffer!");
     }
@@ -1022,6 +1084,9 @@ void Renderer::drawFrame() {
     
     result = vkQueuePresentKHR(vulkanDevice->getPresentQueue(), &presentInfo);
     
+    // FSR1 帧推进（仅开启时切换描述符集）
+    if (fsr1Pass_ && fsrScale_ < 1.0f) fsr1Pass_->advanceFrame();
+    
     if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR || framebufferResized) {
         framebufferResized = false;
         recreateSwapchain();
@@ -1057,8 +1122,25 @@ void Renderer::recreateSwapchain() {
     
     swapchain->recreate(window);
     
-    // 重新创建深度资源（使用MSAA样本数）
-    vulkanDevice->createDepthResources(swapchain->getExtent(), msaaSamples);
+    // 重建 FSR1 管线（新尺寸）
+    VkExtent2D renderExt;
+    bool useFsrFb = false;
+    if (useFsrFb) {
+        fsr1Pass_->cleanup();
+        fsr1Pass_ = std::make_unique<Fsr1Pass>(vulkanDevice, swapchain->getImageFormat(), swapchain->getExtent(), fsrScale_);
+        fsr1Pass_->init();
+        renderExt = fsr1Pass_->getRenderExtent();
+    } else {
+        renderExt = swapchain->getExtent();
+        if (fsr1Pass_) {
+            fsr1Pass_->cleanup();
+            fsr1Pass_ = std::make_unique<Fsr1Pass>(vulkanDevice, swapchain->getImageFormat(), swapchain->getExtent(), fsrScale_);
+            fsr1Pass_->init();
+        }
+    }
+
+    // 重新创建深度资源
+    vulkanDevice->createDepthResources(renderExt, msaaSamples);
     
     // 更新渲染通道的MSAA样本数并重新创建
     renderPass->setMsaaSamples(msaaSamples);
@@ -1079,21 +1161,28 @@ void Renderer::recreateSwapchain() {
     skyboxPipeline->cleanup();
     skyboxPipeline->create();
     
-    framebuffers->recreate(swapchain->getImageViews(), swapchain->getExtent(), colorImageView);
-    
+    // 重建帧缓冲
+    if (useFsrFb) {
+        std::vector<VkImageView> att = {fsr1Pass_->getColorImageView()};
+        framebuffers->recreate(att, renderExt, colorImageView);
+    } else {
+        framebuffers->recreate(swapchain->getImageViews(), renderExt, colorImageView);
+    }
     commandBuffers->cleanup();
     commandBuffers->updateRenderPass(renderPass->getRenderPass());
     commandBuffers->updatePipeline(graphicsPipeline->getPipeline());
     commandBuffers->updatePipelineLayout(graphicsPipeline->getPipelineLayout());
-    commandBuffers->create(swapchain->getImageViews().size());
+    commandBuffers->create(useFsrFb ? 1 : swapchain->getImageViews().size());
     
     // 重新初始化 ImGui 以匹配新的 MSAA 设置
     imguiManager.reset();
     imguiManager = std::make_unique<ImGuiManager>(vulkanDevice, swapchain, renderPass, window, vulkanInstance->getInstance(), msaaSamples);
     imguiManager->init();
     
+    // 记录命令缓冲（所有使用 frame buffer 0）
+    VkFramebuffer fb = framebuffers->getFramebuffers()[0];
     for (size_t i = 0; i < commandBuffers->getCommandBuffers().size(); i++) {
-        commandBuffers->record(i, framebuffers->getFramebuffers()[i], swapchain->getExtent(),
+        commandBuffers->record(i, fb, renderExt,
                              camera->getViewMatrix(), camera->getProjectionMatrix());
     }
 }
@@ -1144,6 +1233,8 @@ void Renderer::cleanup() {
     treeSystem_.reset();
     // 清理草丛系统
     grassSystem_.reset();
+    // 清理 FSR1 管线
+    fsr1Pass_.reset();
 
     // 清理描述符集资源
     if (lightUniformBuffer != VK_NULL_HANDLE) {
@@ -1189,8 +1280,10 @@ void Renderer::createColorResources() {
     VkImageCreateInfo imageInfo{};
     imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
     imageInfo.imageType = VK_IMAGE_TYPE_2D;
-    imageInfo.extent.width = swapchain->getExtent().width;
-    imageInfo.extent.height = swapchain->getExtent().height;
+    VkExtent2D targetExt = {std::max(1u, (uint32_t)(swapchain->getExtent().width * fsrScale_)),
+                            std::max(1u, (uint32_t)(swapchain->getExtent().height * fsrScale_))};
+    imageInfo.extent.width = targetExt.width;
+    imageInfo.extent.height = targetExt.height;
     imageInfo.extent.depth = 1;
     imageInfo.mipLevels = 1;
     imageInfo.arrayLayers = 1;

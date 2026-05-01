@@ -34,6 +34,7 @@
 
 // ECS 系统（通过接口解耦）
 #include "ecs/i_game_world.h"
+#include "renderer/fsr1_pass.h"
 
 // 前向声明（具体类型仅 cpp 中使用）
 namespace owengine { namespace ecs { class ClientWorld; } }
@@ -147,6 +148,11 @@ private:
     VkDeviceMemory colorImageMemory = VK_NULL_HANDLE;
     VkImageView colorImageView = VK_NULL_HANDLE;
     VkFormat colorFormat;
+    // FSR1 缩放比
+    float fsrScale_ = 0.67f;
+
+    // 帧时间分解
+    double profLogicMs_ = 0.0, profDrawMs_ = 0.0, profGPUMs_ = 0.0;
 
     std::shared_ptr<VulkanInstance> vulkanInstance;
     std::shared_ptr<VulkanDevice> vulkanDevice;
@@ -250,6 +256,8 @@ bool wireframeMode = false;
     std::unique_ptr<class TreeSystem> treeSystem_;
     // 草丛系统（实例化渲染，独立管线）
     std::unique_ptr<class GrassSystem> grassSystem_;
+    // FSR1 上采样管线
+    std::unique_ptr<class Fsr1Pass> fsr1Pass_;
     
     static void framebufferResizeCallback(GLFWwindow* window, int width, int height);
 };

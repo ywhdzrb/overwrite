@@ -1,0 +1,39 @@
+#version 460
+// FSR1 EASU (Edge Adaptive Spatial Upsampling) 计算着色器
+// MIT License - AMD FidelityFX Super Resolution
+
+#extension GL_GOOGLE_include_directive : enable
+#extension GL_EXT_samplerless_texture_functions : enable
+
+#define A_GPU 1
+#define A_GLSL 1
+#define A_HALF 0
+
+#include "ffx/ffx_a.h"
+#define FSR_EASU_H 1
+#include "ffx/ffx_fsr1.h"
+
+layout(binding = 0) uniform texture2D inputTex;
+layout(binding = 1) uniform sampler inputSam;
+layout(binding = 2, rgba8) uniform image2D outputImg;
+layout(binding = 3) uniform EasuConst { uvec4 con0; uvec4 con1; uvec4 con2; uvec4 con3; };
+layout(push_constant) uniform PushConst { uint outW; uint outH; } pc;
+
+AH4 FsrEasuRH(AF2 p) { return AH4(textureGather(sampler2D(inputTex, inputSam), p, 0)); }
+AH4 FsrEasuGH(AF2 p) { return AH4(textureGather(sampler2D(inputTex, inputSam), p, 1)); }
+AH4 FsrEasuBH(AF2 p) { return AH4(textureGather(sampler2D(inputTex, inputSam), p, 2)); }
+
+layout(local_size_x = 64) in;
+void main() {
+    uvec2 base = uvec2(gl_WorkGroupID.x * 32u + (gl_LocalInvocationID.x % 16u) * 2u,
+                       gl_WorkGroupID.y * 8u + (gl_LocalInvocationID.x / 16u) * 2u);
+    vec3 c; uvec2 p;
+    for (int dy = 0; dy < 2; dy++) {
+        for (int dx = 0; dx < 2; dx++) {
+            p = base + uvec2(dx, dy);
+            if (p.x >= pc.outW || p.y >= pc.outH) continue;
+            FsrEasuH(c, p, con0, con1, con2, con3);
+            imageStore(outputImg, ivec2(p), vec4(c, 1.0));
+        }
+    }
+}

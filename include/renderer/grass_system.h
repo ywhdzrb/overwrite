@@ -26,7 +26,7 @@ struct GrassConfig {
     float chunkSize = 16.0f;          // 区块边长（米）
     int   loadRadius = 7;             // 加载半径（区块数，覆盖摄像机 100m far plane）
     int   maxBlades = 1100000;        // 最大草茎实例数
-    double density = 18.0;            // 每平米平均草茎数（泊松 λ × 区块面积）
+    double density = 3.0;             // 每平米平均草茎数（泊松 λ × 区块面积）
     float renderDistance = 120.0f;    // 渲染最远距离（米）
     float bladeHeightMin = 0.25f;     // 草茎最小高度（米）
     float bladeHeightMax = 0.7f;      // 草茎最大高度（米）
@@ -138,7 +138,7 @@ public:
 
     /** @brief 获取当前可见草茎数（剔除后，所有 LOD 之和） */
     size_t getVisibleBladeCount() const {
-        return lodVisibleInstances_[0].size() + lodVisibleInstances_[1].size() + lodVisibleInstances_[2].size();
+        return lodVisibleInstances_[0].size() + lodVisibleInstances_[1].size() + lodVisibleInstances_[2].size() + lodVisibleInstances_[3].size();
     }
 
     /** @brief 清理所有 GPU 资源 */
@@ -159,14 +159,16 @@ private:
         }
     };
 
-    // ==================== 草茎网格生成（三层 LOD）====================
+    // ==================== 草茎网格生成（四层 LOD）====================
 
     /// LOD 距离阈值（米）
-    static constexpr float LOD_DIST_0 = 35.0f;   // LOD0 全细节
-    static constexpr float LOD_DIST_1 = 70.0f;   // LOD1 中等
-                                                // LOD2 低细节（>70m）
+    static constexpr float LOD_DIST_0 = 35.0f;     // LOD0 全细节（弯曲叶片）
+    static constexpr float LOD_DIST_1 = 65.0f;     // LOD1 中等（直叶片）
+    static constexpr float LOD_DIST_2 = 95.0f;     // LOD2 低细节（十字面片）
+    /// LOD3 草簇（>95m，宽面片模拟草堆）
+    static constexpr float LOD_DIST_3 = 9999.0f;
     /// LOD 层级数
-    static constexpr int LOD_COUNT = 3;
+    static constexpr int LOD_COUNT = 4;
 
     /**
      * @brief 生成指定 LOD 层级的草茎几何体
