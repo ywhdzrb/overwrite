@@ -600,6 +600,28 @@ void Renderer::updateGameLogic(float deltaTime) {
         // 拷贝玩家当前位置（异步期间主线程读取，避免数据竞争）
         glm::vec3 playerPos = ecsClientWorld->getPlayerPosition();
         
+        // === 1.5) 更新树/石碰撞箱（异步模拟开始前注入，MovementSystem 读取） ===
+        if (rawClientWorld_ && rawClientWorld_->getMovementSystem()) {
+            auto* moveSys = rawClientWorld_->getMovementSystem();
+            moveSys->clearCollisionBoxes();
+            
+            // 查询玩家附近树木（半径 25m 覆盖移动范围）
+            auto trees = treeSystem_->queryPositions(playerPos.x, playerPos.z, 25.0f);
+            for (const auto& [pos, scale] : trees) {
+                float r = std::max(0.5f, 0.3f * scale);  // 树干碰撞半径
+                float h = 3.0f;                           // 树干高度
+                moveSys->addCollisionBox(pos, glm::vec3(r * 2, h, r * 2));
+            }
+            
+            // 查询玩家附近石头
+            auto stones = stoneSystem_->queryPositions(playerPos.x, playerPos.z, 25.0f);
+            for (const auto& [pos, scale] : stones) {
+                float r = std::max(0.3f, 0.25f * scale); // 石头碰撞半径
+                float h = 0.8f * scale;                   // 石头高度
+                moveSys->addCollisionBox(pos, glm::vec3(r * 2, h, r * 2));
+            }
+        }
+        
         // === 2) 异步阶段：纯 CPU 模拟（后台线程） ===
         auto ecsFuture = std::async(std::launch::async, [this, deltaTime]() {
             ecsClientWorld->updateAsync(deltaTime);
