@@ -100,46 +100,35 @@ void TerrainRenderer::cleanup() {
 // 初始化缓冲池：预分配 BUFFER_POOL_SIZE 组 vertex + index 缓冲区
 void TerrainRenderer::initBufferPool() {
     bufferPool_.resize(BUFFER_POOL_SIZE);
+    VmaAllocator allocator = device->getAllocator();
     for (int i = 0; i < BUFFER_POOL_SIZE; ++i) {
         auto& slot = bufferPool_[i];
+
         VkBufferCreateInfo vbInfo{};
         vbInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
         vbInfo.size = CHUNK_VERTEX_BUFFER_SIZE;
         vbInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
         vbInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-        if (vkCreateBuffer(device->getDevice(), &vbInfo, nullptr, &slot.vertexBuffer) != VK_SUCCESS) {
+
+        VmaAllocationCreateInfo allocInfo{};
+        allocInfo.usage = VMA_MEMORY_USAGE_AUTO_PREFER_HOST;
+        allocInfo.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
+        VmaAllocationInfo allocOut;
+        if (vmaCreateBuffer(allocator, &vbInfo, &allocInfo, &slot.vertexBuffer, &slot.vertexBufferAllocation, &allocOut) != VK_SUCCESS) {
             throw std::runtime_error("failed to create pooled vertex buffer!");
         }
-
-        VkMemoryRequirements memReqs;
-        vkGetBufferMemoryRequirements(device->getDevice(), slot.vertexBuffer, &memReqs);
-        VkMemoryAllocateInfo allocInfo{};
-        allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-        allocInfo.allocationSize = memReqs.size;
-        allocInfo.memoryTypeIndex = device->findMemoryType(memReqs.memoryTypeBits,
-            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-        if (vkAllocateMemory(device->getDevice(), &allocInfo, nullptr, &slot.vertexBufferMemory) != VK_SUCCESS) {
-            throw std::runtime_error("failed to allocate pooled vertex buffer memory!");
-        }
-        vkBindBufferMemory(device->getDevice(), slot.vertexBuffer, slot.vertexBufferMemory, 0);
+        slot.vertexMappedData = allocOut.pMappedData;
 
         VkBufferCreateInfo ibInfo{};
         ibInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
         ibInfo.size = CHUNK_INDEX_BUFFER_SIZE;
         ibInfo.usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
         ibInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-        if (vkCreateBuffer(device->getDevice(), &ibInfo, nullptr, &slot.indexBuffer) != VK_SUCCESS) {
+
+        if (vmaCreateBuffer(allocator, &ibInfo, &allocInfo, &slot.indexBuffer, &slot.indexBufferAllocation, &allocOut) != VK_SUCCESS) {
             throw std::runtime_error("failed to create pooled index buffer!");
         }
-
-        vkGetBufferMemoryRequirements(device->getDevice(), slot.indexBuffer, &memReqs);
-        allocInfo.allocationSize = memReqs.size;
-        allocInfo.memoryTypeIndex = device->findMemoryType(memReqs.memoryTypeBits,
-            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-        if (vkAllocateMemory(device->getDevice(), &allocInfo, nullptr, &slot.indexBufferMemory) != VK_SUCCESS) {
-            throw std::runtime_error("failed to allocate pooled index buffer memory!");
-        }
-        vkBindBufferMemory(device->getDevice(), slot.indexBuffer, slot.indexBufferMemory, 0);
+        slot.indexMappedData = allocOut.pMappedData;
 
         slot.inUse = false;
     }
@@ -148,18 +137,13 @@ void TerrainRenderer::initBufferPool() {
 
 // 销毁缓冲池：释放所有预先分配的缓冲区
 void TerrainRenderer::cleanupBufferPool() {
+    VmaAllocator allocator = device->getAllocator();
     for (auto& slot : bufferPool_) {
         if (slot.indexBuffer != VK_NULL_HANDLE) {
-            vkDestroyBuffer(device->getDevice(), slot.indexBuffer, nullptr);
-        }
-        if (slot.indexBufferMemory != VK_NULL_HANDLE) {
-            vkFreeMemory(device->getDevice(), slot.indexBufferMemory, nullptr);
+            vmaDestroyBuffer(allocator, slot.indexBuffer, slot.indexBufferAllocation);
         }
         if (slot.vertexBuffer != VK_NULL_HANDLE) {
-            vkDestroyBuffer(device->getDevice(), slot.vertexBuffer, nullptr);
-        }
-        if (slot.vertexBufferMemory != VK_NULL_HANDLE) {
-            vkFreeMemory(device->getDevice(), slot.vertexBufferMemory, nullptr);
+            vmaDestroyBuffer(allocator, slot.vertexBuffer, slot.vertexBufferAllocation);
         }
     }
     bufferPool_.clear();
@@ -338,22 +322,17 @@ void TerrainRenderer::uploadChunk(const ChunkMesh& mesh) {
     // 从池中获取预分配的缓冲区句柄
     auto& poolSlot = bufferPool_[slot];
     chunk.vertexBuffer = poolSlot.vertexBuffer;
-    chunk.vertexBufferMemory = poolSlot.vertexBufferMemory;
+    chunk.vertexBufferAllocation = poolSlot.vertexBufferAllocation;
     chunk.indexBuffer = poolSlot.indexBuffer;
-    chunk.indexBufferMemory = poolSlot.indexBufferMemory;
+    chunk.indexBufferAllocation = poolSlot.indexBufferAllocation;
     
-    // 顶点数据上传（池缓冲区大小固定 ≥ 实际数据，直接 memcpy）
-    void* data;
+    // 顶点数据上传（池缓冲区已持久映射，直接 memcpy）
     VkDeviceSize vertexBufferSize = sizeof(TerrainVertex) * mesh.vertices.size();
-    vkMapMemory(device->getDevice(), chunk.vertexBufferMemory, 0, VK_WHOLE_SIZE, 0, &data);
-    memcpy(data, mesh.vertices.data(), static_cast<size_t>(vertexBufferSize));
-    vkUnmapMemory(device->getDevice(), chunk.vertexBufferMemory);
+    memcpy(poolSlot.vertexMappedData, mesh.vertices.data(), static_cast<size_t>(vertexBufferSize));
     
     // 索引数据上传
     VkDeviceSize indexBufferSize = sizeof(uint32_t) * mesh.indices.size();
-    vkMapMemory(device->getDevice(), chunk.indexBufferMemory, 0, VK_WHOLE_SIZE, 0, &data);
-    memcpy(data, mesh.indices.data(), static_cast<size_t>(indexBufferSize));
-    vkUnmapMemory(device->getDevice(), chunk.indexBufferMemory);
+    memcpy(poolSlot.indexMappedData, mesh.indices.data(), static_cast<size_t>(indexBufferSize));
     
     chunks[key] = chunk;
 }
@@ -370,9 +349,9 @@ void TerrainRenderer::cleanupChunk(TerrainChunk& chunk) {
     releasePoolSlot(chunk.poolSlot);
     chunk.poolSlot = -1;
     chunk.vertexBuffer = VK_NULL_HANDLE;
-    chunk.vertexBufferMemory = VK_NULL_HANDLE;
+    chunk.vertexBufferAllocation = VK_NULL_HANDLE;
     chunk.indexBuffer = VK_NULL_HANDLE;
-    chunk.indexBufferMemory = VK_NULL_HANDLE;
+    chunk.indexBufferAllocation = VK_NULL_HANDLE;
 }
 
 // 异步区块更新管线（每帧由渲染线程调用）

@@ -12,15 +12,27 @@ namespace owengine {
 
 // VulkanDevice构造函数
 // 直接接收 VulkanInstance 已枚举的队列族索引，避免重复枚举
-VulkanDevice::VulkanDevice(VkPhysicalDevice physicalDevice, VkDevice device, VkSurfaceKHR surface,
+VulkanDevice::VulkanDevice(VkInstance instance, VkPhysicalDevice physicalDevice, VkDevice device, VkSurfaceKHR surface,
                            uint32_t graphicsQueueFamily, uint32_t presentQueueFamily)
-    : physicalDevice(physicalDevice), device(device), surface(surface),
+    : instance_(instance), physicalDevice(physicalDevice), device(device), surface(surface),
       graphicsQueueFamily(graphicsQueueFamily), presentQueueFamily_(presentQueueFamily) {
 
     vkGetDeviceQueue(device, graphicsQueueFamily, 0, &graphicsQueue);
     vkGetDeviceQueue(device, presentQueueFamily, 0, &presentQueue);
 
     createCommandPool();
+
+    // 初始化 VMA
+    VmaAllocatorCreateInfo allocatorInfo{};
+    allocatorInfo.flags = VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT;
+    allocatorInfo.vulkanApiVersion = VK_API_VERSION_1_3;
+    allocatorInfo.physicalDevice = physicalDevice;
+    allocatorInfo.device = device;
+    allocatorInfo.instance = instance;
+
+    if (vmaCreateAllocator(&allocatorInfo, &allocator_) != VK_SUCCESS) {
+        throw std::runtime_error("failed to create VMA allocator!");
+    }
 }
 
 // VulkanDevice析构函数
@@ -29,13 +41,13 @@ VulkanDevice::~VulkanDevice() {
         vkDestroyImageView(device, depthImageView, nullptr);
     }
     if (depthImage != VK_NULL_HANDLE) {
-        vkDestroyImage(device, depthImage, nullptr);
-    }
-    if (depthImageMemory != VK_NULL_HANDLE) {
-        vkFreeMemory(device, depthImageMemory, nullptr);
+        vmaDestroyImage(allocator_, depthImage, depthImageAllocation_);
     }
     if (commandPool != VK_NULL_HANDLE) {
         vkDestroyCommandPool(device, commandPool, nullptr);
+    }
+    if (allocator_ != VK_NULL_HANDLE) {
+        vmaDestroyAllocator(allocator_);
     }
 }
 
@@ -271,7 +283,7 @@ void VulkanDevice::copyBufferToImage(VkBuffer buffer, VkImage image, uint32_t wi
 void VulkanDevice::createDepthResources(VkExtent2D extent, VkSampleCountFlagBits msaaSamples) {
     VkFormat depthFormat = VK_FORMAT_D32_SFLOAT;
     
-    // 创建深度图像
+    // 创建深度图像（VMA 托管内存）
     VkImageCreateInfo imageInfo{};
     imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
     imageInfo.imageType = VK_IMAGE_TYPE_2D;
@@ -287,24 +299,13 @@ void VulkanDevice::createDepthResources(VkExtent2D extent, VkSampleCountFlagBits
     imageInfo.samples = msaaSamples;
     imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
     
-    if (vkCreateImage(device, &imageInfo, nullptr, &depthImage) != VK_SUCCESS) {
-        throw std::runtime_error("failed to create depth image!");
+    VmaAllocationCreateInfo allocInfo{};
+    allocInfo.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
+    allocInfo.flags = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT;
+    
+    if (vmaCreateImage(allocator_, &imageInfo, &allocInfo, &depthImage, &depthImageAllocation_, nullptr) != VK_SUCCESS) {
+        throw std::runtime_error("failed to create depth image with VMA!");
     }
-    
-    // 分配深度图像内存
-    VkMemoryRequirements memRequirements;
-    vkGetImageMemoryRequirements(device, depthImage, &memRequirements);
-    
-    VkMemoryAllocateInfo allocInfo{};
-    allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-    allocInfo.allocationSize = memRequirements.size;
-    allocInfo.memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-    
-    if (vkAllocateMemory(device, &allocInfo, nullptr, &depthImageMemory) != VK_SUCCESS) {
-        throw std::runtime_error("failed to allocate depth image memory!");
-    }
-    
-    vkBindImageMemory(device, depthImage, depthImageMemory, 0);
     
     // 创建深度图像视图
     VkImageViewCreateInfo viewInfo{};
@@ -333,12 +334,9 @@ void VulkanDevice::cleanupDepthResources() {
         depthImageView = VK_NULL_HANDLE;
     }
     if (depthImage != VK_NULL_HANDLE) {
-        vkDestroyImage(device, depthImage, nullptr);
+        vmaDestroyImage(allocator_, depthImage, depthImageAllocation_);
         depthImage = VK_NULL_HANDLE;
-    }
-    if (depthImageMemory != VK_NULL_HANDLE) {
-        vkFreeMemory(device, depthImageMemory, nullptr);
-        depthImageMemory = VK_NULL_HANDLE;
+        depthImageAllocation_ = VK_NULL_HANDLE;
     }
 }
 

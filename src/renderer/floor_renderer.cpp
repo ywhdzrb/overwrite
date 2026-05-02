@@ -11,9 +11,9 @@ namespace owengine {
 FloorRenderer::FloorRenderer(std::shared_ptr<VulkanDevice> device)
     : device(device),
       vertexBuffer(VK_NULL_HANDLE),
-      vertexBufferMemory(VK_NULL_HANDLE),
+      vertexBufferAllocation(VK_NULL_HANDLE),
       indexBuffer(VK_NULL_HANDLE),
-      indexBufferMemory(VK_NULL_HANDLE),
+      indexBufferAllocation(VK_NULL_HANDLE),
       indexCount(0) {
 }
 
@@ -54,38 +54,24 @@ void FloorRenderer::createVertexBuffer() {
     
     VkDeviceSize bufferSize = sizeof(vertices[0]) * vertices.size();
     
-    // 创建顶点缓冲区
+    // 创建顶点缓冲区（VMA 自动管理内存）
     VkBufferCreateInfo bufferInfo{};
     bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
     bufferInfo.size = bufferSize;
     bufferInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
     bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
     
-    if (vkCreateBuffer(device->getDevice(), &bufferInfo, nullptr, &vertexBuffer) != VK_SUCCESS) {
+    VmaAllocationCreateInfo allocInfo = {};
+    allocInfo.usage = VMA_MEMORY_USAGE_AUTO_PREFER_HOST;
+    allocInfo.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
+    
+    VmaAllocationInfo allocInfoOut;
+    if (vmaCreateBuffer(device->getAllocator(), &bufferInfo, &allocInfo, &vertexBuffer, &vertexBufferAllocation, &allocInfoOut) != VK_SUCCESS) {
         throw std::runtime_error("failed to create vertex buffer!");
     }
     
-    // 分配内存
-    VkMemoryRequirements memRequirements;
-    vkGetBufferMemoryRequirements(device->getDevice(), vertexBuffer, &memRequirements);
-    
-    VkMemoryAllocateInfo allocInfo{};
-    allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-    allocInfo.allocationSize = memRequirements.size;
-    allocInfo.memoryTypeIndex = device->findMemoryType(memRequirements.memoryTypeBits,
-                                                       VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-    
-    if (vkAllocateMemory(device->getDevice(), &allocInfo, nullptr, &vertexBufferMemory) != VK_SUCCESS) {
-        throw std::runtime_error("failed to allocate vertex buffer memory!");
-    }
-    
-    vkBindBufferMemory(device->getDevice(), vertexBuffer, vertexBufferMemory, 0);
-    
-    // 复制数据到缓冲区
-    void* data;
-    vkMapMemory(device->getDevice(), vertexBufferMemory, 0, bufferSize, 0, &data);
-    memcpy(data, vertices.data(), (size_t) bufferSize);
-    vkUnmapMemory(device->getDevice(), vertexBufferMemory);
+    // 通过已映射指针直接复制数据
+    memcpy(allocInfoOut.pMappedData, vertices.data(), (size_t) bufferSize);
 }
 
 void FloorRenderer::createIndexBuffer() {
@@ -99,52 +85,36 @@ void FloorRenderer::createIndexBuffer() {
     
     VkDeviceSize bufferSize = sizeof(indices[0]) * indices.size();
     
-    // 创建索引缓冲区
+    // 创建索引缓冲区（VMA 自动管理内存）
     VkBufferCreateInfo bufferInfo{};
     bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
     bufferInfo.size = bufferSize;
     bufferInfo.usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
     bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
     
-    if (vkCreateBuffer(device->getDevice(), &bufferInfo, nullptr, &indexBuffer) != VK_SUCCESS) {
+    VmaAllocationCreateInfo allocInfo = {};
+    allocInfo.usage = VMA_MEMORY_USAGE_AUTO_PREFER_HOST;
+    allocInfo.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
+    
+    VmaAllocationInfo allocInfoOut;
+    if (vmaCreateBuffer(device->getAllocator(), &bufferInfo, &allocInfo, &indexBuffer, &indexBufferAllocation, &allocInfoOut) != VK_SUCCESS) {
         throw std::runtime_error("failed to create index buffer!");
     }
     
-    // 分配内存
-    VkMemoryRequirements memRequirements;
-    vkGetBufferMemoryRequirements(device->getDevice(), indexBuffer, &memRequirements);
-    
-    VkMemoryAllocateInfo allocInfo{};
-    allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-    allocInfo.allocationSize = memRequirements.size;
-    allocInfo.memoryTypeIndex = device->findMemoryType(memRequirements.memoryTypeBits,
-                                                       VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-    
-    if (vkAllocateMemory(device->getDevice(), &allocInfo, nullptr, &indexBufferMemory) != VK_SUCCESS) {
-        throw std::runtime_error("failed to allocate index buffer memory!");
-    }
-    
-    vkBindBufferMemory(device->getDevice(), indexBuffer, indexBufferMemory, 0);
-    
-    // 复制数据到缓冲区
-    void* data;
-    vkMapMemory(device->getDevice(), indexBufferMemory, 0, bufferSize, 0, &data);
-    memcpy(data, indices.data(), (size_t) bufferSize);
-    vkUnmapMemory(device->getDevice(), indexBufferMemory);
+    // 通过已映射指针直接复制数据
+    memcpy(allocInfoOut.pMappedData, indices.data(), (size_t) bufferSize);
 }
 
 void FloorRenderer::cleanupBuffers() {
     if (indexBuffer != VK_NULL_HANDLE) {
-        vkDestroyBuffer(device->getDevice(), indexBuffer, nullptr);
-    }
-    if (indexBufferMemory != VK_NULL_HANDLE) {
-        vkFreeMemory(device->getDevice(), indexBufferMemory, nullptr);
+        vmaDestroyBuffer(device->getAllocator(), indexBuffer, indexBufferAllocation);
+        indexBuffer = VK_NULL_HANDLE;
+        indexBufferAllocation = VK_NULL_HANDLE;
     }
     if (vertexBuffer != VK_NULL_HANDLE) {
-        vkDestroyBuffer(device->getDevice(), vertexBuffer, nullptr);
-    }
-    if (vertexBufferMemory != VK_NULL_HANDLE) {
-        vkFreeMemory(device->getDevice(), vertexBufferMemory, nullptr);
+        vmaDestroyBuffer(device->getAllocator(), vertexBuffer, vertexBufferAllocation);
+        vertexBuffer = VK_NULL_HANDLE;
+        vertexBufferAllocation = VK_NULL_HANDLE;
     }
 }
 

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <vulkan/vulkan.h>
+#include <vk_mem_alloc.h>
 #include <vector>
 #include <memory>
 
@@ -29,11 +30,11 @@ private:
     std::shared_ptr<VulkanDevice> device;
     
     VkBuffer vertexBuffer;
-    VkDeviceMemory vertexBufferMemory;
+    VmaAllocation vertexBufferAllocation;
     uint32_t vertexCount;
     
     VkBuffer indexBuffer;
-    VkDeviceMemory indexBufferMemory;
+    VmaAllocation indexBufferAllocation;
     uint32_t indexCount;
 };
 

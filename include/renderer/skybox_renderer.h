@@ -1,6 +1,7 @@
 #pragma once
 
 #include <vulkan/vulkan.h>
+#include <vk_mem_alloc.h>
 #include <glm/glm.hpp>
 #include <memory>
 #include <vector>
@@ -62,14 +63,14 @@ protected:
     
     // 立方体网格
     VkBuffer vertexBuffer;
-    VkDeviceMemory vertexBufferMemory;
+    VmaAllocation vertexBufferAllocation;
     VkBuffer indexBuffer;
-    VkDeviceMemory indexBufferMemory;
+    VmaAllocation indexBufferAllocation;
     uint32_t indexCount;
     
     // 立方体贴图
     VkImage cubemapImage;
-    VkDeviceMemory cubemapImageMemory;
+    VmaAllocation cubemapImageAllocation;
     VkImageView cubemapImageView;
     VkSampler cubemapSampler;
     

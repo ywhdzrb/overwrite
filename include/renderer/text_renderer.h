@@ -1,6 +1,7 @@
 #pragma once
 
 #include <vulkan/vulkan.h>
+#include <vk_mem_alloc.h>
 #include <memory>
 #include <string>
 #include <vector>
@@ -26,23 +27,23 @@ public:
 
 private:
     void createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, 
-                      VkMemoryPropertyFlags properties, 
-                      VkBuffer& buffer, VkDeviceMemory& memory);
+                      const VmaAllocationCreateInfo& allocInfo, 
+                      VkBuffer& buffer, VmaAllocation& allocation);
     void copyBuffer(VkBuffer src, VkBuffer dst, VkDeviceSize size);
     
     std::shared_ptr<VulkanDevice> vulkanDevice;
     
     // 顶点缓冲
     VkBuffer vertexBuffer;
-    VkDeviceMemory vertexBufferMemory;
+    VmaAllocation vertexBufferAllocation;
     
     // 索引缓冲
     VkBuffer indexBuffer;
-    VkDeviceMemory indexBufferMemory;
+    VmaAllocation indexBufferAllocation;
     
     // 纹理
     VkImage textureImage;
-    VkDeviceMemory textureImageMemory;
+    VmaAllocation textureImageAllocation;
     VkImageView textureImageView;
     VkSampler textureSampler;
     

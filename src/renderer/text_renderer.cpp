@@ -100,8 +100,10 @@ TextRenderer::~TextRenderer() {
 void TextRenderer::create() {
     // 创建顶点缓冲（将在渲染时动态更新）
     VkDeviceSize vertexBufferSize = 1024 * sizeof(float);
+    VmaAllocationCreateInfo vbAllocInfo = {};
+    vbAllocInfo.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
     createBuffer(vertexBufferSize, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-                 VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, vertexBuffer, vertexBufferMemory);
+                 vbAllocInfo, vertexBuffer, vertexBufferAllocation);
     
     // 创建索引缓冲
     std::vector<uint16_t> indices = {
@@ -110,23 +112,27 @@ void TextRenderer::create() {
     VkDeviceSize indexBufferSize = indices.size() * sizeof(uint16_t);
     
     VkBuffer stagingBuffer;
-    VkDeviceMemory stagingBufferMemory;
+    VmaAllocation stagingAllocation;
+    
+    VmaAllocationCreateInfo stagingAllocInfo = {};
+    stagingAllocInfo.usage = VMA_MEMORY_USAGE_AUTO_PREFER_HOST;
+    stagingAllocInfo.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
+    
     createBuffer(indexBufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-                 VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-                 stagingBuffer, stagingBufferMemory);
+                 stagingAllocInfo, stagingBuffer, stagingAllocation);
     
-    void* data;
-    vkMapMemory(vulkanDevice->getDevice(), stagingBufferMemory, 0, indexBufferSize, 0, &data);
-    memcpy(data, indices.data(), indexBufferSize);
-    vkUnmapMemory(vulkanDevice->getDevice(), stagingBufferMemory);
+    VmaAllocationInfo allocInfo;
+    vmaGetAllocationInfo(vulkanDevice->getAllocator(), stagingAllocation, &allocInfo);
+    memcpy(allocInfo.pMappedData, indices.data(), indexBufferSize);
     
+    VmaAllocationCreateInfo ibAllocInfo = {};
+    ibAllocInfo.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
     createBuffer(indexBufferSize, VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-                 VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, indexBuffer, indexBufferMemory);
+                 ibAllocInfo, indexBuffer, indexBufferAllocation);
     
     copyBuffer(stagingBuffer, indexBuffer, indexBufferSize);
     
-    vkDestroyBuffer(vulkanDevice->getDevice(), stagingBuffer, nullptr);
-    vkFreeMemory(vulkanDevice->getDevice(), stagingBufferMemory, nullptr);
+    vmaDestroyBuffer(vulkanDevice->getAllocator(), stagingBuffer, stagingAllocation);
     
     // 创建字体纹理
     unsigned char textureData[TEXTURE_WIDTH * TEXTURE_HEIGHT];
@@ -135,14 +141,11 @@ void TextRenderer::create() {
     VkDeviceSize imageSize = TEXTURE_WIDTH * TEXTURE_HEIGHT;
     
     createBuffer(imageSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-                 VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-                 stagingBuffer, stagingBufferMemory);
+                 stagingAllocInfo, stagingBuffer, stagingAllocation);
     
-    vkMapMemory(vulkanDevice->getDevice(), stagingBufferMemory, 0, imageSize, 0, &data);
-    memcpy(data, textureData, imageSize);
-    vkUnmapMemory(vulkanDevice->getDevice(), stagingBufferMemory);
+    vmaGetAllocationInfo(vulkanDevice->getAllocator(), stagingAllocation, &allocInfo);
+    memcpy(allocInfo.pMappedData, textureData, imageSize);
     
-    // 创建图像
     VkImageCreateInfo imageInfo{};
     imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
     imageInfo.imageType = VK_IMAGE_TYPE_2D;
@@ -158,23 +161,12 @@ void TextRenderer::create() {
     imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
     imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
     
-    if (vkCreateImage(vulkanDevice->getDevice(), &imageInfo, nullptr, &textureImage) != VK_SUCCESS) {
+    VmaAllocationCreateInfo imgAllocInfo = {};
+    imgAllocInfo.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
+    
+    if (vmaCreateImage(vulkanDevice->getAllocator(), &imageInfo, &imgAllocInfo, &textureImage, &textureImageAllocation, nullptr) != VK_SUCCESS) {
         throw std::runtime_error("failed to create texture image!");
     }
-    
-    VkMemoryRequirements memRequirements;
-    vkGetImageMemoryRequirements(vulkanDevice->getDevice(), textureImage, &memRequirements);
-    
-    VkMemoryAllocateInfo allocInfo{};
-    allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-    allocInfo.allocationSize = memRequirements.size;
-    allocInfo.memoryTypeIndex = vulkanDevice->findMemoryType(memRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-    
-    if (vkAllocateMemory(vulkanDevice->getDevice(), &allocInfo, nullptr, &textureImageMemory) != VK_SUCCESS) {
-        throw std::runtime_error("failed to allocate texture image memory!");
-    }
-    
-    vkBindImageMemory(vulkanDevice->getDevice(), textureImage, textureImageMemory, 0);
     
     // 过渡图像布局并复制数据
     VkCommandBuffer commandBuffer = vulkanDevice->beginSingleTimeCommands();
@@ -222,8 +214,7 @@ void TextRenderer::create() {
     
     vulkanDevice->endSingleTimeCommands(commandBuffer);
     
-    vkDestroyBuffer(vulkanDevice->getDevice(), stagingBuffer, nullptr);
-    vkFreeMemory(vulkanDevice->getDevice(), stagingBufferMemory, nullptr);
+    vmaDestroyBuffer(vulkanDevice->getAllocator(), stagingBuffer, stagingAllocation);
     
     // 创建图像视图
     VkImageViewCreateInfo viewInfo{};
@@ -351,45 +342,28 @@ void TextRenderer::cleanup() {
         vkDestroyImageView(vulkanDevice->getDevice(), textureImageView, nullptr);
     }
     if (textureImage != VK_NULL_HANDLE) {
-        vkDestroyImage(vulkanDevice->getDevice(), textureImage, nullptr);
-        vkFreeMemory(vulkanDevice->getDevice(), textureImageMemory, nullptr);
+        vmaDestroyImage(vulkanDevice->getAllocator(), textureImage, textureImageAllocation);
     }
     if (indexBuffer != VK_NULL_HANDLE) {
-        vkDestroyBuffer(vulkanDevice->getDevice(), indexBuffer, nullptr);
-        vkFreeMemory(vulkanDevice->getDevice(), indexBufferMemory, nullptr);
+        vmaDestroyBuffer(vulkanDevice->getAllocator(), indexBuffer, indexBufferAllocation);
     }
     if (vertexBuffer != VK_NULL_HANDLE) {
-        vkDestroyBuffer(vulkanDevice->getDevice(), vertexBuffer, nullptr);
-        vkFreeMemory(vulkanDevice->getDevice(), vertexBufferMemory, nullptr);
+        vmaDestroyBuffer(vulkanDevice->getAllocator(), vertexBuffer, vertexBufferAllocation);
     }
 }
 
 void TextRenderer::createBuffer(VkDeviceSize size, VkBufferUsageFlags usage,
-                                 VkMemoryPropertyFlags properties,
-                                 VkBuffer& buffer, VkDeviceMemory& memory) {
+                                 const VmaAllocationCreateInfo& allocInfo,
+                                 VkBuffer& buffer, VmaAllocation& allocation) {
     VkBufferCreateInfo bufferInfo{};
     bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
     bufferInfo.size = size;
     bufferInfo.usage = usage;
     bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
     
-    if (vkCreateBuffer(vulkanDevice->getDevice(), &bufferInfo, nullptr, &buffer) != VK_SUCCESS) {
+    if (vmaCreateBuffer(vulkanDevice->getAllocator(), &bufferInfo, &allocInfo, &buffer, &allocation, nullptr) != VK_SUCCESS) {
         throw std::runtime_error("failed to create buffer!");
     }
-    
-    VkMemoryRequirements memRequirements;
-    vkGetBufferMemoryRequirements(vulkanDevice->getDevice(), buffer, &memRequirements);
-    
-    VkMemoryAllocateInfo allocInfo{};
-    allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-    allocInfo.allocationSize = memRequirements.size;
-    allocInfo.memoryTypeIndex = vulkanDevice->findMemoryType(memRequirements.memoryTypeBits, properties);
-    
-    if (vkAllocateMemory(vulkanDevice->getDevice(), &allocInfo, nullptr, &memory) != VK_SUCCESS) {
-        throw std::runtime_error("failed to allocate buffer memory!");
-    }
-    
-    vkBindBufferMemory(vulkanDevice->getDevice(), buffer, memory, 0);
 }
 
 void TextRenderer::copyBuffer(VkBuffer src, VkBuffer dst, VkDeviceSize size) {

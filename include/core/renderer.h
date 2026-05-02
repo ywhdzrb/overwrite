@@ -1,6 +1,7 @@
 #pragma once
 
 #include <vulkan/vulkan.h>
+#include <vk_mem_alloc.h>
 #include <GLFW/glfw3.h>
 #include <memory>
 #include <vector>
@@ -89,7 +90,7 @@ private:
     VkSampleCountFlagBits msaaSamples = VK_SAMPLE_COUNT_1_BIT;
     VkSampleCountFlagBits maxMsaaSamples = VK_SAMPLE_COUNT_1_BIT;
     VkImage colorImage = VK_NULL_HANDLE;
-    VkDeviceMemory colorImageMemory = VK_NULL_HANDLE;
+    VmaAllocation colorImageAllocation = VK_NULL_HANDLE;
     VkImageView colorImageView = VK_NULL_HANDLE;
     VkFormat colorFormat;
     float fsrScale_ = 0.67f;
@@ -154,7 +155,8 @@ private:
     VkDescriptorSet textureDescriptorSet = VK_NULL_HANDLE;
     VkDescriptorSet lightDescriptorSet = VK_NULL_HANDLE;
     VkBuffer lightUniformBuffer = VK_NULL_HANDLE;
-    VkDeviceMemory lightUniformBufferMemory = VK_NULL_HANDLE;
+    VmaAllocation lightUniformBufferAllocation = VK_NULL_HANDLE;
+    void* lightUniformBufferMapped_ = nullptr;
 
     static void framebufferResizeCallback(GLFWwindow* window, int width, int height);
 };

@@ -117,6 +117,17 @@ set(TINYOBJ_SOURCES
 add_library(tinyobjloader STATIC ${TINYOBJ_SOURCES})
 target_include_directories(tinyobjloader PUBLIC ${EXTERNAL_DIR}/tinyobjloader)
 
+# ==================== VMA - Vulkan Memory Allocator ====================
+set(VMA_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/core/vma_impl.cpp
+)
+add_library(vma STATIC ${VMA_SOURCES})
+target_include_directories(vma PUBLIC
+    ${EXTERNAL_DIR}/vma/include
+    ${EXTERNAL_DIR}/vma/src
+)
+target_link_libraries(vma PUBLIC Vulkan::Vulkan)
+
 # ==================== 共享库 (shared) ====================
 add_library(OverWriteShared STATIC
     shared/src/ecs/components.cpp
@@ -244,6 +255,7 @@ target_link_libraries(${PROJECT_NAME}
     imgui
     tinygltf
     tinyobjloader
+    vma
 )
 
 # ==================== 服务器主程序 ====================

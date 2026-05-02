@@ -1,6 +1,7 @@
 #pragma once
 
 #include <vulkan/vulkan.h>
+#include <vk_mem_alloc.h>
 #include <GLFW/glfw3.h>
 #include <memory>
 #include <functional>
@@ -141,7 +142,7 @@ private:
     // MSAA 资源
     VkSampleCountFlagBits maxMsaaSamples_ = VK_SAMPLE_COUNT_1_BIT;
     VkImage colorImage_ = VK_NULL_HANDLE;
-    VkDeviceMemory colorImageMemory_ = VK_NULL_HANDLE;
+    VmaAllocation colorImageAllocation_ = VK_NULL_HANDLE;
     VkImageView colorImageView_ = VK_NULL_HANDLE;
     
     // 描述符
@@ -151,7 +152,7 @@ private:
     
     // 光源 UBO
     VkBuffer lightUniformBuffer_ = VK_NULL_HANDLE;
-    VkDeviceMemory lightUniformBufferMemory_ = VK_NULL_HANDLE;
+    VmaAllocation lightUniformBufferAllocation_ = VK_NULL_HANDLE;
     
     // 帧状态
     uint32_t currentFrame_ = 0;

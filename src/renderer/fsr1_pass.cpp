@@ -43,8 +43,9 @@ void Fsr1Pass::init() {
     createEasuPipeline();
     easuCon(constData_, (float)renderExtent_.width, (float)renderExtent_.height,
             (float)outputExtent_.width, (float)outputExtent_.height);
-    void* d; vkMapMemory(device_->getDevice(), constBufferMemory_, 0, sizeof(constData_), 0, &d);
-    memcpy(d, constData_, sizeof(constData_)); vkUnmapMemory(device_->getDevice(), constBufferMemory_);
+    VmaAllocationInfo ai;
+    vmaGetAllocationInfo(device_->getAllocator(), constBufferAllocation_, &ai);
+    memcpy(ai.pMappedData, constData_, sizeof(constData_));
     Logger::info("[Fsr1Pass] OK");
     initialized_ = true;
 }
@@ -58,12 +59,8 @@ void Fsr1Pass::createRenderTarget() {
     ci.tiling = VK_IMAGE_TILING_OPTIMAL;
     ci.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
     ci.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    vkCreateImage(dev, &ci, nullptr, &colorImage_);
-    VkMemoryRequirements mr; vkGetImageMemoryRequirements(dev, colorImage_, &mr);
-    VkMemoryAllocateInfo ai{}; ai.sType=VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-    ai.allocationSize = mr.size;
-    ai.memoryTypeIndex = device_->findMemoryType(mr.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-    vkAllocateMemory(dev, &ai, nullptr, &colorMemory_); vkBindImageMemory(dev, colorImage_, colorMemory_, 0);
+    VmaAllocationCreateInfo ai{}; ai.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
+    vmaCreateImage(device_->getAllocator(), &ci, &ai, &colorImage_, &colorAllocation_, nullptr);
     VkImageViewCreateInfo iv{}; iv.sType=VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
     iv.image = colorImage_; iv.viewType = VK_IMAGE_VIEW_TYPE_2D; iv.format = colorFormat_;
     iv.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT,0,1,0,1};
@@ -104,11 +101,9 @@ void Fsr1Pass::createDescriptorResources() {
 
     VkBufferCreateInfo bci{}; bci.sType=VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
     bci.size=sizeof(constData_); bci.usage=VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
-    vkCreateBuffer(dev, &bci, nullptr, &constBuffer_);
-    VkMemoryRequirements mr; vkGetBufferMemoryRequirements(dev, constBuffer_, &mr);
-    VkMemoryAllocateInfo bai{}; bai.sType=VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-    bai.allocationSize=mr.size; bai.memoryTypeIndex=device_->findMemoryType(mr.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT|VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-    vkAllocateMemory(dev, &bai, nullptr, &constBufferMemory_); vkBindBufferMemory(dev, constBuffer_, constBufferMemory_, 0);
+    VmaAllocationCreateInfo bai{}; bai.usage=VMA_MEMORY_USAGE_AUTO_PREFER_HOST;
+    bai.flags=VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
+    vmaCreateBuffer(device_->getAllocator(), &bci, &bai, &constBuffer_, &constBufferAllocation_, nullptr);
 
     // 初始化所有 desc set 的静态绑定（sampled=0, sampler=1, uniform=3）
     for (int f = 0; f < MAX_FRAMES; f++) {
@@ -180,10 +175,8 @@ void Fsr1Pass::cleanup() {
     if (descSetLayout_) vkDestroyDescriptorSetLayout(dev, descSetLayout_, nullptr);
     if (sampler_) vkDestroySampler(dev, sampler_, nullptr);
     if (colorView_) vkDestroyImageView(dev, colorView_, nullptr);
-    if (colorImage_) vkDestroyImage(dev, colorImage_, nullptr);
-    if (colorMemory_) vkFreeMemory(dev, colorMemory_, nullptr);
-    if (constBuffer_) vkDestroyBuffer(dev, constBuffer_, nullptr);
-    if (constBufferMemory_) vkFreeMemory(dev, constBufferMemory_, nullptr);
+    if (colorImage_) vmaDestroyImage(device_->getAllocator(), colorImage_, colorAllocation_);
+    if (constBuffer_) vmaDestroyBuffer(device_->getAllocator(), constBuffer_, constBufferAllocation_);
     if (descPool_) vkDestroyDescriptorPool(dev, descPool_, nullptr);
     initialized_ = false;
 }

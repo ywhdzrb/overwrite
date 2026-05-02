@@ -2,6 +2,7 @@
 
 #include <vulkan/vulkan.h>
 #include <GLFW/glfw3.h>
+#include <vk_mem_alloc.h>
 #include <vector>
 #include <string>
 #include <optional>
@@ -17,7 +18,7 @@ struct SwapChainSupportDetails {
 
 class VulkanDevice {
 public:
-    VulkanDevice(VkPhysicalDevice physicalDevice, VkDevice device, VkSurfaceKHR surface,
+    VulkanDevice(VkInstance instance, VkPhysicalDevice physicalDevice, VkDevice device, VkSurfaceKHR surface,
                  uint32_t graphicsQueueFamily, uint32_t presentQueueFamily);
     ~VulkanDevice();
 
@@ -50,6 +51,7 @@ public:
     uint32_t getPresentQueueFamily() const { return presentQueueFamily_; }
     VkCommandPool getCommandPool() const { return commandPool; }
     std::mutex& getQueueMutex() const { return queueMutex_; }
+    VmaAllocator getAllocator() const { return allocator_; }
     VkImage getDepthImage() const { return depthImage; }
     VkImageView getDepthImageView() const { return depthImageView; }
 
@@ -59,9 +61,11 @@ public:
 private:
     void createCommandPool();
 
+    VkInstance instance_;
     VkPhysicalDevice physicalDevice;
     VkDevice device;
     VkSurfaceKHR surface;
+    VmaAllocator allocator_ = VK_NULL_HANDLE;
     VkQueue graphicsQueue;
     VkQueue presentQueue;
     uint32_t graphicsQueueFamily = 0;
@@ -78,7 +82,7 @@ private:
     
     // 深度缓冲资源
     VkImage depthImage = VK_NULL_HANDLE;
-    VkDeviceMemory depthImageMemory = VK_NULL_HANDLE;
+    VmaAllocation depthImageAllocation_ = VK_NULL_HANDLE;
     VkImageView depthImageView = VK_NULL_HANDLE;
 };
 

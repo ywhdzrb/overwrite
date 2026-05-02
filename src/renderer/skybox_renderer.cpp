@@ -16,12 +16,12 @@ namespace owengine {
 SkyboxRenderer::SkyboxRenderer(std::shared_ptr<VulkanDevice> device)
     : device(device),
       vertexBuffer(VK_NULL_HANDLE),
-      vertexBufferMemory(VK_NULL_HANDLE),
+      vertexBufferAllocation(VK_NULL_HANDLE),
       indexBuffer(VK_NULL_HANDLE),
-      indexBufferMemory(VK_NULL_HANDLE),
+      indexBufferAllocation(VK_NULL_HANDLE),
       indexCount(0),
       cubemapImage(VK_NULL_HANDLE),
-      cubemapImageMemory(VK_NULL_HANDLE),
+      cubemapImageAllocation(VK_NULL_HANDLE),
       cubemapImageView(VK_NULL_HANDLE),
       cubemapSampler(VK_NULL_HANDLE),
       descriptorSetLayout(VK_NULL_HANDLE),
@@ -71,32 +71,26 @@ void SkyboxRenderer::createVertexBuffer() {
     };
     
     std::vector<Vertex> vertices = {
-        // 前面
         {{-1.0f, -1.0f, -1.0f}},
         {{ 1.0f, -1.0f, -1.0f}},
         {{ 1.0f,  1.0f, -1.0f}},
         {{-1.0f,  1.0f, -1.0f}},
-        // 后面
         {{-1.0f, -1.0f,  1.0f}},
         {{ 1.0f, -1.0f,  1.0f}},
         {{ 1.0f,  1.0f,  1.0f}},
         {{-1.0f,  1.0f,  1.0f}},
-        // 上面
         {{-1.0f,  1.0f, -1.0f}},
         {{ 1.0f,  1.0f, -1.0f}},
         {{ 1.0f,  1.0f,  1.0f}},
         {{-1.0f,  1.0f,  1.0f}},
-        // 下面
         {{-1.0f, -1.0f, -1.0f}},
         {{ 1.0f, -1.0f, -1.0f}},
         {{ 1.0f, -1.0f,  1.0f}},
         {{-1.0f, -1.0f,  1.0f}},
-        // 右面
         {{ 1.0f, -1.0f, -1.0f}},
         {{ 1.0f, -1.0f,  1.0f}},
         {{ 1.0f,  1.0f,  1.0f}},
         {{ 1.0f,  1.0f, -1.0f}},
-        // 左面
         {{-1.0f, -1.0f, -1.0f}},
         {{-1.0f, -1.0f,  1.0f}},
         {{-1.0f,  1.0f,  1.0f}},
@@ -105,54 +99,34 @@ void SkyboxRenderer::createVertexBuffer() {
     
     VkDeviceSize bufferSize = sizeof(vertices[0]) * vertices.size();
     
-    // 创建顶点缓冲区
+    // 创建顶点缓冲区（VMA 自动管理内存）
     VkBufferCreateInfo bufferInfo{};
     bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
     bufferInfo.size = bufferSize;
     bufferInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
     bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
     
-    if (vkCreateBuffer(device->getDevice(), &bufferInfo, nullptr, &vertexBuffer) != VK_SUCCESS) {
+    VmaAllocationCreateInfo allocInfo = {};
+    allocInfo.usage = VMA_MEMORY_USAGE_AUTO_PREFER_HOST;
+    allocInfo.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
+    
+    VmaAllocationInfo allocInfoOut;
+    if (vmaCreateBuffer(device->getAllocator(), &bufferInfo, &allocInfo, &vertexBuffer, &vertexBufferAllocation, &allocInfoOut) != VK_SUCCESS) {
         throw std::runtime_error("failed to create vertex buffer!");
     }
     
-    // 分配内存
-    VkMemoryRequirements memRequirements;
-    vkGetBufferMemoryRequirements(device->getDevice(), vertexBuffer, &memRequirements);
-    
-    VkMemoryAllocateInfo allocInfo{};
-    allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-    allocInfo.allocationSize = memRequirements.size;
-    allocInfo.memoryTypeIndex = device->findMemoryType(memRequirements.memoryTypeBits,
-                                                       VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-    
-    if (vkAllocateMemory(device->getDevice(), &allocInfo, nullptr, &vertexBufferMemory) != VK_SUCCESS) {
-        throw std::runtime_error("failed to allocate vertex buffer memory!");
-    }
-    
-    vkBindBufferMemory(device->getDevice(), vertexBuffer, vertexBufferMemory, 0);
-    
-    // 复制数据到缓冲区
-    void* data;
-    vkMapMemory(device->getDevice(), vertexBufferMemory, 0, bufferSize, 0, &data);
-    memcpy(data, vertices.data(), (size_t) bufferSize);
-    vkUnmapMemory(device->getDevice(), vertexBufferMemory);
+    // 通过已映射指针直接复制数据
+    memcpy(allocInfoOut.pMappedData, vertices.data(), (size_t) bufferSize);
 }
 
 void SkyboxRenderer::createIndexBuffer() {
     // 立方体索引（每个面 2 个三角形）
     std::vector<uint32_t> indices = {
-        // 前面
         0, 1, 2, 2, 3, 0,
-        // 后面
         4, 5, 6, 6, 7, 4,
-        // 上面
         8, 9, 10, 10, 11, 8,
-        // 下面
         12, 13, 14, 14, 15, 12,
-        // 右面
         16, 17, 18, 18, 19, 16,
-        // 左面
         20, 21, 22, 22, 23, 20
     };
     
@@ -160,38 +134,24 @@ void SkyboxRenderer::createIndexBuffer() {
     
     VkDeviceSize bufferSize = sizeof(indices[0]) * indices.size();
     
-    // 创建索引缓冲区
+    // 创建索引缓冲区（VMA 自动管理内存）
     VkBufferCreateInfo bufferInfo{};
     bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
     bufferInfo.size = bufferSize;
     bufferInfo.usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
     bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
     
-    if (vkCreateBuffer(device->getDevice(), &bufferInfo, nullptr, &indexBuffer) != VK_SUCCESS) {
+    VmaAllocationCreateInfo allocInfo = {};
+    allocInfo.usage = VMA_MEMORY_USAGE_AUTO_PREFER_HOST;
+    allocInfo.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
+    
+    VmaAllocationInfo allocInfoOut;
+    if (vmaCreateBuffer(device->getAllocator(), &bufferInfo, &allocInfo, &indexBuffer, &indexBufferAllocation, &allocInfoOut) != VK_SUCCESS) {
         throw std::runtime_error("failed to create index buffer!");
     }
     
-    // 分配内存
-    VkMemoryRequirements memRequirements;
-    vkGetBufferMemoryRequirements(device->getDevice(), indexBuffer, &memRequirements);
-    
-    VkMemoryAllocateInfo allocInfo{};
-    allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-    allocInfo.allocationSize = memRequirements.size;
-    allocInfo.memoryTypeIndex = device->findMemoryType(memRequirements.memoryTypeBits,
-                                                       VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-    
-    if (vkAllocateMemory(device->getDevice(), &allocInfo, nullptr, &indexBufferMemory) != VK_SUCCESS) {
-        throw std::runtime_error("failed to allocate index buffer memory!");
-    }
-    
-    vkBindBufferMemory(device->getDevice(), indexBuffer, indexBufferMemory, 0);
-    
-    // 复制数据到缓冲区
-    void* data;
-    vkMapMemory(device->getDevice(), indexBufferMemory, 0, bufferSize, 0, &data);
-    memcpy(data, indices.data(), (size_t) bufferSize);
-    vkUnmapMemory(device->getDevice(), indexBufferMemory);
+    // 通过已映射指针直接复制数据
+    memcpy(allocInfoOut.pMappedData, indices.data(), (size_t) bufferSize);
 }
 
 void SkyboxRenderer::loadCubemapFromCrossLayout(const std::string& imagePath) {
@@ -368,9 +328,9 @@ void SkyboxRenderer::loadCubemapFromFiles(const std::vector<std::string>& facePa
 void SkyboxRenderer::createCubemapImage(const std::vector<unsigned char*>& faceData, int width, int height) {
     VkDeviceSize imageSize = width * height * 4; // RGBA
     
-    // 创建暂存缓冲区
+    // 创建暂存缓冲区（VMA 托管，HOST_VISIBLE 可映射）
     VkBuffer stagingBuffer;
-    VkDeviceMemory stagingBufferMemory;
+    VmaAllocation stagingAllocation;
     
     VkBufferCreateInfo bufferInfo{};
     bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
@@ -378,34 +338,21 @@ void SkyboxRenderer::createCubemapImage(const std::vector<unsigned char*>& faceD
     bufferInfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
     bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
     
-    if (vkCreateBuffer(device->getDevice(), &bufferInfo, nullptr, &stagingBuffer) != VK_SUCCESS) {
+    VmaAllocationCreateInfo allocInfo = {};
+    allocInfo.usage = VMA_MEMORY_USAGE_AUTO_PREFER_HOST;
+    allocInfo.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
+    
+    VmaAllocationInfo allocInfoOut;
+    if (vmaCreateBuffer(device->getAllocator(), &bufferInfo, &allocInfo, &stagingBuffer, &stagingAllocation, &allocInfoOut) != VK_SUCCESS) {
         throw std::runtime_error("failed to create staging buffer!");
     }
     
-    VkMemoryRequirements memRequirements;
-    vkGetBufferMemoryRequirements(device->getDevice(), stagingBuffer, &memRequirements);
-    
-    VkMemoryAllocateInfo allocInfo{};
-    allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-    allocInfo.allocationSize = memRequirements.size;
-    allocInfo.memoryTypeIndex = device->findMemoryType(memRequirements.memoryTypeBits,
-                                                       VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-    
-    if (vkAllocateMemory(device->getDevice(), &allocInfo, nullptr, &stagingBufferMemory) != VK_SUCCESS) {
-        throw std::runtime_error("failed to allocate staging buffer memory!");
-    }
-    
-    vkBindBufferMemory(device->getDevice(), stagingBuffer, stagingBufferMemory, 0);
-    
     // 复制所有面的数据到暂存缓冲区
-    void* data;
-    vkMapMemory(device->getDevice(), stagingBufferMemory, 0, imageSize * 6, 0, &data);
     for (int i = 0; i < 6; i++) {
-        memcpy(static_cast<unsigned char*>(data) + i * imageSize, faceData[i], imageSize);
+        memcpy(static_cast<unsigned char*>(allocInfoOut.pMappedData) + i * imageSize, faceData[i], imageSize);
     }
-    vkUnmapMemory(device->getDevice(), stagingBufferMemory);
     
-    // 创建立方体图像
+    // 创建立方体图像（VMA 托管，DEVICE_LOCAL）
     VkImageCreateInfo imageInfo{};
     imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
     imageInfo.imageType = VK_IMAGE_TYPE_2D;
@@ -422,20 +369,12 @@ void SkyboxRenderer::createCubemapImage(const std::vector<unsigned char*>& faceD
     imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
     imageInfo.flags = VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT; // 立方体贴图标志
     
-    if (vkCreateImage(device->getDevice(), &imageInfo, nullptr, &cubemapImage) != VK_SUCCESS) {
+    VmaAllocationCreateInfo imageAllocInfo = {};
+    imageAllocInfo.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
+    
+    if (vmaCreateImage(device->getAllocator(), &imageInfo, &imageAllocInfo, &cubemapImage, &cubemapImageAllocation, nullptr) != VK_SUCCESS) {
         throw std::runtime_error("failed to create cubemap image!");
     }
-    
-    vkGetImageMemoryRequirements(device->getDevice(), cubemapImage, &memRequirements);
-    
-    allocInfo.allocationSize = memRequirements.size;
-    allocInfo.memoryTypeIndex = device->findMemoryType(memRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-    
-    if (vkAllocateMemory(device->getDevice(), &allocInfo, nullptr, &cubemapImageMemory) != VK_SUCCESS) {
-        throw std::runtime_error("failed to allocate cubemap image memory!");
-    }
-    
-    vkBindImageMemory(device->getDevice(), cubemapImage, cubemapImageMemory, 0);
     
     // 过渡图像布局并复制数据
     VkCommandBuffer commandBuffer = device->beginSingleTimeCommands();
@@ -488,9 +427,8 @@ void SkyboxRenderer::createCubemapImage(const std::vector<unsigned char*>& faceD
     
     device->endSingleTimeCommands(commandBuffer);
     
-    // 清理暂存缓冲区
-    vkDestroyBuffer(device->getDevice(), stagingBuffer, nullptr);
-    vkFreeMemory(device->getDevice(), stagingBufferMemory, nullptr);
+    // 清理暂存缓冲区及其 VMA 分配
+    vmaDestroyBuffer(device->getAllocator(), stagingBuffer, stagingAllocation);
 }
 
 void SkyboxRenderer::createCubemapImageView() {
@@ -624,16 +562,14 @@ void SkyboxRenderer::render(VkCommandBuffer commandBuffer, VkPipelineLayout pipe
 
 void SkyboxRenderer::cleanupBuffers() {
     if (indexBuffer != VK_NULL_HANDLE) {
-        vkDestroyBuffer(device->getDevice(), indexBuffer, nullptr);
-    }
-    if (indexBufferMemory != VK_NULL_HANDLE) {
-        vkFreeMemory(device->getDevice(), indexBufferMemory, nullptr);
+        vmaDestroyBuffer(device->getAllocator(), indexBuffer, indexBufferAllocation);
+        indexBuffer = VK_NULL_HANDLE;
+        indexBufferAllocation = VK_NULL_HANDLE;
     }
     if (vertexBuffer != VK_NULL_HANDLE) {
-        vkDestroyBuffer(device->getDevice(), vertexBuffer, nullptr);
-    }
-    if (vertexBufferMemory != VK_NULL_HANDLE) {
-        vkFreeMemory(device->getDevice(), vertexBufferMemory, nullptr);
+        vmaDestroyBuffer(device->getAllocator(), vertexBuffer, vertexBufferAllocation);
+        vertexBuffer = VK_NULL_HANDLE;
+        vertexBufferAllocation = VK_NULL_HANDLE;
     }
 }
 
@@ -645,10 +581,7 @@ void SkyboxRenderer::cleanupCubemap() {
         vkDestroyImageView(device->getDevice(), cubemapImageView, nullptr);
     }
     if (cubemapImage != VK_NULL_HANDLE) {
-        vkDestroyImage(device->getDevice(), cubemapImage, nullptr);
-    }
-    if (cubemapImageMemory != VK_NULL_HANDLE) {
-        vkFreeMemory(device->getDevice(), cubemapImageMemory, nullptr);
+        vmaDestroyImage(device->getAllocator(), cubemapImage, cubemapImageAllocation);
     }
 }
 

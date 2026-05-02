@@ -46,6 +46,7 @@ declare -A GITHUB_SOURCES=(
     ["imgui"]="https://github.com/ocornut/imgui.git"
     ["tinygltf"]="https://github.com/syoyo/tinygltf.git"
     ["tinyobjloader"]="https://github.com/tinyobjloader/tinyobjloader.git"
+    ["vma"]="https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator.git"
 )
 
 declare -A GITEE_SOURCES=(
@@ -55,6 +56,7 @@ declare -A GITEE_SOURCES=(
     ["imgui"]="https://gitee.com/mirrors/ImGUI_old1.git"
     ["tinygltf"]="https://gitee.com/mirrors_syoyo/tinygltf_1.git"
     ["tinyobjloader"]="https://gitee.com/mirrors_syoyo/tinyobjloader-c.git"
+    ["vma"]="https://gitee.com/mirrors/VulkanMemoryAllocator.git"
 )
 
 declare -A DEP_VERSIONS=(
@@ -64,6 +66,7 @@ declare -A DEP_VERSIONS=(
     ["imgui"]="v1.91.8"
     ["tinygltf"]="v2.9.3"
     ["tinyobjloader"]="v2.0.0rc13"
+    ["vma"]="v3.2.1"
 )
 
 # 解析参数
@@ -248,7 +251,7 @@ if [ -f ".gitmodules" ]; then
         NEED_INIT=1
     else
         # 检查各个依赖是否已存在
-        for dep in external/entt external/nlohmann_json external/ixwebsocket external/imgui external/tinygltf external/tinyobjloader; do
+        for dep in external/entt external/nlohmann_json external/ixwebsocket external/imgui external/tinygltf external/tinyobjloader external/vma; do
             if [ ! -d "$dep" ]; then
                 NEED_INIT=1
                 break
@@ -267,7 +270,7 @@ if [ -f ".gitmodules" ]; then
         
         # 克隆所有依赖
         FAILED_COUNT=0
-        for name in entt nlohmann_json ixwebsocket imgui tinygltf tinyobjloader; do
+        for name in entt nlohmann_json ixwebsocket imgui tinygltf tinyobjloader vma; do
             if ! clone_dependency "$name" "${DEP_VERSIONS[$name]}"; then
                 FAILED_COUNT=$((FAILED_COUNT + 1))
             fi
@@ -287,6 +290,7 @@ if [ -f ".gitmodules" ]; then
     checkout_if_needed "external/imgui" "v1.91.8"
     checkout_if_needed "external/tinygltf" "v2.9.3"
     checkout_if_needed "external/tinyobjloader" "v2.0.0rc13"
+    checkout_if_needed "external/vma" "v3.2.1"
 fi
 
 # Create build directory

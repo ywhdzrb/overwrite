@@ -20,7 +20,7 @@ Texture::Texture(std::shared_ptr<VulkanDevice> device,
       mipLevels(mipLevels),
       format(format),
       textureImage(VK_NULL_HANDLE),
-      textureImageMemory(VK_NULL_HANDLE),
+      textureImageAllocation(VK_NULL_HANDLE),
       textureImageView(VK_NULL_HANDLE),
       textureSampler(VK_NULL_HANDLE),
       filterMode(VK_FILTER_LINEAR),
@@ -44,11 +44,7 @@ Texture::~Texture() {
     }
     
     if (textureImage != VK_NULL_HANDLE) {
-        vkDestroyImage(device->getDevice(), textureImage, nullptr);
-    }
-    
-    if (textureImageMemory != VK_NULL_HANDLE) {
-        vkFreeMemory(device->getDevice(), textureImageMemory, nullptr);
+        vmaDestroyImage(device->getAllocator(), textureImage, textureImageAllocation);
     }
 }
 
@@ -61,47 +57,28 @@ void Texture::createFromData(const unsigned char* pixels, size_t imageSize, int 
     VkDeviceSize bufferSize = imageSize;
     
     VkBuffer stagingBuffer;
-    VkDeviceMemory stagingBufferMemory;
+    VmaAllocation stagingAllocation;
     
-    // 创建 staging buffer
     VkBufferCreateInfo bufferInfo{};
     bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
     bufferInfo.size = bufferSize;
     bufferInfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
     bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
     
-    if (vkCreateBuffer(device->getDevice(), &bufferInfo, nullptr, &stagingBuffer) != VK_SUCCESS) {
+    VmaAllocationCreateInfo stagingAllocInfo = {};
+    stagingAllocInfo.usage = VMA_MEMORY_USAGE_AUTO_PREFER_HOST;
+    stagingAllocInfo.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
+    
+    VmaAllocationInfo stagingAllocInfoOut;
+    if (vmaCreateBuffer(device->getAllocator(), &bufferInfo, &stagingAllocInfo, &stagingBuffer, &stagingAllocation, &stagingAllocInfoOut) != VK_SUCCESS) {
         throw std::runtime_error("Texture: Failed to create staging buffer");
     }
     
-    // 分配 staging buffer 内存
-    VkMemoryRequirements memRequirements;
-    vkGetBufferMemoryRequirements(device->getDevice(), stagingBuffer, &memRequirements);
-    
-    VkMemoryAllocateInfo allocInfo{};
-    allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-    allocInfo.allocationSize = memRequirements.size;
-    allocInfo.memoryTypeIndex = device->findMemoryType(memRequirements.memoryTypeBits, 
-                                                       VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | 
-                                                       VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-    
-    if (vkAllocateMemory(device->getDevice(), &allocInfo, nullptr, &stagingBufferMemory) != VK_SUCCESS) {
-        vkDestroyBuffer(device->getDevice(), stagingBuffer, nullptr);
-        throw std::runtime_error("Texture: Failed to allocate staging buffer memory");
-    }
-    
-    vkBindBufferMemory(device->getDevice(), stagingBuffer, stagingBufferMemory, 0);
-    
-    // 复制数据到 staging buffer
-    void* data;
-    vkMapMemory(device->getDevice(), stagingBufferMemory, 0, bufferSize, 0, &data);
-    memcpy(data, pixels, static_cast<size_t>(bufferSize));
-    vkUnmapMemory(device->getDevice(), stagingBufferMemory);
+    memcpy(stagingAllocInfoOut.pMappedData, pixels, static_cast<size_t>(bufferSize));
     
     // 2. 创建纹理图像（device local）
     createImage(VK_IMAGE_TILING_OPTIMAL,
-               VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
-               VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+               VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT);
     
     // 3. 过渡图像布局并复制数据
     transitionImageLayout(VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
@@ -124,8 +101,7 @@ void Texture::createFromData(const unsigned char* pixels, size_t imageSize, int 
     createSampler();
     
     // 6. 清理 staging buffer
-    vkDestroyBuffer(device->getDevice(), stagingBuffer, nullptr);
-    vkFreeMemory(device->getDevice(), stagingBufferMemory, nullptr);
+    vmaDestroyBuffer(device->getAllocator(), stagingBuffer, stagingAllocation);
 }
 
 void Texture::generateMipmaps() {
@@ -250,8 +226,7 @@ void Texture::setSamplerParameters(VkFilter filterMode,
 }
 
 void Texture::createImage(VkImageTiling tiling, 
-                         VkImageUsageFlags usage, 
-                         VkMemoryPropertyFlags properties) {
+                         VkImageUsageFlags usage) {
     VkImageCreateInfo imageInfo{};
     imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
     imageInfo.imageType = VK_IMAGE_TYPE_2D;
@@ -267,25 +242,12 @@ void Texture::createImage(VkImageTiling tiling,
     imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
     imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
     
-    if (vkCreateImage(device->getDevice(), &imageInfo, nullptr, &textureImage) != VK_SUCCESS) {
+    VmaAllocationCreateInfo allocInfo = {};
+    allocInfo.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
+    
+    if (vmaCreateImage(device->getAllocator(), &imageInfo, &allocInfo, &textureImage, &textureImageAllocation, nullptr) != VK_SUCCESS) {
         throw std::runtime_error("Texture: Failed to create image");
     }
-    
-    // 分配图像内存
-    VkMemoryRequirements memRequirements;
-    vkGetImageMemoryRequirements(device->getDevice(), textureImage, &memRequirements);
-    
-    VkMemoryAllocateInfo allocInfo{};
-    allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-    allocInfo.allocationSize = memRequirements.size;
-    allocInfo.memoryTypeIndex = device->findMemoryType(memRequirements.memoryTypeBits, properties);
-    
-    if (vkAllocateMemory(device->getDevice(), &allocInfo, nullptr, &textureImageMemory) != VK_SUCCESS) {
-        vkDestroyImage(device->getDevice(), textureImage, nullptr);
-        throw std::runtime_error("Texture: Failed to allocate image memory");
-    }
-    
-    vkBindImageMemory(device->getDevice(), textureImage, textureImageMemory, 0);
 }
 
 void Texture::createImageView() {

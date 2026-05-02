@@ -809,11 +809,11 @@ void GrassSystem::createPipeline(VkRenderPass renderPass, VkExtent2D extent,
 }
 
 void GrassSystem::createSingleLodBuffers(int lod) {
-    VkDevice dev = device_->getDevice();
+    VmaAllocator allocator = device_->getAllocator();
     VkDeviceSize vbSize = sizeof(GrassVertex) * lodVertices_[lod].size();
     VkDeviceSize ibSize = sizeof(uint32_t) * lodIndices_[lod].size();
 
-    auto uploadBuffer = [&](VkBuffer& buf, VkDeviceMemory& mem,
+    auto uploadBuffer = [&](VkBuffer& buf, VmaAllocation& alloc,
                             VkDeviceSize size, VkBufferUsageFlags usage,
                             const void* data) {
         VkBufferCreateInfo info{};
@@ -821,38 +821,29 @@ void GrassSystem::createSingleLodBuffers(int lod) {
         info.size = size;
         info.usage = usage;
         info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-        if (vkCreateBuffer(dev, &info, nullptr, &buf) != VK_SUCCESS) return false;
 
-        VkMemoryRequirements req;
-        vkGetBufferMemoryRequirements(dev, buf, &req);
-        VkMemoryAllocateInfo alloc{};
-        alloc.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-        alloc.allocationSize = req.size;
-        alloc.memoryTypeIndex = device_->findMemoryType(
-            req.memoryTypeBits,
-            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-        if (vkAllocateMemory(dev, &alloc, nullptr, &mem) != VK_SUCCESS) return false;
-        vkBindBufferMemory(dev, buf, mem, 0);
+        VmaAllocationCreateInfo allocInfo{};
+        allocInfo.usage = VMA_MEMORY_USAGE_AUTO_PREFER_HOST;
+        allocInfo.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
+        VmaAllocationInfo allocOut;
+        if (vmaCreateBuffer(allocator, &info, &allocInfo, &buf, &alloc, &allocOut) != VK_SUCCESS) return false;
 
         if (data && size > 0) {
-            void* mapped;
-            vkMapMemory(dev, mem, 0, VK_WHOLE_SIZE, 0, &mapped);
-            memcpy(mapped, data, static_cast<size_t>(size));
-            vkUnmapMemory(dev, mem);
+            memcpy(allocOut.pMappedData, data, static_cast<size_t>(size));
         }
         return true;
     };
 
-    uploadBuffer(lodVertexBuffers_[lod], lodVertexBufferMemories_[lod],
+    uploadBuffer(lodVertexBuffers_[lod], lodVertexBufferAllocations_[lod],
                  vbSize, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
                  lodVertices_[lod].data());
-    uploadBuffer(lodIndexBuffers_[lod], lodIndexBufferMemories_[lod],
+    uploadBuffer(lodIndexBuffers_[lod], lodIndexBufferAllocations_[lod],
                  ibSize, VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
                  lodIndices_[lod].data());
 }
 
 void GrassSystem::createInstanceBuffer(int maxBlades) {
-    VkDevice dev = device_->getDevice();
+    VmaAllocator allocator = device_->getAllocator();
     VkDeviceSize size = sizeof(GrassInstanceData) * maxBlades;
 
     VkBufferCreateInfo info{};
@@ -861,52 +852,50 @@ void GrassSystem::createInstanceBuffer(int maxBlades) {
     info.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
     info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
+    VmaAllocationCreateInfo allocInfo{};
+    allocInfo.usage = VMA_MEMORY_USAGE_AUTO_PREFER_HOST;
+    allocInfo.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
+
     for (int i = 0; i < INSTANCE_BUFFER_COUNT; i++) {
-        if (vkCreateBuffer(dev, &info, nullptr, &instanceBuffers_[i]) != VK_SUCCESS) {
+        VmaAllocationInfo allocOut;
+        if (vmaCreateBuffer(allocator, &info, &allocInfo, &instanceBuffers_[i], &instanceBufferAllocations_[i], &allocOut) != VK_SUCCESS) {
             Logger::error("[GrassSystem] 实例缓冲 " + std::to_string(i) + " 创建失败");
             return;
         }
-        VkMemoryRequirements req;
-        vkGetBufferMemoryRequirements(dev, instanceBuffers_[i], &req);
-        VkMemoryAllocateInfo alloc{};
-        alloc.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-        alloc.allocationSize = req.size;
-        alloc.memoryTypeIndex = device_->findMemoryType(
-            req.memoryTypeBits,
-            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-        if (vkAllocateMemory(dev, &alloc, nullptr, &instanceBufferMemories_[i]) != VK_SUCCESS) {
-            Logger::error("[GrassSystem] 实例缓冲内存 " + std::to_string(i) + " 分配失败");
-            return;
-        }
-        vkBindBufferMemory(dev, instanceBuffers_[i], instanceBufferMemories_[i], 0);
-        vkMapMemory(dev, instanceBufferMemories_[i], 0, VK_WHOLE_SIZE, 0, &mappedInstanceDatas_[i]);
+        mappedInstanceDatas_[i] = allocOut.pMappedData;
     }
     instanceBufferCapacity_ = maxBlades;
     currentInstanceBuffer_ = 0;
 }
 
 void GrassSystem::cleanup() {
+    VmaAllocator allocator = device_->getAllocator();
     VkDevice dev = device_->getDevice();
 
     if (pipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(dev, pipeline_, nullptr); pipeline_ = VK_NULL_HANDLE; }
     if (pipelineLayout_ != VK_NULL_HANDLE) { vkDestroyPipelineLayout(dev, pipelineLayout_, nullptr); pipelineLayout_ = VK_NULL_HANDLE; }
 
-    // 清理三层 LOD 的顶点/索引缓冲
-    auto destroyBuf = [&](VkBuffer& b, VkDeviceMemory& m) {
-        if (b != VK_NULL_HANDLE) { vkDestroyBuffer(dev, b, nullptr); b = VK_NULL_HANDLE; }
-        if (m != VK_NULL_HANDLE) { vkFreeMemory(dev, m, nullptr); m = VK_NULL_HANDLE; }
-    };
+    // 清理四层 LOD 的顶点/索引缓冲
     for (int lod = 0; lod < LOD_COUNT; lod++) {
-        destroyBuf(lodVertexBuffers_[lod], lodVertexBufferMemories_[lod]);
-        destroyBuf(lodIndexBuffers_[lod], lodIndexBufferMemories_[lod]);
+        if (lodVertexBuffers_[lod] != VK_NULL_HANDLE) {
+            vmaDestroyBuffer(allocator, lodVertexBuffers_[lod], lodVertexBufferAllocations_[lod]);
+            lodVertexBuffers_[lod] = VK_NULL_HANDLE;
+            lodVertexBufferAllocations_[lod] = VK_NULL_HANDLE;
+        }
+        if (lodIndexBuffers_[lod] != VK_NULL_HANDLE) {
+            vmaDestroyBuffer(allocator, lodIndexBuffers_[lod], lodIndexBufferAllocations_[lod]);
+            lodIndexBuffers_[lod] = VK_NULL_HANDLE;
+            lodIndexBufferAllocations_[lod] = VK_NULL_HANDLE;
+        }
     }
     // 清理双缓冲实例缓冲
     for (int i = 0; i < INSTANCE_BUFFER_COUNT; i++) {
-        if (mappedInstanceDatas_[i] != nullptr) {
-            vkUnmapMemory(dev, instanceBufferMemories_[i]);
-            mappedInstanceDatas_[i] = nullptr;
+        mappedInstanceDatas_[i] = nullptr;
+        if (instanceBuffers_[i] != VK_NULL_HANDLE) {
+            vmaDestroyBuffer(allocator, instanceBuffers_[i], instanceBufferAllocations_[i]);
+            instanceBuffers_[i] = VK_NULL_HANDLE;
+            instanceBufferAllocations_[i] = VK_NULL_HANDLE;
         }
-        destroyBuf(instanceBuffers_[i], instanceBufferMemories_[i]);
     }
 
     for (int lod = 0; lod < LOD_COUNT; lod++) {

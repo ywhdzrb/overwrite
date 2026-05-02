@@ -1,5 +1,6 @@
 #pragma once
 #include <vulkan/vulkan.h>
+#include <vk_mem_alloc.h>
 #include <memory>
 #include "core/vulkan_device.h"
 
@@ -38,7 +39,7 @@ private:
 
     // 低分辨率渲染目标
     VkImage colorImage_ = VK_NULL_HANDLE;
-    VkDeviceMemory colorMemory_ = VK_NULL_HANDLE;
+    VmaAllocation colorAllocation_ = VK_NULL_HANDLE;
     VkImageView colorView_ = VK_NULL_HANDLE;
 
     // EASU 管线
@@ -53,7 +54,7 @@ private:
     int currentFrameIndex_ = 0;
     VkSampler sampler_ = VK_NULL_HANDLE;
     VkBuffer constBuffer_ = VK_NULL_HANDLE;
-    VkDeviceMemory constBufferMemory_ = VK_NULL_HANDLE;
+    VmaAllocation constBufferAllocation_ = VK_NULL_HANDLE;
     uint32_t constData_[16] = {};
 
     bool initialized_ = false;

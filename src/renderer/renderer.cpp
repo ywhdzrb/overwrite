@@ -72,6 +72,7 @@ void Renderer::initVulkan() {
     
     auto queueIndices = vulkanInstance->getQueueFamilyIndices();
     vulkanDevice = std::make_shared<VulkanDevice>(
+        vulkanInstance->getInstance(),
         vulkanInstance->getPhysicalDevice(),
         vulkanInstance->getDevice(),
         vulkanInstance->getSurface(),
@@ -804,10 +805,9 @@ void Renderer::cleanup() {
 
     // 清理描述符集资源
     if (lightUniformBuffer != VK_NULL_HANDLE) {
-        vkDestroyBuffer(vulkanDevice->getDevice(), lightUniformBuffer, nullptr);
-    }
-    if (lightUniformBufferMemory != VK_NULL_HANDLE) {
-        vkFreeMemory(vulkanDevice->getDevice(), lightUniformBufferMemory, nullptr);
+        vmaDestroyBuffer(vulkanDevice->getAllocator(), lightUniformBuffer, lightUniformBufferAllocation);
+        lightUniformBuffer = VK_NULL_HANDLE;
+        lightUniformBufferAllocation = VK_NULL_HANDLE;
     }
     if (descriptorPool != VK_NULL_HANDLE) {
         vkDestroyDescriptorPool(vulkanDevice->getDevice(), descriptorPool, nullptr);
@@ -860,24 +860,11 @@ void Renderer::createColorResources() {
     imageInfo.samples = msaaSamples;
     imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
     
-    if (vkCreateImage(vulkanDevice->getDevice(), &imageInfo, nullptr, &colorImage) != VK_SUCCESS) {
+    VmaAllocationCreateInfo allocInfo{};
+    allocInfo.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
+    if (vmaCreateImage(vulkanDevice->getAllocator(), &imageInfo, &allocInfo, &colorImage, &colorImageAllocation, nullptr) != VK_SUCCESS) {
         throw std::runtime_error("failed to create color image!");
     }
-    
-    VkMemoryRequirements memRequirements;
-    vkGetImageMemoryRequirements(vulkanDevice->getDevice(), colorImage, &memRequirements);
-    
-    VkMemoryAllocateInfo allocInfo{};
-    allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-    allocInfo.allocationSize = memRequirements.size;
-    allocInfo.memoryTypeIndex = vulkanDevice->findMemoryType(memRequirements.memoryTypeBits, 
-                                                       VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-    
-    if (vkAllocateMemory(vulkanDevice->getDevice(), &allocInfo, nullptr, &colorImageMemory) != VK_SUCCESS) {
-        throw std::runtime_error("failed to allocate color image memory!");
-    }
-    
-    vkBindImageMemory(vulkanDevice->getDevice(), colorImage, colorImageMemory, 0);
     
     VkImageViewCreateInfo imageViewInfo{};
     imageViewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
@@ -903,12 +890,9 @@ void Renderer::cleanupColorResources() {
         colorImageView = VK_NULL_HANDLE;
     }
     if (colorImage != VK_NULL_HANDLE) {
-        vkDestroyImage(vulkanDevice->getDevice(), colorImage, nullptr);
+        vmaDestroyImage(vulkanDevice->getAllocator(), colorImage, colorImageAllocation);
         colorImage = VK_NULL_HANDLE;
-    }
-    if (colorImageMemory != VK_NULL_HANDLE) {
-        vkFreeMemory(vulkanDevice->getDevice(), colorImageMemory, nullptr);
-        colorImageMemory = VK_NULL_HANDLE;
+        colorImageAllocation = VK_NULL_HANDLE;
     }
 }
 
@@ -1052,25 +1036,14 @@ void Renderer::createDescriptorSets() {
     bufferInfo.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
     bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
-    if (vkCreateBuffer(vulkanDevice->getDevice(), &bufferInfo, nullptr, &lightUniformBuffer) != VK_SUCCESS) {
+    VmaAllocationCreateInfo allocInfo{};
+    allocInfo.usage = VMA_MEMORY_USAGE_AUTO_PREFER_HOST;
+    allocInfo.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
+    VmaAllocationInfo allocOut;
+    if (vmaCreateBuffer(vulkanDevice->getAllocator(), &bufferInfo, &allocInfo, &lightUniformBuffer, &lightUniformBufferAllocation, &allocOut) != VK_SUCCESS) {
         throw std::runtime_error("failed to create light uniform buffer!");
     }
-
-    VkMemoryRequirements memRequirements;
-    vkGetBufferMemoryRequirements(vulkanDevice->getDevice(), lightUniformBuffer, &memRequirements);
-
-    VkMemoryAllocateInfo allocInfo{};
-    allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-    allocInfo.allocationSize = memRequirements.size;
-    allocInfo.memoryTypeIndex = vulkanDevice->findMemoryType(memRequirements.memoryTypeBits, 
-                                                          VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-
-    if (vkAllocateMemory(vulkanDevice->getDevice(), &allocInfo, nullptr, &lightUniformBufferMemory) != VK_SUCCESS) {
-        vkDestroyBuffer(vulkanDevice->getDevice(), lightUniformBuffer, nullptr);
-        throw std::runtime_error("failed to allocate light uniform buffer memory!");
-    }
-
-    vkBindBufferMemory(vulkanDevice->getDevice(), lightUniformBuffer, lightUniformBufferMemory, 0);
+    lightUniformBufferMapped_ = allocOut.pMappedData;
 
     // 3. 创建光源描述符集
     VkDescriptorSetAllocateInfo lightAllocInfo{};
@@ -1119,11 +1092,9 @@ void Renderer::updateLightUniformBuffer() {
     size_t padding2Size = 4;  // 4 bytes padding (16字节对齐)
     size_t totalSize = lightsSize + lightCountSize + padding1Size + ambientSize + padding2Size;  // 1568 bytes
 
-    // 映射 uniform buffer
-    void* data;
-    vkMapMemory(vulkanDevice->getDevice(), lightUniformBufferMemory, 0, totalSize, 0, &data);
+    // 使用持久映射指针
+    void* data = lightUniformBufferMapped_;
 
-    // 复制光源数据
     memcpy(data, lights.data(), lightsSize);
     memcpy(static_cast<char*>(data) + lightsSize, &lightCount, lightCountSize);
 
@@ -1135,8 +1106,6 @@ void Renderer::updateLightUniformBuffer() {
 
     // 添加 4 字节 padding
     memset(static_cast<char*>(data) + lightsSize + lightCountSize + padding1Size + ambientSize, 0, padding2Size);
-
-    vkUnmapMemory(vulkanDevice->getDevice(), lightUniformBufferMemory);
 }
 
 // ==================== 场景配置加载 ====================

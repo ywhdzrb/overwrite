@@ -13,6 +13,7 @@
 | `nlohmann_json/` | [JSON for Modern C++](https://github.com/nlohmann/json) | JSON 序列化/反序列化（配置 + 网络协议） | MIT |
 | `tinygltf/` | [TinyGLTF](https://github.com/syoyo/tinygltf) | glTF 2.0 模型加载 | MIT |
 | `tinyobjloader/` | [TinyOBJLoader](https://github.com/tinyobjloader/tinyobjloader) | OBJ 模型加载（回退格式） | MIT |
+| `vma/` | [VulkanMemoryAllocator](https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator) | Vulkan 内存分配器（自动内存池/类型选择） | MIT |
 
 ## 注意事项
 

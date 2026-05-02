@@ -22,12 +22,13 @@ Mesh::~Mesh() {
 }
 
 // 创建顶点缓冲区
-// 使用临时缓冲区将顶点数据上传到设备本地内存
+// 使用暂存缓冲区将顶点数据上传到设备本地内存（VMA 托管内存分配）
 void Mesh::createVertexBuffer(const std::vector<Vertex>& vertices) {
     VkDeviceSize bufferSize = sizeof(vertices[0]) * vertices.size();
     
+    // 创建暂存缓冲区（VMA 托管，HOST_VISIBLE 可映射）
     VkBuffer stagingBuffer;
-    VkDeviceMemory stagingBufferMemory;
+    VmaAllocation stagingAllocation;
     
     VkBufferCreateInfo bufferInfo{};
     bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
@@ -35,61 +36,45 @@ void Mesh::createVertexBuffer(const std::vector<Vertex>& vertices) {
     bufferInfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
     bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
     
-    if (vkCreateBuffer(device->getDevice(), &bufferInfo, nullptr, &stagingBuffer) != VK_SUCCESS) {
+    VmaAllocationCreateInfo allocInfo = {};
+    allocInfo.usage = VMA_MEMORY_USAGE_AUTO_PREFER_HOST;
+    allocInfo.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
+    
+    VmaAllocationInfo allocInfoOut;
+    if (vmaCreateBuffer(device->getAllocator(), &bufferInfo, &allocInfo, &stagingBuffer, &stagingAllocation, &allocInfoOut) != VK_SUCCESS) {
         throw std::runtime_error("failed to create vertex buffer!");
     }
     
-    VkMemoryRequirements memRequirements;
-    vkGetBufferMemoryRequirements(device->getDevice(), stagingBuffer, &memRequirements);
+    // 复制顶点数据到暂存缓冲区
+    memcpy(allocInfoOut.pMappedData, vertices.data(), (size_t) bufferSize);
     
-    VkMemoryAllocateInfo allocInfo{};
-    allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-    allocInfo.allocationSize = memRequirements.size;
-    allocInfo.memoryTypeIndex = device->findMemoryType(memRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-    
-    if (vkAllocateMemory(device->getDevice(), &allocInfo, nullptr, &stagingBufferMemory) != VK_SUCCESS) {
-        throw std::runtime_error("failed to allocate vertex buffer memory!");
-    }
-    
-    vkBindBufferMemory(device->getDevice(), stagingBuffer, stagingBufferMemory, 0);
-    
-    void* data;
-    vkMapMemory(device->getDevice(), stagingBufferMemory, 0, bufferSize, 0, &data);
-    memcpy(data, vertices.data(), (size_t) bufferSize);
-    vkUnmapMemory(device->getDevice(), stagingBufferMemory);
-    
+    // 创建设备本地顶点缓冲区（VMA 托管，DEVICE_LOCAL）
     bufferInfo.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
     
-    if (vkCreateBuffer(device->getDevice(), &bufferInfo, nullptr, &vertexBuffer) != VK_SUCCESS) {
+    allocInfo.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
+    allocInfo.flags = 0;
+    
+    if (vmaCreateBuffer(device->getAllocator(), &bufferInfo, &allocInfo, &vertexBuffer, &vertexBufferAllocation, nullptr) != VK_SUCCESS) {
         throw std::runtime_error("failed to create vertex buffer!");
     }
     
-    vkGetBufferMemoryRequirements(device->getDevice(), vertexBuffer, &memRequirements);
-    
-    allocInfo.allocationSize = memRequirements.size;
-    allocInfo.memoryTypeIndex = device->findMemoryType(memRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-    
-    if (vkAllocateMemory(device->getDevice(), &allocInfo, nullptr, &vertexBufferMemory) != VK_SUCCESS) {
-        throw std::runtime_error("failed to allocate vertex buffer memory!");
-    }
-    
-    vkBindBufferMemory(device->getDevice(), vertexBuffer, vertexBufferMemory, 0);
-    
+    // 通过命令缓冲区将数据从暂存缓冲区复制到设备本地缓冲区
     VkCommandBuffer commandBuffer = device->beginSingleTimeCommands();
     VkBufferCopy copyRegion{};
     copyRegion.size = bufferSize;
     vkCmdCopyBuffer(commandBuffer, stagingBuffer, vertexBuffer, 1, &copyRegion);
     device->endSingleTimeCommands(commandBuffer);
     
-    vkDestroyBuffer(device->getDevice(), stagingBuffer, nullptr);
-    vkFreeMemory(device->getDevice(), stagingBufferMemory, nullptr);
+    // 销毁暂存缓冲区及其 VMA 分配
+    vmaDestroyBuffer(device->getAllocator(), stagingBuffer, stagingAllocation);
 }
 
 void Mesh::createIndexBuffer(const std::vector<uint32_t>& indices) {
     VkDeviceSize bufferSize = sizeof(indices[0]) * indices.size();
     
+    // 创建暂存缓冲区（VMA 托管，HOST_VISIBLE 可映射）
     VkBuffer stagingBuffer;
-    VkDeviceMemory stagingBufferMemory;
+    VmaAllocation stagingAllocation;
     
     VkBufferCreateInfo bufferInfo{};
     bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
@@ -97,54 +82,37 @@ void Mesh::createIndexBuffer(const std::vector<uint32_t>& indices) {
     bufferInfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
     bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
     
-    if (vkCreateBuffer(device->getDevice(), &bufferInfo, nullptr, &stagingBuffer) != VK_SUCCESS) {
+    VmaAllocationCreateInfo allocInfo = {};
+    allocInfo.usage = VMA_MEMORY_USAGE_AUTO_PREFER_HOST;
+    allocInfo.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
+    
+    VmaAllocationInfo allocInfoOut;
+    if (vmaCreateBuffer(device->getAllocator(), &bufferInfo, &allocInfo, &stagingBuffer, &stagingAllocation, &allocInfoOut) != VK_SUCCESS) {
         throw std::runtime_error("failed to create index buffer!");
     }
     
-    VkMemoryRequirements memRequirements;
-    vkGetBufferMemoryRequirements(device->getDevice(), stagingBuffer, &memRequirements);
+    // 复制索引数据到暂存缓冲区
+    memcpy(allocInfoOut.pMappedData, indices.data(), (size_t) bufferSize);
     
-    VkMemoryAllocateInfo allocInfo{};
-    allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-    allocInfo.allocationSize = memRequirements.size;
-    allocInfo.memoryTypeIndex = device->findMemoryType(memRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-    
-    if (vkAllocateMemory(device->getDevice(), &allocInfo, nullptr, &stagingBufferMemory) != VK_SUCCESS) {
-        throw std::runtime_error("failed to allocate index buffer memory!");
-    }
-    
-    vkBindBufferMemory(device->getDevice(), stagingBuffer, stagingBufferMemory, 0);
-    
-    void* data;
-    vkMapMemory(device->getDevice(), stagingBufferMemory, 0, bufferSize, 0, &data);
-    memcpy(data, indices.data(), (size_t) bufferSize);
-    vkUnmapMemory(device->getDevice(), stagingBufferMemory);
-    
+    // 创建设备本地索引缓冲区（VMA 托管，DEVICE_LOCAL）
     bufferInfo.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
     
-    if (vkCreateBuffer(device->getDevice(), &bufferInfo, nullptr, &indexBuffer) != VK_SUCCESS) {
+    allocInfo.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
+    allocInfo.flags = 0;
+    
+    if (vmaCreateBuffer(device->getAllocator(), &bufferInfo, &allocInfo, &indexBuffer, &indexBufferAllocation, nullptr) != VK_SUCCESS) {
         throw std::runtime_error("failed to create index buffer!");
     }
     
-    vkGetBufferMemoryRequirements(device->getDevice(), indexBuffer, &memRequirements);
-    
-    allocInfo.allocationSize = memRequirements.size;
-    allocInfo.memoryTypeIndex = device->findMemoryType(memRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-    
-    if (vkAllocateMemory(device->getDevice(), &allocInfo, nullptr, &indexBufferMemory) != VK_SUCCESS) {
-        throw std::runtime_error("failed to allocate index buffer memory!");
-    }
-    
-    vkBindBufferMemory(device->getDevice(), indexBuffer, indexBufferMemory, 0);
-    
+    // 通过命令缓冲区将数据从暂存缓冲区复制到设备本地缓冲区
     VkCommandBuffer commandBuffer = device->beginSingleTimeCommands();
     VkBufferCopy copyRegion{};
     copyRegion.size = bufferSize;
     vkCmdCopyBuffer(commandBuffer, stagingBuffer, indexBuffer, 1, &copyRegion);
     device->endSingleTimeCommands(commandBuffer);
     
-    vkDestroyBuffer(device->getDevice(), stagingBuffer, nullptr);
-    vkFreeMemory(device->getDevice(), stagingBufferMemory, nullptr);
+    // 销毁暂存缓冲区及其 VMA 分配
+    vmaDestroyBuffer(device->getAllocator(), stagingBuffer, stagingAllocation);
 }
 
 void Mesh::bind(VkCommandBuffer commandBuffer) const {
@@ -159,31 +127,20 @@ void Mesh::draw(VkCommandBuffer commandBuffer) const {
 }
 
 void Mesh::cleanup() {
-    // 检查device是否有效
+    // 检查 device 是否有效
     if (!device) {
         return;
     }
     
-    VkDevice vkDevice = device->getDevice();
-    if (vkDevice == VK_NULL_HANDLE) {
-        return;
-    }
-    
     if (indexBuffer != VK_NULL_HANDLE) {
-        vkDestroyBuffer(vkDevice, indexBuffer, nullptr);
+        vmaDestroyBuffer(device->getAllocator(), indexBuffer, indexBufferAllocation);
         indexBuffer = VK_NULL_HANDLE;
-    }
-    if (indexBufferMemory != VK_NULL_HANDLE) {
-        vkFreeMemory(vkDevice, indexBufferMemory, nullptr);
-        indexBufferMemory = VK_NULL_HANDLE;
+        indexBufferAllocation = VK_NULL_HANDLE;
     }
     if (vertexBuffer != VK_NULL_HANDLE) {
-        vkDestroyBuffer(vkDevice, vertexBuffer, nullptr);
+        vmaDestroyBuffer(device->getAllocator(), vertexBuffer, vertexBufferAllocation);
         vertexBuffer = VK_NULL_HANDLE;
-    }
-    if (vertexBufferMemory != VK_NULL_HANDLE) {
-        vkFreeMemory(vkDevice, vertexBufferMemory, nullptr);
-        vertexBufferMemory = VK_NULL_HANDLE;
+        vertexBufferAllocation = VK_NULL_HANDLE;
     }
 }
 

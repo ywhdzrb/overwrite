@@ -1,6 +1,7 @@
 #pragma once
 
 #include <vulkan/vulkan.h>
+#include <vk_mem_alloc.h>
 #include <string>
 #include <memory>
 
@@ -119,8 +120,7 @@ private:
      * @return 创建的图像
      */
     void createImage(VkImageTiling tiling, 
-                    VkImageUsageFlags usage, 
-                    VkMemoryPropertyFlags properties);
+                    VkImageUsageFlags usage);
 
     /**
      * @brief 创建图像视图
@@ -155,7 +155,7 @@ private:
 private:
     std::shared_ptr<class VulkanDevice> device;  // Vulkan 设备
     VkImage textureImage;                         // 纹理图像
-    VkDeviceMemory textureImageMemory;            // 纹理图像内存
+    VmaAllocation textureImageAllocation;         // 纹理图像内存
     VkImageView textureImageView;                 // 纹理图像视图
     VkSampler textureSampler;                     // 纹理采样器
 

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <vulkan/vulkan.h>
+#include <vk_mem_alloc.h>
 #include <glm/glm.hpp>
 #include <memory>
 #include <vector>
@@ -316,16 +317,16 @@ private:
     VkPipeline pipeline_ = VK_NULL_HANDLE;
     VkPipelineLayout pipelineLayout_ = VK_NULL_HANDLE;
 
-    // 三层 LOD 的草茎网格缓冲
+    // 四层 LOD 的草茎网格缓冲
     std::array<VkBuffer, LOD_COUNT> lodVertexBuffers_ = {};
-    std::array<VkDeviceMemory, LOD_COUNT> lodVertexBufferMemories_ = {};
+    std::array<VmaAllocation, LOD_COUNT> lodVertexBufferAllocations_ = {};
     std::array<VkBuffer, LOD_COUNT> lodIndexBuffers_ = {};
-    std::array<VkDeviceMemory, LOD_COUNT> lodIndexBufferMemories_ = {};
+    std::array<VmaAllocation, LOD_COUNT> lodIndexBufferAllocations_ = {};
 
     // 实例数据缓冲（双缓冲，避免 GPU/CPU 数据竞争）
     static constexpr int INSTANCE_BUFFER_COUNT = 2;
     std::array<VkBuffer, INSTANCE_BUFFER_COUNT> instanceBuffers_ = {};
-    std::array<VkDeviceMemory, INSTANCE_BUFFER_COUNT> instanceBufferMemories_ = {};
+    std::array<VmaAllocation, INSTANCE_BUFFER_COUNT> instanceBufferAllocations_ = {};
     std::array<void*, INSTANCE_BUFFER_COUNT> mappedInstanceDatas_ = {};
     int instanceBufferCapacity_ = 0;   // 当前每个缓冲可容纳的最大实例数
     int currentInstanceBuffer_ = 0;    // 当前帧写入的缓冲索引

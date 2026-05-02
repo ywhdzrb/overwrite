@@ -24,6 +24,7 @@
 //   - perm 向量在构造函数中一次性初始化，之后永不修改
 
 #include <vulkan/vulkan.h>
+#include <vk_mem_alloc.h>
 #include <glm/glm.hpp>
 #include <memory>
 #include <unordered_map>
@@ -51,9 +52,9 @@ struct TerrainChunk {
     int chunkX;
     int chunkZ;
     VkBuffer vertexBuffer = VK_NULL_HANDLE;
-    VkDeviceMemory vertexBufferMemory = VK_NULL_HANDLE;
+    VmaAllocation vertexBufferAllocation = VK_NULL_HANDLE;
     VkBuffer indexBuffer = VK_NULL_HANDLE;
-    VkDeviceMemory indexBufferMemory = VK_NULL_HANDLE;
+    VmaAllocation indexBufferAllocation = VK_NULL_HANDLE;
     uint32_t indexCount = 0;
     bool isValid = false;
     int poolSlot = -1;  // 缓冲池槽位索引，-1 表示未分配
@@ -129,9 +130,11 @@ private:
     // 缓冲池槽：预分配的一组 vertex + index 缓冲区，避免运行时反复 vkCreateBuffer/vkAllocateMemory
     struct BufferPoolSlot {
         VkBuffer vertexBuffer = VK_NULL_HANDLE;
-        VkDeviceMemory vertexBufferMemory = VK_NULL_HANDLE;
+        VmaAllocation vertexBufferAllocation = VK_NULL_HANDLE;
+        void* vertexMappedData = nullptr;
         VkBuffer indexBuffer = VK_NULL_HANDLE;
-        VkDeviceMemory indexBufferMemory = VK_NULL_HANDLE;
+        VmaAllocation indexBufferAllocation = VK_NULL_HANDLE;
+        void* indexMappedData = nullptr;
         bool inUse = false;
     };
     static constexpr int BUFFER_POOL_SIZE = 512;  // 覆盖 renderRadius ≈ 314 区块 + 余量
