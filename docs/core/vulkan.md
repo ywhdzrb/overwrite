@@ -7,7 +7,7 @@
 | 类名 | 文件 | 描述 |
 |------|------|------|
 | `VulkanInstance` | `include/core/vulkan_instance.h` | Vulkan 实例和设备管理 |
-| `VulkanDevice` | `include/core/vulkan_device.h` | 逻辑设备和队列管理 |
+| `VulkanDevice` | `include/core/vulkan_device.h` | 逻辑设备、队列管理、VMA 内存分配器 |
 | `VulkanSwapchain` | `include/core/vulkan_swapchain.h` | 交换链管理 |
 | `VulkanRenderPass` | `include/core/vulkan_render_pass.h` | 渲染通道 |
 | `VulkanPipeline` | `include/core/vulkan_pipeline.h` | 图形管线 |
@@ -97,7 +97,8 @@ struct SwapChainSupportDetails {
 ```cpp
 class VulkanDevice {
 public:
-    VulkanDevice(VkPhysicalDevice physicalDevice, VkDevice device, VkSurfaceKHR surface);
+    VulkanDevice(VkInstance instance, VkPhysicalDevice physicalDevice, VkDevice device, VkSurfaceKHR surface,
+                 uint32_t graphicsQueueFamily, uint32_t presentQueueFamily);
     ~VulkanDevice();
     
     // 禁止拷贝
@@ -111,7 +112,6 @@ public:
     VkExtent2D chooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities, GLFWwindow* window) const;
     
     // 内存和命令
-    uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties) const;
     VkCommandBuffer beginSingleTimeCommands() const;
     void endSingleTimeCommands(VkCommandBuffer commandBuffer) const;
     
@@ -133,10 +133,41 @@ public:
     VkQueue getGraphicsQueue() const;
     VkQueue getPresentQueue() const;
     uint32_t getGraphicsQueueFamily() const;
+    uint32_t getPresentQueueFamily() const;
     VkCommandPool getCommandPool() const;
+    VmaAllocator getAllocator() const;    // VMA 内存分配器
     VkImage getDepthImage() const;
     VkImageView getDepthImageView() const;
 };
+```
+
+### VMA（Vulkan Memory Allocator）
+
+VulkanDevice 在构造时自动初始化 VmaAllocator，替代项目中原有的裸 `vkAllocateMemory`/`vkFreeMemory` 调用。
+
+- 所有渲染器统一通过 `device->getAllocator()` 获取 VMA 实例
+- 缓冲区创建用 `vmaCreateBuffer()`，图像创建用 `vmaCreateImage()`
+- VMA 自动处理内存池化、类型选择、映射管理，无需手动 `vkGetBufferMemoryRequirements`/`vkBindBufferMemory`
+- 详细用法见 [VMA 文档](https://gpuopen-librariesandsdks.github.io/VulkanMemoryAllocator/html/)
+
+#### 使用示例
+
+```cpp
+// 创建设备本地缓冲区
+VkBufferCreateInfo bufferInfo{};
+bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+bufferInfo.size = bufferSize;
+bufferInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+
+VmaAllocationCreateInfo allocInfo{};
+allocInfo.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
+
+VkBuffer buffer;
+VmaAllocation allocation;
+vmaCreateBuffer(device->getAllocator(), &bufferInfo, &allocInfo, &buffer, &allocation, nullptr);
+
+// 清理
+vmaDestroyBuffer(device->getAllocator(), buffer, allocation);
 ```
 
 ---
@@ -361,11 +392,15 @@ public:
 auto vulkanInstance = std::make_shared<VulkanInstance>();
 vulkanInstance->initialize(window);
 
-// 2. 创建设备包装器
+// 2. 创建设备包装器（传入 VkInstance 以初始化 VMA）
+auto queueIndices = vulkanInstance->getQueueFamilyIndices();
 auto vulkanDevice = std::make_shared<VulkanDevice>(
+    vulkanInstance->getInstance(),
     vulkanInstance->getPhysicalDevice(),
     vulkanInstance->getDevice(),
-    vulkanInstance->getSurface()
+    vulkanInstance->getSurface(),
+    queueIndices.graphicsFamily.value(),
+    queueIndices.presentFamily.value()
 );
 
 // 3. 创建交换链
