@@ -1,10 +1,22 @@
 #pragma once
 
+/**
+ * @file vulkan_instance.h
+ * @brief Vulkan 实例管理 — 实例/物理设备/逻辑设备/表面创建与生命周期
+ *
+ * 归属模块：core
+ * 核心职责：封装 Vulkan 初始化流程，提供 instance/device/surface/queue 访问接口
+ * 依赖关系：Vulkan SDK、GLFW
+ * 关键设计：RAII 管理，资源在 initialize() 中创建，在 cleanup()/析构中销毁
+ *           支持 Debug 验证层（NDEBUG 条件编译），队列族索引通过 QueueFamilyIndices 结构体传递
+ */
+
+#include <optional>
+#include <string>
+#include <vector>
+
 #include <vulkan/vulkan.h>
 #include <GLFW/glfw3.h>
-#include <vector>
-#include <string>
-#include <optional>
 
 namespace owengine {
 
@@ -12,7 +24,7 @@ struct QueueFamilyIndices {
     std::optional<uint32_t> graphicsFamily;
     std::optional<uint32_t> presentFamily;
 
-    bool isComplete() const {
+    [[nodiscard]] bool isComplete() const noexcept {
         return graphicsFamily.has_value() && presentFamily.has_value();
     }
 };
@@ -29,14 +41,14 @@ public:
     void initialize(GLFWwindow* window);
     void cleanup();
 
-    VkInstance getInstance() const { return instance; }
-    VkPhysicalDevice getPhysicalDevice() const { return physicalDevice; }
-    VkDevice getDevice() const { return device; }
-    VkQueue getGraphicsQueue() const { return graphicsQueue; }
-    VkQueue getPresentQueue() const { return presentQueue; }
-    VkSurfaceKHR getSurface() const { return surface; }
+    [[nodiscard]] VkInstance getInstance() const noexcept { return instance_; }
+    [[nodiscard]] VkPhysicalDevice getPhysicalDevice() const noexcept { return physicalDevice_; }
+    [[nodiscard]] VkDevice getDevice() const noexcept { return device_; }
+    [[nodiscard]] VkQueue getGraphicsQueue() const noexcept { return graphicsQueue_; }
+    [[nodiscard]] VkQueue getPresentQueue() const noexcept { return presentQueue_; }
+    [[nodiscard]] VkSurfaceKHR getSurface() const noexcept { return surface_; }
     
-    QueueFamilyIndices getQueueFamilyIndices() const { return queueFamilyIndices; }
+    [[nodiscard]] QueueFamilyIndices getQueueFamilyIndices() const noexcept { return queueFamilyIndices_; }
 
 private:
     void createInstance();
@@ -45,35 +57,35 @@ private:
     void pickPhysicalDevice();
     void createLogicalDevice();
     
-    bool isDeviceSuitable(VkPhysicalDevice device);
+    [[nodiscard]] bool isDeviceSuitable(VkPhysicalDevice device);
     QueueFamilyIndices findQueueFamilies(VkPhysicalDevice device);
     
-    std::vector<const char*> getRequiredExtensions();
-    bool checkValidationLayerSupport();
+    [[nodiscard]] std::vector<const char*> getRequiredExtensions();
+    [[nodiscard]] bool checkValidationLayerSupport();
     
     void populateDebugMessengerCreateInfo(VkDebugUtilsMessengerCreateInfoEXT& createInfo);
-    
+
     // 成员变量
-    VkInstance instance = VK_NULL_HANDLE;
-    VkDebugUtilsMessengerEXT debugMessenger = VK_NULL_HANDLE;
-    VkSurfaceKHR surface = VK_NULL_HANDLE;
+    VkInstance instance_ = VK_NULL_HANDLE;
+    VkDebugUtilsMessengerEXT debugMessenger_ = VK_NULL_HANDLE;
+    VkSurfaceKHR surface_ = VK_NULL_HANDLE;
     
-    VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
-    VkDevice device = VK_NULL_HANDLE;
+    VkPhysicalDevice physicalDevice_ = VK_NULL_HANDLE;
+    VkDevice device_ = VK_NULL_HANDLE;
     
-    VkQueue graphicsQueue = VK_NULL_HANDLE;
-    VkQueue presentQueue = VK_NULL_HANDLE;
+    VkQueue graphicsQueue_ = VK_NULL_HANDLE;
+    VkQueue presentQueue_ = VK_NULL_HANDLE;
     
-    QueueFamilyIndices queueFamilyIndices;
+    QueueFamilyIndices queueFamilyIndices_;
     
-    const std::vector<const char*> validationLayers = {
+    const std::vector<const char*> validationLayers_{
         "VK_LAYER_KHRONOS_validation"
     };
     
 #ifdef NDEBUG
-    const bool enableValidationLayers = false;
+    const bool enableValidationLayers_{false};
 #else
-    const bool enableValidationLayers = true;
+    const bool enableValidationLayers_{true};
 #endif
 };
 

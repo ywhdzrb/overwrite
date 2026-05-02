@@ -1,13 +1,16 @@
 // OverWrite 游戏服务器
-#include "server/websocket_server.h"
+// 负责 WebSocket 联机、世界状态同步、玩家管理
 #include <iostream>
 #include <csignal>
 #include <atomic>
 #include <thread>
 #include <chrono>
 
-using namespace owengine::server;
-using json = nlohmann::json;
+#include <nlohmann/json.hpp>
+
+#include "ecs/ecs.h"
+#include "server/websocket_server.h"
+#include "utils/logger.h"
 
 std::atomic<bool> g_running{true};
 
@@ -33,41 +36,39 @@ int main(int argc, char* argv[]) {
         }
     }
     
-    std::cout << "========================================" << std::endl;
-    std::cout << "  OverWrite Game Server" << std::endl;
-    std::cout << "========================================" << std::endl;
-    std::cout << "Port:     " << port << std::endl;
-    std::cout << "TickRate: " << tickRate << " Hz" << std::endl;
-    std::cout << std::endl;
+    owengine::Logger::info("========================================");
+    owengine::Logger::info("  OverWrite Game Server");
+    owengine::Logger::info("========================================");
+    owengine::Logger::info("Port:     " + std::to_string(port));
+    owengine::Logger::info("TickRate: " + std::to_string(tickRate) + " Hz");
     
     // 设置信号处理
     std::signal(SIGINT, signalHandler);
     std::signal(SIGTERM, signalHandler);
     
     // 创建服务器
-    WebSocketGameServer server(port);
+    owengine::server::WebSocketGameServer server(port);
     
     // 设置回调
     server.setOnPlayerConnect([](const std::string& clientId) {
-        std::cout << "[Event] 玩家加入: " << clientId << std::endl;
+        owengine::Logger::info("[Event] 玩家加入: " + clientId);
     });
     
     server.setOnPlayerDisconnect([](const std::string& clientId) {
-        std::cout << "[Event] 玩家离开: " << clientId << std::endl;
+        owengine::Logger::info("[Event] 玩家离开: " + clientId);
     });
     
-    server.setOnMessage([](const std::string& clientId, const json& message) {
+    server.setOnMessage([](const std::string& clientId, const nlohmann::json& message) {
         // 输入消息不打印，避免刷屏
         if (message.value("type", "") != "input") {
-            std::cout << "[Message] 来自 " << clientId << ": " << message.dump() << std::endl;
+            owengine::Logger::info("[Message] 来自 " + clientId + ": " + message.dump());
         }
     });
     
     // 启动服务器
     server.start();
     
-    std::cout << "服务器已启动，按 Ctrl+C 停止..." << std::endl;
-    std::cout << std::endl;
+    owengine::Logger::info("服务器已启动，按 Ctrl+C 停止...");
     
     // 时间管理
     auto lastTime = std::chrono::high_resolution_clock::now();
@@ -86,7 +87,7 @@ int main(int argc, char* argv[]) {
         lastTime = currentTime;
         
         // 限制 deltaTime 防止大跳跃
-        deltaTime = std::min(deltaTime, 0.1f);
+        deltaTime = std::min(deltaTime, owengine::ecs::MAX_DELTA_TIME);
         
         // 更新游戏世界
         server.getWorld().update(deltaTime);
@@ -118,9 +119,9 @@ int main(int argc, char* argv[]) {
         }
     }
     
-    std::cout << "\n正在停止服务器..." << std::endl;
+    owengine::Logger::info("正在停止服务器...");
     server.stop();
     
-    std::cout << "服务器已关闭" << std::endl;
+    owengine::Logger::info("服务器已关闭");
     return 0;
 }

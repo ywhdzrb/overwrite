@@ -14,7 +14,7 @@ endif()
 
 # 编译选项
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-    add_compile_options(-g -O0 -Wall -Wextra -Wpedantic)
+    add_compile_options(-g -O0 -Wall -Wextra -Wpedantic -Wconversion -Wshadow -Wno-sign-conversion)
 else()
     add_compile_options(-O3 -march=native)
 endif()
@@ -192,17 +192,6 @@ target_link_libraries(OverWriteServer PUBLIC
 )
 
 # ==================== 客户端主程序 ====================
-# 包含目录
-include_directories(
-    ${CMAKE_CURRENT_SOURCE_DIR}/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/src
-    ${CMAKE_CURRENT_SOURCE_DIR}/shared/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/client/include
-    ${EXTERNAL_DIR}/tinygltf
-    ${EXTERNAL_DIR}/imgui
-    ${EXTERNAL_DIR}/imgui/backends
-)
-
 # 源文件
 set(SOURCES
     src/main.cpp
@@ -244,6 +233,16 @@ set(SOURCES
 
 # 创建客户端可执行文件
 add_executable(${PROJECT_NAME} ${SOURCES})
+
+target_include_directories(${PROJECT_NAME} PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${CMAKE_CURRENT_SOURCE_DIR}/shared/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/client/include
+    ${EXTERNAL_DIR}/tinygltf
+    ${EXTERNAL_DIR}/imgui
+    ${EXTERNAL_DIR}/imgui/backends
+)
 
 target_link_libraries(${PROJECT_NAME}
     OverWriteShared
@@ -298,16 +297,20 @@ foreach(shader_file ${SHADER_SOURCES})
         message(FATAL_ERROR "Unknown shader extension: ${shader_ext}")
     endif()
     
-    set(output_file "${CMAKE_CURRENT_SOURCE_DIR}/shaders/${shader_name}${shader_ext}.spv")
+    # 编译 SPIR-V 到构建目录，再复制到源码树供运行时使用（运行时 CWD = 项目根目录）
+    set(output_file "${CMAKE_CURRENT_BINARY_DIR}/shaders/${shader_name}${shader_ext}.spv")
+    set(source_tree_output "${CMAKE_CURRENT_SOURCE_DIR}/shaders/${shader_name}${shader_ext}.spv")
     
     add_custom_command(
-        OUTPUT ${output_file}
+        OUTPUT ${output_file} ${source_tree_output}
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_CURRENT_BINARY_DIR}/shaders"
         COMMAND glslc -I${CMAKE_CURRENT_SOURCE_DIR}/shaders ${CMAKE_CURRENT_SOURCE_DIR}/${shader_file} -o ${output_file}
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different ${output_file} ${source_tree_output}
         DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/${shader_file}
         COMMENT "Compiling shader ${shader_file}"
     )
     
-    list(APPEND SHADER_OUTPUTS ${output_file})
+    list(APPEND SHADER_OUTPUTS ${output_file} ${source_tree_output})
 endforeach()
 
 # 将着色器添加到依赖

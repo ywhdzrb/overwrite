@@ -6,9 +6,9 @@
 namespace owengine {
 
 Physics::Physics()
-    : gravity(9.8f),
-      defaultGroundHeight(0.0f),
-      terrainQuery(nullptr) {
+    : gravity_(9.8f),
+      defaultGroundHeight_(0.0f),
+      terrainQuery_(nullptr) {
 }
 
 void Physics::update(float deltaTime) {
@@ -17,20 +17,20 @@ void Physics::update(float deltaTime) {
 }
 
 float Physics::queryTerrainHeight(float x, float z) const {
-    if (terrainQuery) {
-        return terrainQuery(x, z);
+    if (terrainQuery_) {
+        return terrainQuery_(x, z);
     }
-    return defaultGroundHeight;
+    return defaultGroundHeight_;
 }
 
-bool Physics::checkGroundCollision(const glm::vec3& position, float height) const {
+bool Physics::checkGroundCollision(const glm::vec3& position, float height) const noexcept {
     float terrainHeight = queryTerrainHeight(position.x, position.z);
     return position.y - height <= terrainHeight;
 }
 
-bool Physics::checkWallCollision(const glm::vec3& position, float radius) const {
+bool Physics::checkWallCollision(const glm::vec3& position, float radius) const noexcept {
     // 检查与所有碰撞盒的碰撞
-    for (const auto& box : collisionBoxes) {
+    for (const auto& box : collisionBoxes_) {
         const glm::vec3& boxPos = box.first;
         const glm::vec3& boxSize = box.second;
         
@@ -47,16 +47,16 @@ bool Physics::checkWallCollision(const glm::vec3& position, float radius) const 
     return false;
 }
 
-void Physics::addCollisionBox(const glm::vec3& position, const glm::vec3& size) {
-    collisionBoxes.push_back({position, size});
+void Physics::addCollisionBox(const glm::vec3& position, const glm::vec3& size) noexcept {
+    collisionBoxes_.push_back({position, size});
 }
 
-void Physics::clearCollisionBoxes() {
-    collisionBoxes.clear();
+void Physics::clearCollisionBoxes() noexcept {
+    collisionBoxes_.clear();
 }
 
 bool Physics::checkAABBCollision(const glm::vec3& pos1, const glm::vec3& size1,
-                                  const glm::vec3& pos2, const glm::vec3& size2) const {
+                                  const glm::vec3& pos2, const glm::vec3& size2) const noexcept {
     return (pos1.x - size1.x / 2.0f < pos2.x + size2.x / 2.0f &&
             pos1.x + size1.x / 2.0f > pos2.x - size2.x / 2.0f &&
             pos1.y - size1.y / 2.0f < pos2.y + size2.y / 2.0f &&

@@ -210,7 +210,7 @@ void MovementSystem::update(float deltaTime) {
             
             // 保存旧位置
             glm::vec3 oldPos = transform.position;
-            glm::vec3 playerSize(0.6f, 1.8f, 0.6f);  // 玩家碰撞体大小
+            glm::vec3 playerSize(PLAYER_RADIUS * 2.0f, PLAYER_HEIGHT, PLAYER_RADIUS * 2.0f);
             
             // 更新位置（含坡度投影的 Y 分量，使角色沿坡面平滑运动）
             transform.position.x += horizontalVelocity.x * deltaTime;

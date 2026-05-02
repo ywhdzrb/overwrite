@@ -61,7 +61,6 @@ void GameSession::init(const GameSessionInitParams& params) {
     // 注入地形高度查询到 ECS 物理系统
     if (terrainHeightQuery_) {
         ecsClientWorld_->setTerrainQuery(terrainHeightQuery_);
-        if (camera_) camera_->setTerrainQuery(terrainHeightQuery_);
     }
 
     // 加载玩家模型
@@ -78,7 +77,6 @@ void GameSession::cleanup() {
     remotePlayerModels_.clear();
     ecsClientWorld_.reset();
 
-    if (camera_) camera_->clearTerrainQuery();
     camera_.reset();
     input_.reset();
 
@@ -93,7 +91,7 @@ void GameSession::update(float deltaTime) {
     if (!ecsClientWorld_ || !camera_) return;
 
     // 限制 delta time 防止卡顿
-    if (deltaTime > 0.1f) deltaTime = 0.1f;
+    if (deltaTime > ecs::MAX_DELTA_TIME) deltaTime = ecs::MAX_DELTA_TIME;
 
     // FPS 统计（粗略，用于 HUD 显示）
     static int frameCount = 0;
@@ -297,7 +295,7 @@ void GameSession::loadPlayerModels() {
     auto loadModel = [this](const std::string& path) -> std::unique_ptr<GLTFModel> {
         auto model = std::make_unique<GLTFModel>(device_, textureLoader_);
         if (model->loadFromFile(path)) {
-            model->setScale(glm::vec3(0.3f, 0.3f, 0.3f));
+            model->setScale(glm::vec3(ecs::PLAYER_MODEL_SCALE));
             return model;
         }
         Logger::warning("无法加载玩家模型: " + path);
@@ -412,8 +410,8 @@ void GameSession::updateRemotePlayers(float deltaTime) {
             RemotePlayerModels models;
             auto idleModel = std::make_unique<GLTFModel>(device_, textureLoader_);
             if (idleModel->loadFromFile(AssetPaths::PLAYER_IDLE_MODEL)) {
-                idleModel->setScale(glm::vec3(0.3f, 0.3f, 0.3f));
-                idleModel->setPosition(player.position);
+                idleModel->setScale(glm::vec3(ecs::PLAYER_MODEL_SCALE));
+
                 if (descriptorPool_ != VK_NULL_HANDLE && textureDescriptorSetLayout_ != VK_NULL_HANDLE) {
                     idleModel->createMeshDescriptorSets(textureDescriptorSetLayout_, descriptorPool_);
                 }
@@ -422,7 +420,7 @@ void GameSession::updateRemotePlayers(float deltaTime) {
 
             auto walkModel = std::make_unique<GLTFModel>(device_, textureLoader_);
             if (walkModel->loadFromFile(AssetPaths::PLAYER_WALK_MODEL)) {
-                walkModel->setScale(glm::vec3(0.3f, 0.3f, 0.3f));
+                walkModel->setScale(glm::vec3(ecs::PLAYER_MODEL_SCALE));
                 walkModel->setPosition(player.position);
                 if (walkModel->getAnimationCount() > 0) {
                     walkModel->playAllAnimations(true, 1.0f);

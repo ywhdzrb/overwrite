@@ -8,6 +8,12 @@
 namespace owengine {
 namespace ecs {
 
+// ========== 游戏全局常量 ==========
+inline constexpr float MAX_DELTA_TIME   = 0.1f;    // 最大帧间隔（秒），超过此值会被钳制
+inline constexpr float PLAYER_RADIUS    = 0.3f;    // 玩家碰撞体半径
+inline constexpr float PLAYER_HEIGHT    = 1.8f;    // 玩家碰撞体高度
+inline constexpr float PLAYER_MODEL_SCALE = 0.3f;  // 玩家模型的缩放系数
+
 /**
  * @brief 变换组件 - 位置、旋转、缩放（共享）
  */

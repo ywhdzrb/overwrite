@@ -1,10 +1,21 @@
 #pragma once
 
-#include <glm/glm.hpp>
-#include <vulkan/vulkan.h>
-#include <vector>
-#include <memory>
+/**
+ * @file physics.h
+ * @brief 物理系统 — 重力/地面碰撞/墙体碰撞/AABB碰撞检测
+ *
+ * 归属模块：core
+ * 核心职责：提供基础物理模拟和碰撞检测
+ * 依赖关系：glm 数学库
+ * 关键设计：支持地形高度查询回调（PhysicsTerrainQuery），
+ *           碰撞盒管理使用 pair(position, size) 向量存储
+ */
+
 #include <functional>
+#include <memory>
+#include <vector>
+
+#include <glm/glm.hpp>
 
 namespace owengine {
 
@@ -22,41 +33,40 @@ public:
     void update(float deltaTime);
     
     // 碰撞检测
-    bool checkGroundCollision(const glm::vec3& position, float height) const;
-    bool checkWallCollision(const glm::vec3& position, float radius) const;
+    [[nodiscard]] bool checkGroundCollision(const glm::vec3& position, float height) const noexcept;
+    [[nodiscard]] bool checkWallCollision(const glm::vec3& position, float radius) const noexcept;
     
     // 设置重力
-    void setGravity(float g) { gravity = g; }
-    float getGravity() const { return gravity; }
+    void setGravity(float g) noexcept { gravity_ = g; }
+    [[nodiscard]] float getGravity() const noexcept { return gravity_; }
     
     // 设置默认地面高度（无地形时使用）
-    void setGroundHeight(float height) { defaultGroundHeight = height; }
-    float getGroundHeight() const { return defaultGroundHeight; }
+    void setGroundHeight(float height) noexcept { defaultGroundHeight_ = height; }
+    [[nodiscard]] float getGroundHeight() const noexcept { return defaultGroundHeight_; }
     
     // 地形查询接口
-    void setTerrainQuery(PhysicsTerrainQuery query) { terrainQuery = std::move(query); }
-    void clearTerrainQuery() { terrainQuery = nullptr; }
+    void setTerrainQuery(PhysicsTerrainQuery query) noexcept { terrainQuery_ = std::move(query); }
+    void clearTerrainQuery() noexcept { terrainQuery_ = nullptr; }
     
     // 查询地形高度
-    float queryTerrainHeight(float x, float z) const;
+    [[nodiscard]] float queryTerrainHeight(float x, float z) const;
     
     // 添加碰撞体
-    void addCollisionBox(const glm::vec3& position, const glm::vec3& size);
-    void clearCollisionBoxes();
+    void addCollisionBox(const glm::vec3& position, const glm::vec3& size) noexcept;
+    void clearCollisionBoxes() noexcept;
     
     // 获取所有碰撞体
-    const std::vector<std::pair<glm::vec3, glm::vec3>>& getCollisionBoxes() const { return collisionBoxes; }
+    [[nodiscard]] const std::vector<std::pair<glm::vec3, glm::vec3>>& getCollisionBoxes() const noexcept { return collisionBoxes_; }
 
 private:
     // AABB碰撞检测
-    bool checkAABBCollision(const glm::vec3& pos1, const glm::vec3& size1,
-                           const glm::vec3& pos2, const glm::vec3& size2) const;
+    [[nodiscard]] bool checkAABBCollision(const glm::vec3& pos1, const glm::vec3& size1,
+                                         const glm::vec3& pos2, const glm::vec3& size2) const noexcept;
 
-private:
-    float gravity;
-    float defaultGroundHeight;  // 默认地面高度（无地形时）
-    PhysicsTerrainQuery terrainQuery;  // 地形高度查询回调
-    std::vector<std::pair<glm::vec3, glm::vec3>> collisionBoxes;  // position, size
+    float gravity_;
+    float defaultGroundHeight_;  // 默认地面高度（无地形时）
+    PhysicsTerrainQuery terrainQuery_;  // 地形高度查询回调
+    std::vector<std::pair<glm::vec3, glm::vec3>> collisionBoxes_;  // position, size
 };
 
 } // namespace owengine

@@ -24,14 +24,15 @@
 #include "renderer/stone_system.h"
 #include "renderer/grass_system.h"
 #include "core/game_config.h"
+#include "ecs/ecs.h"
 
 namespace owengine {
 
 // Renderer构造函数
 Renderer::Renderer(int width, int height, const std::string& title)
-    : windowWidth(width), windowHeight(height), windowTitle(title) {
+    : windowWidth_(width), windowHeight_(height), windowTitle_(title) {
     // 启用4x MSAA抗锯齿
-    msaaSamples = VK_SAMPLE_COUNT_4_BIT;
+    msaaSamples_ = VK_SAMPLE_COUNT_4_BIT;
 }
 
 // Renderer析构函数
@@ -55,126 +56,114 @@ void Renderer::initWindow() {
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
     glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);  // 暂时禁用窗口大小调整
     
-    window = glfwCreateWindow(windowWidth, windowHeight, windowTitle.c_str(), nullptr, nullptr);
+    window_ = glfwCreateWindow(windowWidth_, windowHeight_, windowTitle_.c_str(), nullptr, nullptr);
     
-    if (!window) {
+    if (!window_) {
         throw std::runtime_error("failed to create GLFW window!");
     }
     
-    glfwSetWindowUserPointer(window, this);
+    glfwSetWindowUserPointer(window_, this);
     // 暂时不设置帧缓冲区大小回调
     // glfwSetFramebufferSizeCallback(window, framebufferResizeCallback);
 }
 
 void Renderer::initVulkan() {
-    vulkanInstance = std::make_shared<VulkanInstance>();
-    vulkanInstance->initialize(window);
+    vulkanInstance_ = std::make_shared<VulkanInstance>();
+    vulkanInstance_->initialize(window_);
     
-    auto queueIndices = vulkanInstance->getQueueFamilyIndices();
-    vulkanDevice = std::make_shared<VulkanDevice>(
-        vulkanInstance->getInstance(),
-        vulkanInstance->getPhysicalDevice(),
-        vulkanInstance->getDevice(),
-        vulkanInstance->getSurface(),
+    auto queueIndices = vulkanInstance_->getQueueFamilyIndices();
+    vulkanDevice_ = std::make_shared<VulkanDevice>(
+        vulkanInstance_->getInstance(),
+        vulkanInstance_->getPhysicalDevice(),
+        vulkanInstance_->getDevice(),
+        vulkanInstance_->getSurface(),
         queueIndices.graphicsFamily.value(),
         queueIndices.presentFamily.value()
     );
     
     // 获取设备支持的最大 MSAA 采样数
     VkPhysicalDeviceProperties physicalDeviceProperties;
-    vkGetPhysicalDeviceProperties(vulkanInstance->getPhysicalDevice(), &physicalDeviceProperties);
+    vkGetPhysicalDeviceProperties(vulkanInstance_->getPhysicalDevice(), &physicalDeviceProperties);
     VkSampleCountFlags counts = physicalDeviceProperties.limits.framebufferColorSampleCounts &
                                 physicalDeviceProperties.limits.framebufferDepthSampleCounts;
-    if (counts & VK_SAMPLE_COUNT_64_BIT) maxMsaaSamples = VK_SAMPLE_COUNT_64_BIT;
-    else if (counts & VK_SAMPLE_COUNT_32_BIT) maxMsaaSamples = VK_SAMPLE_COUNT_32_BIT;
-    else if (counts & VK_SAMPLE_COUNT_16_BIT) maxMsaaSamples = VK_SAMPLE_COUNT_16_BIT;
-    else if (counts & VK_SAMPLE_COUNT_8_BIT) maxMsaaSamples = VK_SAMPLE_COUNT_8_BIT;
-    else if (counts & VK_SAMPLE_COUNT_4_BIT) maxMsaaSamples = VK_SAMPLE_COUNT_4_BIT;
-    else if (counts & VK_SAMPLE_COUNT_2_BIT) maxMsaaSamples = VK_SAMPLE_COUNT_2_BIT;
-    else maxMsaaSamples = VK_SAMPLE_COUNT_1_BIT;
+    if (counts & VK_SAMPLE_COUNT_64_BIT) maxMsaaSamples_ = VK_SAMPLE_COUNT_64_BIT;
+    else if (counts & VK_SAMPLE_COUNT_32_BIT) maxMsaaSamples_ = VK_SAMPLE_COUNT_32_BIT;
+    else if (counts & VK_SAMPLE_COUNT_16_BIT) maxMsaaSamples_ = VK_SAMPLE_COUNT_16_BIT;
+    else if (counts & VK_SAMPLE_COUNT_8_BIT) maxMsaaSamples_ = VK_SAMPLE_COUNT_8_BIT;
+    else if (counts & VK_SAMPLE_COUNT_4_BIT) maxMsaaSamples_ = VK_SAMPLE_COUNT_4_BIT;
+    else if (counts & VK_SAMPLE_COUNT_2_BIT) maxMsaaSamples_ = VK_SAMPLE_COUNT_2_BIT;
+    else maxMsaaSamples_ = VK_SAMPLE_COUNT_1_BIT;
     
     // 确保初始 MSAA 不超过设备支持的最大值
-    if (msaaSamples > maxMsaaSamples) {
-        msaaSamples = maxMsaaSamples;
+    if (msaaSamples_ > maxMsaaSamples_) {
+        msaaSamples_ = maxMsaaSamples_;
     }
     
-    std::cout << "[Renderer] 设备支持的最大 MSAA: " << maxMsaaSamples << std::endl;
+    std::cout << "[Renderer] 设备支持的最大 MSAA: " << maxMsaaSamples_ << std::endl;
     
     // FSR1 开启时禁用 MSAA（低分辨率无需抗锯齿，也避免 resolve 不匹配）
     if (fsrScale_ < 1.0f) {
-        msaaSamples = VK_SAMPLE_COUNT_1_BIT;
+        msaaSamples_ = VK_SAMPLE_COUNT_1_BIT;
     }
-    bool useFsrFb = false;  // FSR1 framebuffer 有性能问题，临时禁用
+    swapchain_ = std::make_shared<VulkanSwapchain>(vulkanDevice_, window_);
+    swapchain_->create();
     
-    swapchain = std::make_shared<VulkanSwapchain>(vulkanDevice, window);
-    swapchain->create();
-    if (useFsrFb) msaaSamples = VK_SAMPLE_COUNT_1_BIT;
-    
-    renderPass = std::make_shared<VulkanRenderPass>(vulkanDevice, swapchain->getImageFormat(), msaaSamples);
-    renderPass->create();
+    renderPass_ = std::make_shared<VulkanRenderPass>(vulkanDevice_, swapchain_->getImageFormat(), msaaSamples_);
+    renderPass_->create();
     
     // FSR1 管线
-    fsr1Pass_ = std::make_unique<Fsr1Pass>(vulkanDevice, swapchain->getImageFormat(), swapchain->getExtent(), fsrScale_);
+    fsr1Pass_ = std::make_unique<Fsr1Pass>(vulkanDevice_, swapchain_->getImageFormat(), swapchain_->getExtent(), fsrScale_);
     fsr1Pass_->init();
     
     // 创建多重采样颜色资源（如果使用MSAA）
-    if (msaaSamples > VK_SAMPLE_COUNT_1_BIT) {
+    if (msaaSamples_ > VK_SAMPLE_COUNT_1_BIT) {
         createColorResources();
     }
     
-    // 创建描述符集布局（必须在 graphicsPipeline 之前）
+    // 创建描述符集布局（必须在 graphicsPipeline_ 之前）
     createDescriptorSetLayouts();
     
-    std::vector<VkDescriptorSetLayout> descriptorSetLayouts = {textureDescriptorSetLayout, lightDescriptorSetLayout};
-    graphicsPipeline = std::make_shared<VulkanPipeline>(
-        vulkanDevice,
-        renderPass->getRenderPass(),
-        swapchain->getExtent(),
+    std::vector<VkDescriptorSetLayout> descriptorSetLayouts = {textureDescriptorSetLayout_, lightDescriptorSetLayout_};
+    graphicsPipeline_ = std::make_shared<VulkanPipeline>(
+        vulkanDevice_,
+        renderPass_->getRenderPass(),
+        swapchain_->getExtent(),
         AssetPaths::MAIN_VERT_SHADER,
         AssetPaths::MAIN_FRAG_SHADER,
         owengine::VertexFormat::POSITION_COLOR,
         descriptorSetLayouts,
-        msaaSamples
+        msaaSamples_
     );
-    graphicsPipeline->create();
+    graphicsPipeline_->create();
     
     // 创建深度资源
-    VkExtent2D renderExt = useFsrFb
-        ? VkExtent2D{std::max(1u, (uint32_t)(swapchain->getExtent().width * fsrScale_)),
-                     std::max(1u, (uint32_t)(swapchain->getExtent().height * fsrScale_))}
-        : swapchain->getExtent();
-    vulkanDevice->createDepthResources(renderExt, msaaSamples);
+    vulkanDevice_->createDepthResources(swapchain_->getExtent(), msaaSamples_);
     
-    std::vector<VkImageView> colorAttachments;
-    if (useFsrFb) {
-        colorAttachments.push_back(fsr1Pass_->getColorImageView());
-    } else {
-        colorAttachments = swapchain->getImageViews();
-    }
-    framebuffers = std::make_shared<VulkanFramebuffer>(vulkanDevice, renderPass->getRenderPass());
-    framebuffers->create(colorAttachments, useFsrFb ? renderExt : swapchain->getExtent(), colorImageView);
+    std::vector<VkImageView> colorAttachments = swapchain_->getImageViews();
+    framebuffers_ = std::make_shared<VulkanFramebuffer>(vulkanDevice_, renderPass_->getRenderPass());
+    framebuffers_->create(colorAttachments, swapchain_->getExtent(), colorImageView_);
     
-    commandBuffers = std::make_shared<VulkanCommandBuffer>(
-        vulkanDevice,
-        renderPass->getRenderPass(),
-        graphicsPipeline->getPipeline(),
-        graphicsPipeline->getPipelineLayout()
+    commandBuffers_ = std::make_shared<VulkanCommandBuffer>(
+        vulkanDevice_,
+        renderPass_->getRenderPass(),
+        graphicsPipeline_->getPipeline(),
+        graphicsPipeline_->getPipelineLayout()
     );
-    commandBuffers->create(MAX_FRAMES_IN_FLIGHT);
+    commandBuffers_->create(MAX_FRAMES_IN_FLIGHT);
     
-    syncObjects = std::make_shared<VulkanSync>(vulkanDevice);
-    syncObjects->create(MAX_FRAMES_IN_FLIGHT);
+    syncObjects_ = std::make_shared<VulkanSync>(vulkanDevice_);
+    syncObjects_->create(MAX_FRAMES_IN_FLIGHT);
     
     // 不预先记录命令缓冲，每次drawFrame时动态记录
 
-    terrainRenderer = std::make_shared<TerrainRenderer>(vulkanDevice);
-    terrainRenderer->create();
+    terrainRenderer_ = std::make_shared<TerrainRenderer>(vulkanDevice_);
+    terrainRenderer_->create();
 
     // 初始更新地形区块（玩家位置随后由 GameSession 驱动）
-    terrainRenderer->update(glm::vec3(0.0f, 0.0f, 5.0f));
+    terrainRenderer_->update(glm::vec3(0.0f, 0.0f, 5.0f));
 
     // 构建地形高度查询回调（渲染侧共享，GameSession 和 树/石/草系统共用）
-    auto weakTerrain = std::weak_ptr<TerrainRenderer>(terrainRenderer);
+    auto weakTerrain = std::weak_ptr<TerrainRenderer>(terrainRenderer_);
     auto terrainHeightQuery = [weakTerrain](float x, float z) -> float {
         auto terrain = weakTerrain.lock();
         if (!terrain) return 0.0f;
@@ -182,36 +171,36 @@ void Renderer::initVulkan() {
     };
 
     // 初始化纹理加载器
-    textureLoader = std::make_shared<TextureLoader>(vulkanDevice);
+    textureLoader_ = std::make_shared<TextureLoader>(vulkanDevice_);
 
     // 初始化光源管理器
-    lightManager = std::make_unique<LightManager>();
+    lightManager_ = std::make_unique<LightManager>();
 
     // 初始化天空盒渲染器
-    skyboxRenderer = std::make_unique<SkyboxRenderer>(vulkanDevice);
-    skyboxRenderer->create();
+    skyboxRenderer_ = std::make_unique<SkyboxRenderer>(vulkanDevice_);
+    skyboxRenderer_->create();
     try {
-        skyboxRenderer->loadCubemapFromCrossLayout(AssetPaths::SKYBOX_TEXTURE);
+        skyboxRenderer_->loadCubemapFromCrossLayout(AssetPaths::SKYBOX_TEXTURE);
     } catch (const std::runtime_error& e) {
         Logger::warning("天空盒纹理加载失败: " + std::string(e.what()));
     }
 
     // 初始化模型渲染器（不含玩家模型，玩家模型由 GameSession 管理）
-    modelRenderer = std::make_unique<ModelRenderer>(vulkanDevice, textureLoader);
-    modelRenderer->create();
+    modelRenderer_ = std::make_unique<ModelRenderer>(vulkanDevice_, textureLoader_);
+    modelRenderer_->create();
 
     // 创建天空盒管线
-    skyboxPipeline = std::make_shared<VulkanPipeline>(
-        vulkanDevice,
-        renderPass->getRenderPass(),
-        swapchain->getExtent(),
+    skyboxPipeline_ = std::make_shared<VulkanPipeline>(
+        vulkanDevice_,
+        renderPass_->getRenderPass(),
+        swapchain_->getExtent(),
         AssetPaths::SKYBOX_VERT_SHADER,
         AssetPaths::SKYBOX_FRAG_SHADER,
         VertexFormat::POSITION_ONLY,
-        std::vector<VkDescriptorSetLayout>{skyboxRenderer->getDescriptorSetLayout()},
-        msaaSamples
+        std::vector<VkDescriptorSetLayout>{skyboxRenderer_->getDescriptorSetLayout()},
+        msaaSamples_
     );
-    skyboxPipeline->create();
+    skyboxPipeline_->create();
 
     // 基础描述符池
     createDescriptorPool(20, 20);
@@ -224,11 +213,11 @@ void Renderer::initVulkan() {
         loadLightsFromConfig(sceneConfig);
     } else {
         Logger::warning("使用默认光源配置");
-        lightManager->addDirectionalLight("sun", glm::vec3(0.5f, -1.0f, 0.5f), glm::vec3(1.0f, 1.0f, 1.0f), 1.0f);
-        lightManager->addPointLight("point1", glm::vec3(2.0f, 3.0f, 2.0f), glm::vec3(1.0f, 1.0f, 1.0f), 2.0f, 10.0f);
-        lightManager->addPointLight("point2", glm::vec3(-2.0f, 3.0f, -2.0f), glm::vec3(1.0f, 1.0f, 1.0f), 2.0f, 10.0f);
-        lightManager->setAmbientColor(glm::vec3(0.5f, 0.5f, 0.5f));
-        lightManager->setAmbientIntensity(0.5f);
+        lightManager_->addDirectionalLight("sun", glm::vec3(0.5f, -1.0f, 0.5f), glm::vec3(1.0f, 1.0f, 1.0f), 1.0f);
+        lightManager_->addPointLight("point1", glm::vec3(2.0f, 3.0f, 2.0f), glm::vec3(1.0f, 1.0f, 1.0f), 2.0f, 10.0f);
+        lightManager_->addPointLight("point2", glm::vec3(-2.0f, 3.0f, -2.0f), glm::vec3(1.0f, 1.0f, 1.0f), 2.0f, 10.0f);
+        lightManager_->setAmbientColor(glm::vec3(0.5f, 0.5f, 0.5f));
+        lightManager_->setAmbientIntensity(0.5f);
     }
 
     // 加载静态模型（不含玩家模型，玩家模型由 GameSession 加载）
@@ -241,23 +230,23 @@ void Renderer::initVulkan() {
 
     // 加载渲染器配置
     auto gameConfig = GameConfig::load(AssetPaths::GAME_CONFIG);
-    targetFPS = gameConfig.renderer.targetFPS;
+    targetFPS_ = gameConfig.renderer.targetFPS;
 
     // 初始化树系统
-    treeSystem_ = std::make_unique<TreeSystem>(vulkanDevice, textureLoader, textureDescriptorSetLayout);
+    treeSystem_ = std::make_unique<TreeSystem>(vulkanDevice_, textureLoader_, textureDescriptorSetLayout_);
     treeSystem_->setHeightSampler(terrainHeightQuery);
     treeSystem_->init(gameConfig.tree);
 
     // 初始化石头系统
-    stoneSystem_ = std::make_unique<StoneSystem>(vulkanDevice, textureLoader, textureDescriptorSetLayout);
+    stoneSystem_ = std::make_unique<StoneSystem>(vulkanDevice_, textureLoader_, textureDescriptorSetLayout_);
     stoneSystem_->setHeightSampler(terrainHeightQuery);
     stoneSystem_->init(gameConfig.stone);
 
     // 初始化草丛系统
-    grassSystem_ = std::make_unique<GrassSystem>(vulkanDevice);
+    grassSystem_ = std::make_unique<GrassSystem>(vulkanDevice_);
     grassSystem_->setHeightSampler(terrainHeightQuery);
-    grassSystem_->init(gameConfig.grass, renderPass->getRenderPass(),
-                       swapchain->getExtent(), msaaSamples);
+    grassSystem_->init(gameConfig.grass, renderPass_->getRenderPass(),
+                       swapchain_->getExtent(), msaaSamples_);
 
     grassSystem_->setTreeQuery([this](float x, float z, float radius) {
         return treeSystem_->queryPositions(x, z, radius);
@@ -265,13 +254,13 @@ void Renderer::initVulkan() {
     grassSystem_->setStoneQuery([this](float x, float z, float radius) {
         return stoneSystem_->queryPositions(x, z, radius);
     });
-    if (auto* sunLight = lightManager->getLightByName("sun")) {
+    if (auto* sunLight = lightManager_->getLightByName("sun")) {
         grassSystem_->setGlobalLightDir(sunLight->getDirection());
     }
 
     // 初始化 ImGui
-    imguiManager = std::make_unique<ImGuiManager>(vulkanDevice, swapchain, renderPass, window, vulkanInstance->getInstance(), msaaSamples);
-    imguiManager->init();
+    imguiManager_ = std::make_unique<ImGuiManager>(vulkanDevice_, swapchain_, renderPass_, window_, vulkanInstance_->getInstance(), msaaSamples_);
+    imguiManager_->init();
 
     // 创建游戏会话（持有 ECS/物理/碰撞/网络/动画逻辑）
     if (externalGameSession_) {
@@ -279,29 +268,29 @@ void Renderer::initVulkan() {
     } else {
         ownedGameSession_ = std::make_unique<GameSession>();
         GameSessionInitParams gsParams;
-        gsParams.window = window;
-        gsParams.windowWidth = windowWidth;
-        gsParams.windowHeight = windowHeight;
-        gsParams.device = vulkanDevice;
-        gsParams.textureLoader = textureLoader;
-        gsParams.terrainRenderer = terrainRenderer;
+        gsParams.window = window_;
+        gsParams.windowWidth = windowWidth_;
+        gsParams.windowHeight = windowHeight_;
+        gsParams.device = vulkanDevice_;
+        gsParams.textureLoader = textureLoader_;
+        gsParams.terrainRenderer = terrainRenderer_;
         gsParams.treeSystem = treeSystem_.get();
         gsParams.stoneSystem = stoneSystem_.get();
         gsParams.grassSystem = grassSystem_.get();
-        gsParams.descriptorPool = descriptorPool;
-        gsParams.textureDescriptorSetLayout = textureDescriptorSetLayout;
-        gsParams.lightDescriptorSetLayout = lightDescriptorSetLayout;
-        gsParams.graphicsPipelineLayout = graphicsPipeline->getPipelineLayout();
+        gsParams.descriptorPool = descriptorPool_;
+        gsParams.textureDescriptorSetLayout = textureDescriptorSetLayout_;
+        gsParams.lightDescriptorSetLayout = lightDescriptorSetLayout_;
+        gsParams.graphicsPipelineLayout = graphicsPipeline_->getPipelineLayout();
         gsParams.terrainHeightQuery = terrainHeightQuery;
         ownedGameSession_->init(gsParams);
         gameSession_ = ownedGameSession_.get();
     }
 
-    lastTime = std::chrono::high_resolution_clock::now();
+    lastTime_ = std::chrono::high_resolution_clock::now();
 }
 
 void Renderer::mainLoop() {
-    auto lastTime = std::chrono::high_resolution_clock::now();
+    auto lastTime_ = std::chrono::high_resolution_clock::now();
     
     // 第一帧后捕获鼠标，确保窗口已经显示
     bool firstFrame = true;
@@ -313,24 +302,24 @@ void Renderer::mainLoop() {
     // 绝对帧时间目标（用 sleep_until 替代 sleep_for 避免累计漂移）
     auto nextFrameTime = std::chrono::high_resolution_clock::now();
     
-    while (!glfwWindowShouldClose(window)) {
+    while (!glfwWindowShouldClose(window_)) {
         // 记录帧开始时间
         auto frameStartTime = std::chrono::high_resolution_clock::now();
         
         // 计算delta time
         auto currentTime = frameStartTime;
-        float deltaTime = std::chrono::duration<float>(currentTime - lastTime).count();
-        lastTime = currentTime;
+        float deltaTime = std::chrono::duration<float>(currentTime - lastTime_).count();
+        lastTime_ = currentTime;
         
         // 限制delta time以防卡顿
-        if (deltaTime > 0.1f) {
-            deltaTime = 0.1f;
+        if (deltaTime > ecs::MAX_DELTA_TIME) {
+            deltaTime = ecs::MAX_DELTA_TIME;
         }
         
         // 检查是否有延迟的 MSAA 更改
-        if (pendingMsaaChange) {
-            pendingMsaaChange = false;
-            setMsaaSamples(pendingMsaaSamples);
+        if (pendingMsaaChange_) {
+            pendingMsaaChange_ = false;
+            setMsaaSamples(pendingMsaaSamples_);
         }
         
         glfwPollEvents();
@@ -345,7 +334,7 @@ void Renderer::mainLoop() {
         }
 
         // === ImGui 新帧 + HUD ===
-        imguiManager->newFrame();
+        imguiManager_->newFrame();
         if (gameSession_) {
             ImGui::Begin("HUD", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings);
             ImGui::Text("FPS: %.1f", gameSession_->getCurrentFPS());
@@ -382,39 +371,39 @@ void Renderer::mainLoop() {
                       << " G=" << (int)profGPUMs_ << "ms" << std::endl;
             frameCount = 0;
             fpsTimer = 0.0f;
-            minFrameTime = 999.0f;
-            maxFrameTime = 0.0f;
+            minFrameTime_ = 999.0f;
+            maxFrameTime_ = 0.0f;
         }
 
         // === 帧率限制 ===
-        if (targetFPS > 0.0f) {
-            nextFrameTime += std::chrono::nanoseconds(static_cast<long long>((1.0 / targetFPS) * 1e9));
+        if (targetFPS_ > 0.0f) {
+            nextFrameTime += std::chrono::nanoseconds(static_cast<long long>((1.0 / targetFPS_) * 1e9));
         }
         auto frameEndTime = std::chrono::high_resolution_clock::now();
-        frameTime = std::chrono::duration<float>(frameEndTime - frameStartTime).count();
-        if (frameTime < minFrameTime) minFrameTime = frameTime;
-        if (frameTime > maxFrameTime) maxFrameTime = frameTime;
-        if (targetFPS > 0.0f && frameEndTime < nextFrameTime) {
+        frameTime_ = std::chrono::duration<float>(frameEndTime - frameStartTime).count();
+        if (frameTime_ < minFrameTime_) minFrameTime_ = frameTime_;
+        if (frameTime_ > maxFrameTime_) maxFrameTime_ = frameTime_;
+        if (targetFPS_ > 0.0f && frameEndTime < nextFrameTime) {
             std::this_thread::sleep_until(nextFrameTime);
         } else {
             nextFrameTime = frameEndTime;
         }
     }
 
-    vkDeviceWaitIdle(vulkanDevice->getDevice());
+    vkDeviceWaitIdle(vulkanDevice_->getDevice());
 }
 
 void Renderer::drawFrame() {
     auto fenceT0 = std::chrono::high_resolution_clock::now();
-    vkWaitForFences(vulkanDevice->getDevice(), 1, &syncObjects->getInFlightFences()[currentFrame], VK_TRUE, UINT64_MAX);
+    vkWaitForFences(vulkanDevice_->getDevice(), 1, &syncObjects_->getInFlightFences()[currentFrame_], VK_TRUE, UINT64_MAX);
     profGPUMs_ = std::chrono::duration<double, std::milli>(std::chrono::high_resolution_clock::now() - fenceT0).count();
     
     uint32_t imageIndex;
     VkResult result = vkAcquireNextImageKHR(
-        vulkanDevice->getDevice(),
-        swapchain->getSwapchain(),
+        vulkanDevice_->getDevice(),
+        swapchain_->getSwapchain(),
         UINT64_MAX,
-        syncObjects->getImageAvailableSemaphores()[currentFrame],
+        syncObjects_->getImageAvailableSemaphores()[currentFrame_],
         VK_NULL_HANDLE,
         &imageIndex
     );
@@ -424,23 +413,23 @@ void Renderer::drawFrame() {
         return;
     } else if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
         // 如果窗口正在关闭，不抛出异常，直接返回
-        if (glfwWindowShouldClose(window)) {
+        if (glfwWindowShouldClose(window_)) {
             return;
         }
         throw std::runtime_error("failed to acquire swap chain image!");
     }
     
-    vkResetFences(vulkanDevice->getDevice(), 1, &syncObjects->getInFlightFences()[currentFrame]);
+    vkResetFences(vulkanDevice_->getDevice(), 1, &syncObjects_->getInFlightFences()[currentFrame_]);
     
-    // 更新 FSR1 输出描述符指向当前 swapchain 图像（必须在 cmd buffer 录制前）
-    if (fsr1Pass_ && fsrScale_ < 1.0f && imageIndex < swapchain->getImageViews().size()) {
-        fsr1Pass_->updateOutputDescriptor(swapchain->getImageViews()[imageIndex]);
+    // 更新 FSR1 输出描述符指向当前 swapchain_ 图像（必须在 cmd buffer 录制前）
+    if (fsr1Pass_ && fsrScale_ < 1.0f && imageIndex < swapchain_->getImageViews().size()) {
+        fsr1Pass_->updateOutputDescriptor(swapchain_->getImageViews()[imageIndex]);
     }
     
-    vkResetCommandBuffer(commandBuffers->getCommandBuffers()[currentFrame], /*VkCommandBufferResetFlagBits*/ 0);
+    vkResetCommandBuffer(commandBuffers_->getCommandBuffers()[currentFrame_], /*VkCommandBufferResetFlagBits*/ 0);
     
     // 手动记录命令缓冲
-    VkCommandBuffer commandBuffer = commandBuffers->getCommandBuffers()[currentFrame];
+    VkCommandBuffer commandBuffer = commandBuffers_->getCommandBuffers()[currentFrame_];
     
     VkCommandBufferBeginInfo beginInfo{};
     beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -451,12 +440,12 @@ void Renderer::drawFrame() {
         throw std::runtime_error("failed to begin recording command buffer!");
     }
     
-    VkRenderPassBeginInfo renderPassInfo{};
-    renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-    renderPassInfo.renderPass = renderPass->getRenderPass();
-    renderPassInfo.framebuffer = framebuffers->getFramebuffers()[imageIndex];
-    renderPassInfo.renderArea.offset = {0, 0};
-    renderPassInfo.renderArea.extent = swapchain->getExtent();
+    VkRenderPassBeginInfo renderPass_Info{};
+    renderPass_Info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+    renderPass_Info.renderPass = renderPass_->getRenderPass();
+    renderPass_Info.framebuffer = framebuffers_->getFramebuffers()[imageIndex];
+    renderPass_Info.renderArea.offset = {0, 0};
+    renderPass_Info.renderArea.extent = swapchain_->getExtent();
     
     // 清除颜色和深度缓冲
     // 根据是否使用MSAA，清除值的数量不同
@@ -465,22 +454,22 @@ void Renderer::drawFrame() {
     clearValues.push_back({{1.0f, 0}});  // 深度清除值：1.0（最远）
     
     // 如果使用MSAA，需要为解析附件添加清除值（虽然不会被使用，但数量必须匹配）
-    if (msaaSamples > VK_SAMPLE_COUNT_1_BIT) {
+    if (msaaSamples_ > VK_SAMPLE_COUNT_1_BIT) {
         clearValues.push_back({{{0.0f, 0.0f, 0.0f, 1.0f}}});  // 解析附件清除值
     }
     
-    renderPassInfo.clearValueCount = static_cast<uint32_t>(clearValues.size());
-    renderPassInfo.pClearValues = clearValues.data();
+    renderPass_Info.clearValueCount = static_cast<uint32_t>(clearValues.size());
+    renderPass_Info.pClearValues = clearValues.data();
     
-    vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
+    vkCmdBeginRenderPass(commandBuffer, &renderPass_Info, VK_SUBPASS_CONTENTS_INLINE);
     
-    vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline->getPipeline());
+    vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline_->getPipeline());
     
     VkViewport viewport{};
     viewport.x = 0.0f;
     viewport.y = 0.0f;
     {
-        VkExtent2D vpExt = fsr1Pass_ ? fsr1Pass_->getRenderExtent() : swapchain->getExtent();
+        VkExtent2D vpExt = fsr1Pass_ ? fsr1Pass_->getRenderExtent() : swapchain_->getExtent();
         viewport.width = (float)vpExt.width;
         viewport.height = (float)vpExt.height;
     }
@@ -490,39 +479,41 @@ void Renderer::drawFrame() {
     
     VkRect2D scissor{};
     scissor.offset = {0, 0};
-    scissor.extent = fsr1Pass_ ? fsr1Pass_->getRenderExtent() : swapchain->getExtent();
+    scissor.extent = fsr1Pass_ ? fsr1Pass_->getRenderExtent() : swapchain_->getExtent();
     vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
     
     // 从 GameSession 获取摄像机（渲染所需视口/投影矩阵）
     Camera* cam = gameSession_ ? gameSession_->getCamera() : nullptr;
     if (!cam) {
         vkCmdEndRenderPass(commandBuffer);
-        if (vkEndCommandBuffer(commandBuffer) != VK_SUCCESS) {}
+        if (vkEndCommandBuffer(commandBuffer) != VK_SUCCESS) {
+            Logger::warning("[Renderer] 无相机时结束命令缓冲失败");
+        }
         return;
     }
 
     // 先渲染天空盒（背景）
-    if (skyboxRenderer && skyboxRenderer->getDescriptorSet() != VK_NULL_HANDLE) {
-        vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, skyboxPipeline->getPipeline());
-        skyboxRenderer->render(commandBuffer, skyboxRenderer->getPipelineLayout(),
+    if (skyboxRenderer_ && skyboxRenderer_->getDescriptorSet() != VK_NULL_HANDLE) {
+        vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, skyboxPipeline_->getPipeline());
+        skyboxRenderer_->render(commandBuffer, skyboxRenderer_->getPipelineLayout(),
                              cam->getViewMatrix(), cam->getProjectionMatrix());
-        vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline->getPipeline());
+        vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline_->getPipeline());
     }
 
     updateLightUniformBuffer();
 
     vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                           graphicsPipeline->getPipelineLayout(), 0, 1, &textureDescriptorSet, 0, nullptr);
+                           graphicsPipeline_->getPipelineLayout(), 0, 1, &textureDescriptorSet_, 0, nullptr);
     vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                           graphicsPipeline->getPipelineLayout(), 1, 1, &lightDescriptorSet, 0, nullptr);
+                           graphicsPipeline_->getPipelineLayout(), 1, 1, &lightDescriptorSet_, 0, nullptr);
 
     // 渲染地形
-    terrainRenderer->render(commandBuffer, graphicsPipeline->getPipelineLayout(),
+    terrainRenderer_->render(commandBuffer, graphicsPipeline_->getPipelineLayout(),
                           cam->getViewMatrix(), cam->getProjectionMatrix());
 
     // 渲染 OBJ 模型
-    if (modelRenderer) {
-        modelRenderer->render(commandBuffer, graphicsPipeline->getPipelineLayout(),
+    if (modelRenderer_) {
+        modelRenderer_->render(commandBuffer, graphicsPipeline_->getPipelineLayout(),
                             cam->getViewMatrix(), cam->getProjectionMatrix());
     }
 
@@ -533,39 +524,39 @@ void Renderer::drawFrame() {
         if (playerModel && playerModel->getMeshCount() > 0) {
             if (playerDescSet != VK_NULL_HANDLE) {
                 vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                                       graphicsPipeline->getPipelineLayout(), 0, 1, &playerDescSet, 0, nullptr);
+                                       graphicsPipeline_->getPipelineLayout(), 0, 1, &playerDescSet, 0, nullptr);
             }
-            playerModel->render(commandBuffer, graphicsPipeline->getPipelineLayout(),
+            playerModel->render(commandBuffer, graphicsPipeline_->getPipelineLayout(),
                               cam->getViewMatrix(), cam->getProjectionMatrix(),
                               playerModel->getModelMatrix());
         }
     }
 
     // 渲染动态加载的静态模型（带视锥体剔除）
-    for (auto& [id, model] : models) {
+    for (auto& [id, model] : models_) {
         if (model && model->getMeshCount() > 0) {
             auto bbox = model->getBoundingBox();
             glm::vec3 worldMin = model->getPosition() + bbox.first * model->getScale();
             glm::vec3 worldMax = model->getPosition() + bbox.second * model->getScale();
 
             glm::vec3 modelCenter = (worldMin + worldMax) * 0.5f;
-            if (glm::length(modelCenter - cam->getPosition()) > 250.0f) continue;
+            if (glm::length(modelCenter - cam->getPosition()) > MODEL_CULLING_DISTANCE) continue;
             if (!cam->getFrustum().isAABBInside(worldMin, worldMax)) continue;
 
-            auto it = modelDescriptorSets.find(id);
-            if (it != modelDescriptorSets.end() && it->second != VK_NULL_HANDLE) {
+            auto it = modelDescriptorSets_.find(id);
+            if (it != modelDescriptorSets_.end() && it->second != VK_NULL_HANDLE) {
                 vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                                       graphicsPipeline->getPipelineLayout(), 0, 1, &it->second, 0, nullptr);
+                                       graphicsPipeline_->getPipelineLayout(), 0, 1, &it->second, 0, nullptr);
             }
-            model->render(commandBuffer, graphicsPipeline->getPipelineLayout(),
+            model->render(commandBuffer, graphicsPipeline_->getPipelineLayout(),
                         cam->getViewMatrix(), cam->getProjectionMatrix(),
                         model->getModelMatrix());
         }
     }
 
     // 渲染树木/石头/草丛
-    treeSystem_->render(commandBuffer, graphicsPipeline->getPipelineLayout(), *cam);
-    if (stoneSystem_) stoneSystem_->render(commandBuffer, graphicsPipeline->getPipelineLayout(), *cam);
+    treeSystem_->render(commandBuffer, graphicsPipeline_->getPipelineLayout(), *cam);
+    if (stoneSystem_) stoneSystem_->render(commandBuffer, graphicsPipeline_->getPipelineLayout(), *cam);
     if (grassSystem_) grassSystem_->render(commandBuffer, *cam);
 
     // 渲染远程玩家模型（从 GameSession 获取）
@@ -573,7 +564,7 @@ void Renderer::drawFrame() {
         for (const auto& [clientId, rp] : gameSession_->getRemotePlayerModels()) {
             GLTFModel* activeModel = rp.wasMoving ? rp.walkModel.get() : rp.idleModel.get();
             if (activeModel && activeModel->getMeshCount() > 0) {
-                activeModel->render(commandBuffer, graphicsPipeline->getPipelineLayout(),
+                activeModel->render(commandBuffer, graphicsPipeline_->getPipelineLayout(),
                             cam->getViewMatrix(), cam->getProjectionMatrix(),
                             activeModel->getModelMatrix());
             }
@@ -581,7 +572,7 @@ void Renderer::drawFrame() {
     }
     
     // 渲染 ImGui
-    imguiManager->render(commandBuffer);
+    imguiManager_->render(commandBuffer);
     
     vkCmdEndRenderPass(commandBuffer);
 
@@ -589,7 +580,7 @@ void Renderer::drawFrame() {
     if (fsr1Pass_ && fsrScale_ < 1.0f) {
         VkImageMemoryBarrier b{};
         b.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-        b.image = swapchain->getImages()[imageIndex];
+        b.image = swapchain_->getImages()[imageIndex];
         b.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
         b.oldLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
         b.newLayout = VK_IMAGE_LAYOUT_GENERAL;
@@ -615,20 +606,20 @@ void Renderer::drawFrame() {
     VkSubmitInfo submitInfo{};
     submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
     
-    VkSemaphore waitSemaphores[] = {syncObjects->getImageAvailableSemaphores()[currentFrame]};
+    VkSemaphore waitSemaphores[] = {syncObjects_->getImageAvailableSemaphores()[currentFrame_]};
     VkPipelineStageFlags waitStages[] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
     submitInfo.waitSemaphoreCount = 1;
     submitInfo.pWaitSemaphores = waitSemaphores;
     submitInfo.pWaitDstStageMask = waitStages;
     
     submitInfo.commandBufferCount = 1;
-    submitInfo.pCommandBuffers = &commandBuffers->getCommandBuffers()[currentFrame];
+    submitInfo.pCommandBuffers = &commandBuffers_->getCommandBuffers()[currentFrame_];
     
-    VkSemaphore signalSemaphores[] = {syncObjects->getRenderFinishedSemaphores()[currentFrame]};
+    VkSemaphore signalSemaphores[] = {syncObjects_->getRenderFinishedSemaphores()[currentFrame_]};
     submitInfo.signalSemaphoreCount = 1;
     submitInfo.pSignalSemaphores = signalSemaphores;
     
-    VkResult submitResult = vkQueueSubmit(vulkanDevice->getGraphicsQueue(), 1, &submitInfo, syncObjects->getInFlightFences()[currentFrame]);
+    VkResult submitResult = vkQueueSubmit(vulkanDevice_->getGraphicsQueue(), 1, &submitInfo, syncObjects_->getInFlightFences()[currentFrame_]);
     if (submitResult != VK_SUCCESS) {
         // 打印详细的错误码
         std::cerr << "[Renderer] vkQueueSubmit failed with error code: " << submitResult << std::endl;
@@ -641,11 +632,11 @@ void Renderer::drawFrame() {
         }
         
         // 如果窗口正在关闭，不抛出异常，直接返回
-        if (glfwWindowShouldClose(window)) {
+        if (glfwWindowShouldClose(window_)) {
             // 提交一个空的信号操作来恢复 fence 状态
             VkSubmitInfo emptySubmit{};
             emptySubmit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-            vkQueueSubmit(vulkanDevice->getGraphicsQueue(), 1, &emptySubmit, syncObjects->getInFlightFences()[currentFrame]);
+            vkQueueSubmit(vulkanDevice_->getGraphicsQueue(), 1, &emptySubmit, syncObjects_->getInFlightFences()[currentFrame_]);
             return;
         }
         throw std::runtime_error("failed to submit draw command buffer!");
@@ -657,122 +648,108 @@ void Renderer::drawFrame() {
     presentInfo.waitSemaphoreCount = 1;
     presentInfo.pWaitSemaphores = signalSemaphores;
     
-    VkSwapchainKHR swapChains[] = {swapchain->getSwapchain()};
+    VkSwapchainKHR swapChains[] = {swapchain_->getSwapchain()};
     presentInfo.swapchainCount = 1;
     presentInfo.pSwapchains = swapChains;
     presentInfo.pImageIndices = &imageIndex;
     
-    result = vkQueuePresentKHR(vulkanDevice->getPresentQueue(), &presentInfo);
+    result = vkQueuePresentKHR(vulkanDevice_->getPresentQueue(), &presentInfo);
     
     // FSR1 帧推进（仅开启时切换描述符集）
     if (fsr1Pass_ && fsrScale_ < 1.0f) fsr1Pass_->advanceFrame();
     
-    if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR || framebufferResized) {
-        framebufferResized = false;
+    if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR || framebufferResized_) {
+        framebufferResized_ = false;
         recreateSwapchain();
     } else if (result != VK_SUCCESS) {
         // 如果窗口正在关闭，不抛出异常，直接返回
-        if (glfwWindowShouldClose(window)) {
+        if (glfwWindowShouldClose(window_)) {
             return;
         }
         throw std::runtime_error("failed to present swap chain image!");
     }
     
-    currentFrame = (currentFrame + 1) % syncObjects->getMaxFramesInFlight();
+    currentFrame_ = (currentFrame_ + 1) % syncObjects_->getMaxFramesInFlight();
 }
 
 void Renderer::recreateSwapchain() {
     int width = 0, height = 0;
-    glfwGetFramebufferSize(window, &width, &height);
+    glfwGetFramebufferSize(window_, &width, &height);
     
     while (width == 0 || height == 0) {
-        glfwGetFramebufferSize(window, &width, &height);
+        glfwGetFramebufferSize(window_, &width, &height);
         glfwWaitEvents();
     }
     
-    vkDeviceWaitIdle(vulkanDevice->getDevice());
+    vkDeviceWaitIdle(vulkanDevice_->getDevice());
     
     // 清理MSAA颜色资源
-    if (msaaSamples > VK_SAMPLE_COUNT_1_BIT) {
+    if (msaaSamples_ > VK_SAMPLE_COUNT_1_BIT) {
         cleanupColorResources();
     }
     
     // 清理并重新创建深度资源
-    vulkanDevice->cleanupDepthResources();
+    vulkanDevice_->cleanupDepthResources();
     
-    swapchain->recreate(window);
+    swapchain_->recreate(window_);
     
     // 重建 FSR1 管线（新尺寸）
-    VkExtent2D renderExt;
-    bool useFsrFb = false;
-    if (useFsrFb) {
+    VkExtent2D renderExt = swapchain_->getExtent();
+    if (fsr1Pass_) {
         fsr1Pass_->cleanup();
-        fsr1Pass_ = std::make_unique<Fsr1Pass>(vulkanDevice, swapchain->getImageFormat(), swapchain->getExtent(), fsrScale_);
+        fsr1Pass_ = std::make_unique<Fsr1Pass>(vulkanDevice_, swapchain_->getImageFormat(), swapchain_->getExtent(), fsrScale_);
         fsr1Pass_->init();
-        renderExt = fsr1Pass_->getRenderExtent();
-    } else {
-        renderExt = swapchain->getExtent();
-        if (fsr1Pass_) {
-            fsr1Pass_->cleanup();
-            fsr1Pass_ = std::make_unique<Fsr1Pass>(vulkanDevice, swapchain->getImageFormat(), swapchain->getExtent(), fsrScale_);
-            fsr1Pass_->init();
-        }
     }
 
     // 重新创建深度资源
-    vulkanDevice->createDepthResources(renderExt, msaaSamples);
+    vulkanDevice_->createDepthResources(renderExt, msaaSamples_);
     
     // 更新渲染通道的MSAA样本数并重新创建
-    renderPass->setMsaaSamples(msaaSamples);
-    renderPass->cleanup();
-    renderPass->create();
+    renderPass_->setMsaaSamples(msaaSamples_);
+    renderPass_->cleanup();
+    renderPass_->create();
     
     // 重新创建MSAA颜色资源
-    if (msaaSamples > VK_SAMPLE_COUNT_1_BIT) {
+    if (msaaSamples_ > VK_SAMPLE_COUNT_1_BIT) {
         createColorResources();
     }
     
     // 更新管线的MSAA样本数并重新创建
-    graphicsPipeline->setMsaaSamples(msaaSamples);
-    graphicsPipeline->cleanup();
-    graphicsPipeline->create();
+    graphicsPipeline_->setMsaaSamples(msaaSamples_);
+    graphicsPipeline_->cleanup();
+    graphicsPipeline_->create();
     
-    skyboxPipeline->setMsaaSamples(msaaSamples);
-    skyboxPipeline->cleanup();
-    skyboxPipeline->create();
+    skyboxPipeline_->setMsaaSamples(msaaSamples_);
+    skyboxPipeline_->cleanup();
+    skyboxPipeline_->create();
     
     // 重建帧缓冲
-    if (useFsrFb) {
-        std::vector<VkImageView> att = {fsr1Pass_->getColorImageView()};
-        framebuffers->recreate(att, renderExt, colorImageView);
-    } else {
-        framebuffers->recreate(swapchain->getImageViews(), renderExt, colorImageView);
-    }
-    commandBuffers->cleanup();
-    commandBuffers->updateRenderPass(renderPass->getRenderPass());
-    commandBuffers->updatePipeline(graphicsPipeline->getPipeline());
-    commandBuffers->updatePipelineLayout(graphicsPipeline->getPipelineLayout());
-    commandBuffers->create(useFsrFb ? 1 : swapchain->getImageViews().size());
+    framebuffers_->recreate(swapchain_->getImageViews(), renderExt, colorImageView_);
+    commandBuffers_->cleanup();
+    commandBuffers_->updateRenderPass(renderPass_->getRenderPass());
+    commandBuffers_->updatePipeline(graphicsPipeline_->getPipeline());
+    commandBuffers_->updatePipelineLayout(graphicsPipeline_->getPipelineLayout());
+    commandBuffers_->create(swapchain_->getImageViews().size());
     
     // 重新初始化 ImGui 以匹配新的 MSAA 设置
-    imguiManager.reset();
-    imguiManager = std::make_unique<ImGuiManager>(vulkanDevice, swapchain, renderPass, window, vulkanInstance->getInstance(), msaaSamples);
-    imguiManager->init();
+    imguiManager_.reset();
+    imguiManager_ = std::make_unique<ImGuiManager>(vulkanDevice_, swapchain_, renderPass_, window_, vulkanInstance_->getInstance(), msaaSamples_);
+    imguiManager_->init();
     
     // 记录命令缓冲（所有使用 frame buffer 0）
-    VkFramebuffer fb = framebuffers->getFramebuffers()[0];
+    VkFramebuffer fb = framebuffers_->getFramebuffers()[0];
     Camera* cam = gameSession_ ? gameSession_->getCamera() : nullptr;
     glm::mat4 viewMat = cam ? cam->getViewMatrix() : glm::mat4(1.0f);
     glm::mat4 projMat = cam ? cam->getProjectionMatrix() : glm::mat4(1.0f);
-    for (size_t i = 0; i < commandBuffers->getCommandBuffers().size(); i++) {
-        commandBuffers->record(i, fb, renderExt, viewMat, projMat);
+    for (size_t i = 0; i < commandBuffers_->getCommandBuffers().size(); i++) {
+        commandBuffers_->record(i, fb, renderExt, viewMat, projMat);
     }
 }
 
 void Renderer::cleanup() {
     // 等待设备空闲，确保所有渲染操作完成
-    if (vulkanDevice) {
-        vkDeviceWaitIdle(vulkanDevice->getDevice());
+    if (vulkanDevice_) {
+        vkDeviceWaitIdle(vulkanDevice_->getDevice());
     }
     
     // 清理游戏会话（必须在 Vulkan 资源销毁前）
@@ -780,19 +757,19 @@ void Renderer::cleanup() {
     gameSession_ = nullptr;
 
     // 清理动态加载的模型
-    models.clear();
-    modelDescriptorSets.clear();
+    models_.clear();
+    modelDescriptorSets_.clear();
     
     // 清理 ImGui（使用 Vulkan）
-    imguiManager.reset();
+    imguiManager_.reset();
     
-    modelRenderer.reset();
-    skyboxRenderer.reset();
-    terrainRenderer.reset();
+    modelRenderer_.reset();
+    skyboxRenderer_.reset();
+    terrainRenderer_.reset();
     
     // 清理新系统
-    lightManager.reset();
-    textureLoader.reset();
+    lightManager_.reset();
+    textureLoader_.reset();
     
     // 清理树木（由 TreeSystem 统一管理）
     treeSystem_.reset();
@@ -804,50 +781,50 @@ void Renderer::cleanup() {
     fsr1Pass_.reset();
 
     // 清理描述符集资源
-    if (lightUniformBuffer != VK_NULL_HANDLE) {
-        vmaDestroyBuffer(vulkanDevice->getAllocator(), lightUniformBuffer, lightUniformBufferAllocation);
-        lightUniformBuffer = VK_NULL_HANDLE;
-        lightUniformBufferAllocation = VK_NULL_HANDLE;
+    if (lightUniformBuffer_ != VK_NULL_HANDLE) {
+        vmaDestroyBuffer(vulkanDevice_->getAllocator(), lightUniformBuffer_, lightUniformBufferAllocation_);
+        lightUniformBuffer_ = VK_NULL_HANDLE;
+        lightUniformBufferAllocation_ = VK_NULL_HANDLE;
     }
-    if (descriptorPool != VK_NULL_HANDLE) {
-        vkDestroyDescriptorPool(vulkanDevice->getDevice(), descriptorPool, nullptr);
+    if (descriptorPool_ != VK_NULL_HANDLE) {
+        vkDestroyDescriptorPool(vulkanDevice_->getDevice(), descriptorPool_, nullptr);
     }
-    if (lightDescriptorSetLayout != VK_NULL_HANDLE) {
-        vkDestroyDescriptorSetLayout(vulkanDevice->getDevice(), lightDescriptorSetLayout, nullptr);
+    if (lightDescriptorSetLayout_ != VK_NULL_HANDLE) {
+        vkDestroyDescriptorSetLayout(vulkanDevice_->getDevice(), lightDescriptorSetLayout_, nullptr);
     }
-    if (textureDescriptorSetLayout != VK_NULL_HANDLE) {
-        vkDestroyDescriptorSetLayout(vulkanDevice->getDevice(), textureDescriptorSetLayout, nullptr);
+    if (textureDescriptorSetLayout_ != VK_NULL_HANDLE) {
+        vkDestroyDescriptorSetLayout(vulkanDevice_->getDevice(), textureDescriptorSetLayout_, nullptr);
     }
     
-    syncObjects.reset();
-    commandBuffers.reset();
+    syncObjects_.reset();
+    commandBuffers_.reset();
     
     // 清理MSAA颜色资源
     cleanupColorResources();
     
-    framebuffers.reset();
-    skyboxPipeline.reset();
-    graphicsPipeline.reset();
-    renderPass.reset();
-    swapchain.reset();
-    vulkanDevice.reset();
-    vulkanInstance.reset();
+    framebuffers_.reset();
+    skyboxPipeline_.reset();
+    graphicsPipeline_.reset();
+    renderPass_.reset();
+    swapchain_.reset();
+    vulkanDevice_.reset();
+    vulkanInstance_.reset();
     
-    if (window != nullptr) {
-        glfwDestroyWindow(window);
+    if (window_ != nullptr) {
+        glfwDestroyWindow(window_);
     }
     
     glfwTerminate();
 }
 
 void Renderer::createColorResources() {
-    VkFormat colorFormat = swapchain->getImageFormat();
+    VkFormat colorFormat = swapchain_->getImageFormat();
     
     VkImageCreateInfo imageInfo{};
     imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
     imageInfo.imageType = VK_IMAGE_TYPE_2D;
-    VkExtent2D targetExt = {std::max(1u, (uint32_t)(swapchain->getExtent().width * fsrScale_)),
-                            std::max(1u, (uint32_t)(swapchain->getExtent().height * fsrScale_))};
+    VkExtent2D targetExt = {std::max(1u, (uint32_t)(swapchain_->getExtent().width * fsrScale_)),
+                            std::max(1u, (uint32_t)(swapchain_->getExtent().height * fsrScale_))};
     imageInfo.extent.width = targetExt.width;
     imageInfo.extent.height = targetExt.height;
     imageInfo.extent.depth = 1;
@@ -857,18 +834,18 @@ void Renderer::createColorResources() {
     imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
     imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
     imageInfo.usage = VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
-    imageInfo.samples = msaaSamples;
+    imageInfo.samples = msaaSamples_;
     imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
     
     VmaAllocationCreateInfo allocInfo{};
     allocInfo.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
-    if (vmaCreateImage(vulkanDevice->getAllocator(), &imageInfo, &allocInfo, &colorImage, &colorImageAllocation, nullptr) != VK_SUCCESS) {
+    if (vmaCreateImage(vulkanDevice_->getAllocator(), &imageInfo, &allocInfo, &colorImage_, &colorImageAllocation_, nullptr) != VK_SUCCESS) {
         throw std::runtime_error("failed to create color image!");
     }
     
     VkImageViewCreateInfo imageViewInfo{};
     imageViewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-    imageViewInfo.image = colorImage;
+    imageViewInfo.image = colorImage_;
     imageViewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
     imageViewInfo.format = colorFormat;
     imageViewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
@@ -877,7 +854,7 @@ void Renderer::createColorResources() {
     imageViewInfo.subresourceRange.baseArrayLayer = 0;
     imageViewInfo.subresourceRange.layerCount = 1;
     
-    if (vkCreateImageView(vulkanDevice->getDevice(), &imageViewInfo, nullptr, &colorImageView) != VK_SUCCESS) {
+    if (vkCreateImageView(vulkanDevice_->getDevice(), &imageViewInfo, nullptr, &colorImageView_) != VK_SUCCESS) {
         throw std::runtime_error("failed to create color image view!");
     }
     
@@ -885,19 +862,19 @@ void Renderer::createColorResources() {
 }
 
 void Renderer::cleanupColorResources() {
-    if (colorImageView != VK_NULL_HANDLE) {
-        vkDestroyImageView(vulkanDevice->getDevice(), colorImageView, nullptr);
-        colorImageView = VK_NULL_HANDLE;
+    if (colorImageView_ != VK_NULL_HANDLE) {
+        vkDestroyImageView(vulkanDevice_->getDevice(), colorImageView_, nullptr);
+        colorImageView_ = VK_NULL_HANDLE;
     }
-    if (colorImage != VK_NULL_HANDLE) {
-        vmaDestroyImage(vulkanDevice->getAllocator(), colorImage, colorImageAllocation);
-        colorImage = VK_NULL_HANDLE;
-        colorImageAllocation = VK_NULL_HANDLE;
+    if (colorImage_ != VK_NULL_HANDLE) {
+        vmaDestroyImage(vulkanDevice_->getAllocator(), colorImage_, colorImageAllocation_);
+        colorImage_ = VK_NULL_HANDLE;
+        colorImageAllocation_ = VK_NULL_HANDLE;
     }
 }
 
 void Renderer::setMsaaSamples(VkSampleCountFlagBits samples) {
-    msaaSamples = samples;
+    msaaSamples_ = samples;
     // 需要重新创建渲染通道和其他资源
     recreateSwapchain();
 }
@@ -918,7 +895,7 @@ void Renderer::createDescriptorSetLayouts() {
     textureLayoutInfo.bindingCount = static_cast<uint32_t>(textureBindings.size());
     textureLayoutInfo.pBindings = textureBindings.data();
 
-    if (vkCreateDescriptorSetLayout(vulkanDevice->getDevice(), &textureLayoutInfo, nullptr, &textureDescriptorSetLayout) != VK_SUCCESS) {
+    if (vkCreateDescriptorSetLayout(vulkanDevice_->getDevice(), &textureLayoutInfo, nullptr, &textureDescriptorSetLayout_) != VK_SUCCESS) {
         throw std::runtime_error("failed to create texture descriptor set layout!");
     }
 
@@ -938,7 +915,7 @@ void Renderer::createDescriptorSetLayouts() {
     lightLayoutInfo.bindingCount = static_cast<uint32_t>(lightBindings.size());
     lightLayoutInfo.pBindings = lightBindings.data();
 
-    if (vkCreateDescriptorSetLayout(vulkanDevice->getDevice(), &lightLayoutInfo, nullptr, &lightDescriptorSetLayout) != VK_SUCCESS) {
+    if (vkCreateDescriptorSetLayout(vulkanDevice_->getDevice(), &lightLayoutInfo, nullptr, &lightDescriptorSetLayout_) != VK_SUCCESS) {
         throw std::runtime_error("failed to create light descriptor set layout!");
     }
 }
@@ -961,7 +938,7 @@ void Renderer::createDescriptorPool(uint32_t maxSets, uint32_t descriptorCount) 
     poolInfo.pPoolSizes = poolSizes.data();
     poolInfo.maxSets = maxSets;
 
-    if (vkCreateDescriptorPool(vulkanDevice->getDevice(), &poolInfo, nullptr, &descriptorPool) != VK_SUCCESS) {
+    if (vkCreateDescriptorPool(vulkanDevice_->getDevice(), &poolInfo, nullptr, &descriptorPool_) != VK_SUCCESS) {
         throw std::runtime_error("failed to create descriptor pool!");
     }
 }
@@ -975,11 +952,11 @@ void Renderer::createDescriptorSets() {
         
         VkDescriptorSetAllocateInfo allocInfo{};
         allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-        allocInfo.descriptorPool = descriptorPool;
+        allocInfo.descriptorPool = descriptorPool_;
         allocInfo.descriptorSetCount = 1;
-        allocInfo.pSetLayouts = &textureDescriptorSetLayout;
+        allocInfo.pSetLayouts = &textureDescriptorSetLayout_;
 
-        if (vkAllocateDescriptorSets(vulkanDevice->getDevice(), &allocInfo, &descriptorSet) != VK_SUCCESS) {
+        if (vkAllocateDescriptorSets(vulkanDevice_->getDevice(), &allocInfo, &descriptorSet) != VK_SUCCESS) {
             Logger::warning("无法为 " + modelName + " 分配纹理描述符集");
             return;
         }
@@ -1000,20 +977,20 @@ void Renderer::createDescriptorSets() {
             descriptorWrite.descriptorCount = 1;
             descriptorWrite.pImageInfo = &imageInfo;
 
-            vkUpdateDescriptorSets(vulkanDevice->getDevice(), 1, &descriptorWrite, 0, nullptr);
+            vkUpdateDescriptorSets(vulkanDevice_->getDevice(), 1, &descriptorWrite, 0, nullptr);
             Logger::info("为 " + modelName + " 创建纹理描述符集");
         }
     };
 
     // 保留默认纹理描述符集（用于地板等）
-    if (textureDescriptorSet == VK_NULL_HANDLE) {
+    if (textureDescriptorSet_ == VK_NULL_HANDLE) {
         VkDescriptorSetAllocateInfo textureAllocInfo{};
         textureAllocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-        textureAllocInfo.descriptorPool = descriptorPool;
+        textureAllocInfo.descriptorPool = descriptorPool_;
         textureAllocInfo.descriptorSetCount = 1;
-        textureAllocInfo.pSetLayouts = &textureDescriptorSetLayout;
+        textureAllocInfo.pSetLayouts = &textureDescriptorSetLayout_;
 
-        if (vkAllocateDescriptorSets(vulkanDevice->getDevice(), &textureAllocInfo, &textureDescriptorSet) != VK_SUCCESS) {
+        if (vkAllocateDescriptorSets(vulkanDevice_->getDevice(), &textureAllocInfo, &textureDescriptorSet_) != VK_SUCCESS) {
             throw std::runtime_error("failed to allocate default texture descriptor set!");
         }
         Logger::info("Default texture descriptor set allocated");
@@ -1040,7 +1017,7 @@ void Renderer::createDescriptorSets() {
     allocInfo.usage = VMA_MEMORY_USAGE_AUTO_PREFER_HOST;
     allocInfo.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
     VmaAllocationInfo allocOut;
-    if (vmaCreateBuffer(vulkanDevice->getAllocator(), &bufferInfo, &allocInfo, &lightUniformBuffer, &lightUniformBufferAllocation, &allocOut) != VK_SUCCESS) {
+    if (vmaCreateBuffer(vulkanDevice_->getAllocator(), &bufferInfo, &allocInfo, &lightUniformBuffer_, &lightUniformBufferAllocation_, &allocOut) != VK_SUCCESS) {
         throw std::runtime_error("failed to create light uniform buffer!");
     }
     lightUniformBufferMapped_ = allocOut.pMappedData;
@@ -1048,30 +1025,30 @@ void Renderer::createDescriptorSets() {
     // 3. 创建光源描述符集
     VkDescriptorSetAllocateInfo lightAllocInfo{};
     lightAllocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-    lightAllocInfo.descriptorPool = descriptorPool;
+    lightAllocInfo.descriptorPool = descriptorPool_;
     lightAllocInfo.descriptorSetCount = 1;
-    lightAllocInfo.pSetLayouts = &lightDescriptorSetLayout;
+    lightAllocInfo.pSetLayouts = &lightDescriptorSetLayout_;
 
-    if (vkAllocateDescriptorSets(vulkanDevice->getDevice(), &lightAllocInfo, &lightDescriptorSet) != VK_SUCCESS) {
+    if (vkAllocateDescriptorSets(vulkanDevice_->getDevice(), &lightAllocInfo, &lightDescriptorSet_) != VK_SUCCESS) {
         throw std::runtime_error("failed to allocate light descriptor set!");
     }
 
     // 更新光源描述符集
     VkDescriptorBufferInfo bufferInfo2{};
-    bufferInfo2.buffer = lightUniformBuffer;
+    bufferInfo2.buffer = lightUniformBuffer_;
     bufferInfo2.offset = 0;
     bufferInfo2.range = bufferSize;
 
     VkWriteDescriptorSet lightDescriptorWrite{};
     lightDescriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    lightDescriptorWrite.dstSet = lightDescriptorSet;
+    lightDescriptorWrite.dstSet = lightDescriptorSet_;
     lightDescriptorWrite.dstBinding = 0;
     lightDescriptorWrite.dstArrayElement = 0;
     lightDescriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
     lightDescriptorWrite.descriptorCount = 1;
     lightDescriptorWrite.pBufferInfo = &bufferInfo2;
 
-    vkUpdateDescriptorSets(vulkanDevice->getDevice(), 1, &lightDescriptorWrite, 0, nullptr);
+    vkUpdateDescriptorSets(vulkanDevice_->getDevice(), 1, &lightDescriptorWrite, 0, nullptr);
     
     // 初始化光源数据
     updateLightUniformBuffer();
@@ -1079,9 +1056,9 @@ void Renderer::createDescriptorSets() {
 
 void Renderer::updateLightUniformBuffer() {
     // 获取光源数据
-    ShaderLightArray lights = lightManager->getShaderLightData();
-    int lightCount = lightManager->getEnabledLightCount();
-    glm::vec3 ambientColor = lightManager->getAmbient();
+    ShaderLightArray lights = lightManager_->getShaderLightData();
+    int lightCount = lightManager_->getEnabledLightCount();
+    glm::vec3 ambientColor = lightManager_->getAmbient();
 
     // 计算正确的 buffer 大小（std140 布局）
     // ShaderLight 现在是 96 字节 (16 * 6)
@@ -1169,8 +1146,8 @@ SceneConfig Renderer::loadSceneConfig(const std::string& configFile) {
         }
         
         // 加载模型配置
-        if (j.contains("models") && j["models"].is_array()) {
-            for (const auto& item : j["models"]) {
+        if (j.contains("models_") && j["models_"].is_array()) {
+            for (const auto& item : j["models_"]) {
                 ModelConfig config;
                 config.id = item.value("id", "");
                 config.file = item.value("file", "");
@@ -1217,11 +1194,11 @@ SceneConfig Renderer::loadSceneConfig(const std::string& configFile) {
 
 void Renderer::loadLightsFromConfig(const SceneConfig& config) {
     // 设置环境光
-    lightManager->setAmbientColor(config.ambient.color);
-    lightManager->setAmbientIntensity(config.ambient.intensity);
+    lightManager_->setAmbientColor(config.ambient.color);
+    lightManager_->setAmbientIntensity(config.ambient.intensity);
     
     // 清除现有光源
-    lightManager->clear();
+    lightManager_->clear();
     
     // 加载光源
     for (const auto& lightConfig : config.lights) {
@@ -1232,14 +1209,14 @@ void Renderer::loadLightsFromConfig(const SceneConfig& config) {
         int lightId = -1;
         
         if (lightConfig.type == "directional") {
-            lightId = lightManager->addDirectionalLight(
+            lightId = lightManager_->addDirectionalLight(
                 lightConfig.name.empty() ? lightConfig.id : lightConfig.name,
                 lightConfig.direction,
                 lightConfig.color,
                 lightConfig.intensity
             );
         } else if (lightConfig.type == "point") {
-            lightId = lightManager->addPointLight(
+            lightId = lightManager_->addPointLight(
                 lightConfig.name.empty() ? lightConfig.id : lightConfig.name,
                 lightConfig.position,
                 lightConfig.color,
@@ -1247,13 +1224,13 @@ void Renderer::loadLightsFromConfig(const SceneConfig& config) {
                 10.0f  // 默认范围
             );
             // 设置衰减参数
-            if (Light* light = lightManager->getLight(lightId)) {
+            if (Light* light = lightManager_->getLight(lightId)) {
                 light->setConstant(lightConfig.constant);
                 light->setLinear(lightConfig.linear);
                 light->setQuadratic(lightConfig.quadratic);
             }
         } else if (lightConfig.type == "spot") {
-            lightId = lightManager->addSpotLight(
+            lightId = lightManager_->addSpotLight(
                 lightConfig.name.empty() ? lightConfig.id : lightConfig.name,
                 lightConfig.position,
                 lightConfig.direction,
@@ -1264,7 +1241,7 @@ void Renderer::loadLightsFromConfig(const SceneConfig& config) {
                 10.0f  // 默认范围
             );
             // 设置衰减参数
-            if (Light* light = lightManager->getLight(lightId)) {
+            if (Light* light = lightManager_->getLight(lightId)) {
                 light->setConstant(lightConfig.constant);
                 light->setLinear(lightConfig.linear);
                 light->setQuadratic(lightConfig.quadratic);
@@ -1274,14 +1251,14 @@ void Renderer::loadLightsFromConfig(const SceneConfig& config) {
         }
         
         if (lightId >= 0 && lightConfig.type == "directional") {
-            if (Light* light = lightManager->getLight(lightId)) {
+            if (Light* light = lightManager_->getLight(lightId)) {
                 light->setShadowEnabled(lightConfig.shadowEnabled);
                 light->setShadowIntensity(lightConfig.shadowIntensity);
             }
         }
     }
     
-    Logger::info("加载了 " + std::to_string(lightManager->getLightCount()) + " 个光源");
+    Logger::info("加载了 " + std::to_string(lightManager_->getLightCount()) + " 个光源");
 }
 
 void Renderer::reloadSceneConfig() {
@@ -1306,7 +1283,7 @@ std::vector<ModelConfig> Renderer::loadModelConfig(const std::string& configFile
 }
 
 VkDescriptorSet Renderer::createModelDescriptorSet(GLTFModel* model, const std::string& modelId, VkDescriptorPool pool) {
-    VkDescriptorPool targetPool = (pool != VK_NULL_HANDLE) ? pool : descriptorPool;
+    VkDescriptorPool targetPool = (pool != VK_NULL_HANDLE) ? pool : descriptorPool_;
     
     // 从全局池分配描述符集时需要加锁（vkAllocateDescriptorSets 要求外部同步）
     std::unique_lock<std::mutex> poolLock(descriptorPoolMutex_, std::defer_lock);
@@ -1316,10 +1293,10 @@ VkDescriptorSet Renderer::createModelDescriptorSet(GLTFModel* model, const std::
     allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
     allocInfo.descriptorPool = targetPool;
     allocInfo.descriptorSetCount = 1;
-    allocInfo.pSetLayouts = &textureDescriptorSetLayout;
+    allocInfo.pSetLayouts = &textureDescriptorSetLayout_;
 
     VkDescriptorSet descriptorSet;
-    if (vkAllocateDescriptorSets(vulkanDevice->getDevice(), &allocInfo, &descriptorSet) != VK_SUCCESS) {
+    if (vkAllocateDescriptorSets(vulkanDevice_->getDevice(), &allocInfo, &descriptorSet) != VK_SUCCESS) {
         Logger::warning("无法为模型 " + modelId + " 分配纹理描述符集");
         return VK_NULL_HANDLE;
     }
@@ -1343,7 +1320,7 @@ VkDescriptorSet Renderer::createModelDescriptorSet(GLTFModel* model, const std::
         descriptorWrite.descriptorCount = 1;
         descriptorWrite.pImageInfo = &imageInfo;
 
-        vkUpdateDescriptorSets(vulkanDevice->getDevice(), 1, &descriptorWrite, 0, nullptr);
+        vkUpdateDescriptorSets(vulkanDevice_->getDevice(), 1, &descriptorWrite, 0, nullptr);
         Logger::info("为模型 " + modelId + " 创建纹理描述符集成功");
     } else {
         Logger::warning("模型 " + modelId + " 没有纹理，使用默认");
@@ -1360,7 +1337,7 @@ void Renderer::loadModelsFromConfig(const std::vector<ModelConfig>& configs) {
         }
         
         // 创建模型
-        auto model = std::make_unique<GLTFModel>(vulkanDevice, textureLoader);
+        auto model = std::make_unique<GLTFModel>(vulkanDevice_, textureLoader_);
         model->setPosition(config.position);
         model->setRotation(config.rotation.x, config.rotation.y, config.rotation.z);
         model->setScale(config.scale);
@@ -1376,7 +1353,7 @@ void Renderer::loadModelsFromConfig(const std::vector<ModelConfig>& configs) {
         }
         
         // 为每个 mesh 创建独立的纹理描述符集
-        model->createMeshDescriptorSets(textureDescriptorSetLayout, descriptorPool);
+        model->createMeshDescriptorSets(textureDescriptorSetLayout_, descriptorPool_);
         
         // 设置隐藏的节点名称
         if (!config.hiddenMeshNames.empty()) {
@@ -1394,8 +1371,8 @@ void Renderer::loadModelsFromConfig(const std::vector<ModelConfig>& configs) {
         VkDescriptorSet descriptorSet = createModelDescriptorSet(model.get(), config.id);
         
         // 普通模型存入 map
-        models[config.id] = std::move(model);
-        modelDescriptorSets[config.id] = descriptorSet;
+        models_[config.id] = std::move(model);
+        modelDescriptorSets_[config.id] = descriptorSet;
         
         Logger::info("模型 " + config.id + " 已加载");
     }

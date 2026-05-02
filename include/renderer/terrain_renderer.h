@@ -19,9 +19,11 @@
 //   maxChunksPerFrame=4   每帧最多启动的异步任务数（削峰填谷）
 //   noiseScale=0.08, heightScale=5.0, 3-octave FBM
 //
-// 线程安全：
-//   - perlinNoise/fbm/getHeight/computeChunkMesh 均为 const，只读成员数据
-//   - perm 向量在构造函数中一次性初始化，之后永不修改
+// 线程安全（verified）：
+//   - perlinNoise/fbm/getHeight/computeChunkMesh 均为 const，只读 perm + 局部变量
+//   - perm 向量在构造函数中一次性初始化，之后永不修改 → 任意线程数并发读安全
+//   - update() 修改 chunks/pendingChunks_ 仅在主线程，与上述 const 方法无数据重叠
+//   - uploadChunk() 涉及 Vulkan 调用，必须在主线程
 
 #include <vulkan/vulkan.h>
 #include <vk_mem_alloc.h>

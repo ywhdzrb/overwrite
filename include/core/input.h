@@ -1,8 +1,19 @@
 #pragma once
 
-#include <GLFW/glfw3.h>
-#include <memory>
+/**
+ * @file input.h
+ * @brief 输入模块 — 键盘/鼠标状态管理、按键按下/释放/刚刚按下检测
+ *
+ * 归属模块：core
+ * 核心职责：封装 GLFW 输入回调，提供按键/鼠标/滚轮状态查询接口
+ * 依赖关系：GLFW
+ * 关键设计：帧同步设计 — update() 在每帧开头调用，resetJustPressedFlags() 在帧末调用
+ */
+
 #include <array>
+#include <memory>
+
+#include <GLFW/glfw3.h>
 
 namespace owengine {
 
@@ -15,52 +26,52 @@ public:
     void update();
     
     // 键盘状态
-    bool isKeyPressed(int key) const;
-    bool isKeyJustPressed(int key) const;
-    bool isKeyJustReleased(int key) const;
+    [[nodiscard]] bool isKeyPressed(int key) const noexcept;
+    [[nodiscard]] bool isKeyJustPressed(int key) const noexcept;
+    [[nodiscard]] bool isKeyJustReleased(int key) const noexcept;
     
     // 鼠标状态
-    bool isMouseButtonPressed(int button) const;
-    bool isMouseButtonJustPressed(int button) const;
-    bool isMouseButtonJustReleased(int button) const;
+    [[nodiscard]] bool isMouseButtonPressed(int button) const noexcept;
+    [[nodiscard]] bool isMouseButtonJustPressed(int button) const noexcept;
+    [[nodiscard]] bool isMouseButtonJustReleased(int button) const noexcept;
     
     // 获取鼠标位置
-    void getMousePosition(double& x, double& y) const;
+    void getMousePosition(double& x, double& y) const noexcept;
     
     // 获取鼠标移动偏移
-    void getMouseDelta(double& deltaX, double& deltaY) const;
+    void getMouseDelta(double& deltaX, double& deltaY) const noexcept;
     
     // 获取鼠标滚轮偏移
-    void getScrollDelta(double& deltaX, double& deltaY) const;
+    void getScrollDelta(double& deltaX, double& deltaY) const noexcept;
     
     // 捕获/释放鼠标
     void setCursorCaptured(bool captured);
-    bool isCursorCaptured() const { return cursorCaptured; }
+    [[nodiscard]] bool isCursorCaptured() const noexcept { return cursorCaptured_; }
     
     // 获取原始鼠标移动（在禁用模式下）
-    void getRawMouseMovement(double& deltaX, double& deltaY);
+    void getRawMouseMovement(double& deltaX, double& deltaY) noexcept;
     
     // 重置"刚刚按下"标志（在帧结束时调用）
-    void resetJustPressedFlags();
+    void resetJustPressedFlags() noexcept;
     
     // 便捷方法：常用的按键状态
-    bool isForwardPressed() const { return keys[GLFW_KEY_W] || keys[GLFW_KEY_UP]; }
-    bool isBackPressed() const { return keys[GLFW_KEY_S] || keys[GLFW_KEY_DOWN]; }
-    bool isLeftPressed() const { return keys[GLFW_KEY_A] || keys[GLFW_KEY_LEFT]; }
-    bool isRightPressed() const { return keys[GLFW_KEY_D] || keys[GLFW_KEY_RIGHT]; }
-    bool isJumpPressed() const { return keys[GLFW_KEY_SPACE]; }
-    bool isJumpJustPressed() const { return jumpJustPressed; }
-    bool isSprintPressed() const { return keys[GLFW_KEY_LEFT_SHIFT]; }
-    bool isFreeCameraJustPressed() const { 
+    [[nodiscard]] bool isForwardPressed() const noexcept { return keys_[GLFW_KEY_W] || keys_[GLFW_KEY_UP]; }
+    [[nodiscard]] bool isBackPressed() const noexcept { return keys_[GLFW_KEY_S] || keys_[GLFW_KEY_DOWN]; }
+    [[nodiscard]] bool isLeftPressed() const noexcept { return keys_[GLFW_KEY_A] || keys_[GLFW_KEY_LEFT]; }
+    [[nodiscard]] bool isRightPressed() const noexcept { return keys_[GLFW_KEY_D] || keys_[GLFW_KEY_RIGHT]; }
+    [[nodiscard]] bool isJumpPressed() const noexcept { return keys_[GLFW_KEY_SPACE]; }
+    [[nodiscard]] bool isJumpJustPressed() const noexcept { return jumpJustPressed_; }
+    [[nodiscard]] bool isSprintPressed() const noexcept { return keys_[GLFW_KEY_LEFT_SHIFT]; }
+    [[nodiscard]] bool isFreeCameraJustPressed() const noexcept { 
         return isKeyJustPressed(GLFW_KEY_R); 
     }
 
 private:
     // 更新上一帧的状态
-    void updatePreviousStates();
+    void updatePreviousStates() noexcept;
     
     // 手动检查鼠标移动（用于禁用模式）
-    void checkMouseMovement();
+    void checkMouseMovement() noexcept;
     
     // GLFW回调函数声明
     static void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods);
@@ -69,39 +80,39 @@ private:
     static void scrollCallback(GLFWwindow* window, double xoffset, double yoffset);
 
 private:
-    GLFWwindow* window;
+    GLFWwindow* window_;
     
     // 键盘状态
-    std::array<bool, GLFW_KEY_LAST> keys;
-    std::array<bool, GLFW_KEY_LAST> previousKeys;
+    std::array<bool, GLFW_KEY_LAST> keys_;
+    std::array<bool, GLFW_KEY_LAST> previousKeys_;
     
     // 鼠标按钮状态
-    std::array<bool, 8> mouseButtons;
-    std::array<bool, 8> previousMouseButtons;
+    std::array<bool, 8> mouseButtons_;
+    std::array<bool, 8> previousMouseButtons_;
     
-// 鼠标移动
-    double mouseX;
-    double mouseY;
-    double previousMouseX;
-    double previousMouseY;
+    // 鼠标移动
+    double mouseX_;
+    double mouseY_;
+    double previousMouseX_;
+    double previousMouseY_;
     
     // 上一帧的回调位置（用于计算增量）
-    double previousCallbackX;
-    double previousCallbackY;
+    double previousCallbackX_;
+    double previousCallbackY_;
     
     // 鼠标滚轮
-    double scrollX;
-    double scrollY;
+    double scrollX_;
+    double scrollY_;
     
     // 鼠标捕获状态
-    bool cursorCaptured;
+    bool cursorCaptured_;
     
     // "刚刚按下"标志
-    bool jumpJustPressed;
+    bool jumpJustPressed_;
     
     // 平滑后的鼠标移动
-    double smoothMouseX;
-    double smoothMouseY;
+    double smoothMouseX_;
+    double smoothMouseY_;
 };
 
 } // namespace owengine

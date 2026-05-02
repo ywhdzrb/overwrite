@@ -2,11 +2,13 @@
 // 负责管理Vulkan设备、队列、命令池以及图像操作
 #include "core/vulkan_device.h"
 #include "utils/logger.h"
-#include <GLFW/glfw3.h>
-#include <iostream>
-#include <stdexcept>
+
 #include <algorithm>
+#include <iostream>
 #include <limits>
+#include <stdexcept>
+
+#include <GLFW/glfw3.h>
 
 namespace owengine {
 
@@ -14,11 +16,11 @@ namespace owengine {
 // 直接接收 VulkanInstance 已枚举的队列族索引，避免重复枚举
 VulkanDevice::VulkanDevice(VkInstance instance, VkPhysicalDevice physicalDevice, VkDevice device, VkSurfaceKHR surface,
                            uint32_t graphicsQueueFamily, uint32_t presentQueueFamily)
-    : instance_(instance), physicalDevice(physicalDevice), device(device), surface(surface),
-      graphicsQueueFamily(graphicsQueueFamily), presentQueueFamily_(presentQueueFamily) {
+    : instance_(instance), physicalDevice_(physicalDevice), device_(device), surface_(surface),
+      graphicsQueueFamily_(graphicsQueueFamily), presentQueueFamily_(presentQueueFamily) {
 
-    vkGetDeviceQueue(device, graphicsQueueFamily, 0, &graphicsQueue);
-    vkGetDeviceQueue(device, presentQueueFamily, 0, &presentQueue);
+    vkGetDeviceQueue(device_, graphicsQueueFamily_, 0, &graphicsQueue_);
+    vkGetDeviceQueue(device_, presentQueueFamily_, 0, &presentQueue_);
 
     createCommandPool();
 
@@ -26,8 +28,8 @@ VulkanDevice::VulkanDevice(VkInstance instance, VkPhysicalDevice physicalDevice,
     VmaAllocatorCreateInfo allocatorInfo{};
     allocatorInfo.flags = VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT;
     allocatorInfo.vulkanApiVersion = VK_API_VERSION_1_3;
-    allocatorInfo.physicalDevice = physicalDevice;
-    allocatorInfo.device = device;
+    allocatorInfo.physicalDevice = physicalDevice_;
+    allocatorInfo.device = device_;
     allocatorInfo.instance = instance;
 
     if (vmaCreateAllocator(&allocatorInfo, &allocator_) != VK_SUCCESS) {
@@ -37,14 +39,14 @@ VulkanDevice::VulkanDevice(VkInstance instance, VkPhysicalDevice physicalDevice,
 
 // VulkanDevice析构函数
 VulkanDevice::~VulkanDevice() {
-    if (depthImageView != VK_NULL_HANDLE) {
-        vkDestroyImageView(device, depthImageView, nullptr);
+    if (depthImageView_ != VK_NULL_HANDLE) {
+        vkDestroyImageView(device_, depthImageView_, nullptr);
     }
-    if (depthImage != VK_NULL_HANDLE) {
-        vmaDestroyImage(allocator_, depthImage, depthImageAllocation_);
+    if (depthImage_ != VK_NULL_HANDLE) {
+        vmaDestroyImage(allocator_, depthImage_, depthImageAllocation_);
     }
-    if (commandPool != VK_NULL_HANDLE) {
-        vkDestroyCommandPool(device, commandPool, nullptr);
+    if (commandPool_ != VK_NULL_HANDLE) {
+        vkDestroyCommandPool(device_, commandPool_, nullptr);
     }
     if (allocator_ != VK_NULL_HANDLE) {
         vmaDestroyAllocator(allocator_);
@@ -52,14 +54,14 @@ VulkanDevice::~VulkanDevice() {
 }
 
 // 创建命令池
-// 使用构造函数中已接收的 graphicsQueueFamily 索引，不需重复枚举
+// 使用构造函数中已接收的 graphicsQueueFamily_ 索引，不需重复枚举
 void VulkanDevice::createCommandPool() {
     VkCommandPoolCreateInfo poolInfo{};
     poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
     poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
-    poolInfo.queueFamilyIndex = graphicsQueueFamily;
+    poolInfo.queueFamilyIndex = graphicsQueueFamily_;
 
-    if (vkCreateCommandPool(device, &poolInfo, nullptr, &commandPool) != VK_SUCCESS) {
+    if (vkCreateCommandPool(device_, &poolInfo, nullptr, &commandPool_) != VK_SUCCESS) {
         throw std::runtime_error("failed to create command pool!");
     }
 }
@@ -67,22 +69,22 @@ void VulkanDevice::createCommandPool() {
 SwapChainSupportDetails VulkanDevice::querySwapChainSupport() const {
     SwapChainSupportDetails details;
     
-    vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physicalDevice, surface, &details.capabilities);
+    vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physicalDevice_, surface_, &details.capabilities);
     
     uint32_t formatCount;
-    vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, surface, &formatCount, nullptr);
+    vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice_, surface_, &formatCount, nullptr);
     
     if (formatCount != 0) {
         details.formats.resize(formatCount);
-        vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, surface, &formatCount, details.formats.data());
+        vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice_, surface_, &formatCount, details.formats.data());
     }
     
     uint32_t presentModeCount;
-    vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice, surface, &presentModeCount, nullptr);
+    vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice_, surface_, &presentModeCount, nullptr);
     
     if (presentModeCount != 0) {
         details.presentModes.resize(presentModeCount);
-        vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice, surface, &presentModeCount, details.presentModes.data());
+        vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice_, surface_, &presentModeCount, details.presentModes.data());
     }
     
     return details;
@@ -135,7 +137,7 @@ VkExtent2D VulkanDevice::chooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabi
 
 uint32_t VulkanDevice::findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties) const {
     VkPhysicalDeviceMemoryProperties memProperties;
-    vkGetPhysicalDeviceMemoryProperties(physicalDevice, &memProperties);
+    vkGetPhysicalDeviceMemoryProperties(physicalDevice_, &memProperties);
     
     for (uint32_t i = 0; i < memProperties.memoryTypeCount; i++) {
         if ((typeFilter & (1 << i)) && 
@@ -153,11 +155,11 @@ VkCommandBuffer VulkanDevice::beginSingleTimeCommands() const {
     VkCommandBufferAllocateInfo allocInfo{};
     allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
     allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    allocInfo.commandPool = commandPool;
+    allocInfo.commandPool = commandPool_;
     allocInfo.commandBufferCount = 1;
     
     VkCommandBuffer commandBuffer;
-    vkAllocateCommandBuffers(device, &allocInfo, &commandBuffer);
+    vkAllocateCommandBuffers(device_, &allocInfo, &commandBuffer);
     
     VkCommandBufferBeginInfo beginInfo{};
     beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -179,32 +181,34 @@ void VulkanDevice::endSingleTimeCommands(VkCommandBuffer commandBuffer) const {
     VkFence fence;
     VkFenceCreateInfo fenceInfo{};
     fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-    vkCreateFence(device, &fenceInfo, nullptr, &fence);
+    vkCreateFence(device_, &fenceInfo, nullptr, &fence);
 
     VkResult submitResult;
     {
         std::lock_guard<std::mutex> lock(queueMutex_);
-        submitResult = vkQueueSubmit(graphicsQueue, 1, &submitInfo, fence);
+        submitResult = vkQueueSubmit(graphicsQueue_, 1, &submitInfo, fence);
     }
     // queueMutex_ 已释放！主线程可以继续提交渲染帧
 
     if (submitResult == VK_SUCCESS) {
         // 等待 fence，设 5 秒超时防止死锁
-        VkResult waitResult = vkWaitForFences(device, 1, &fence, VK_TRUE, 5000000000ULL);
+        VkResult waitResult = vkWaitForFences(device_, 1, &fence, VK_TRUE, 5000000000ULL);
         if (waitResult != VK_SUCCESS) {
             // fence 超时：紧急回退到 queueWaitIdle（锁内，会阻塞主线程）
             std::lock_guard<std::mutex> lock(queueMutex_);
-            vkQueueWaitIdle(graphicsQueue);
+            VkResult idleResult = vkQueueWaitIdle(graphicsQueue_);
+            if (idleResult != VK_SUCCESS) {
+                std::cerr << "[VulkanDevice] 紧急回退 vkQueueWaitIdle 失败: " << idleResult << std::endl;
+            }
         }
-    } else {
-        // vkQueueSubmit 失败（如设备丢失），fence 永远不会被信号，跳过等待
     }
+    // 若 vkQueueSubmit 失败（如设备丢失），fence 永远不会被信号化，跳过等待即可
 
-    vkDestroyFence(device, fence, nullptr);
+        vkDestroyFence(device_, fence, nullptr);
 
     {
         std::lock_guard<std::mutex> lock(commandPoolMutex_);
-        vkFreeCommandBuffers(device, commandPool, 1, &commandBuffer);
+        vkFreeCommandBuffers(device_, commandPool_, 1, &commandBuffer);
     }
 }
 
@@ -303,14 +307,14 @@ void VulkanDevice::createDepthResources(VkExtent2D extent, VkSampleCountFlagBits
     allocInfo.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
     allocInfo.flags = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT;
     
-    if (vmaCreateImage(allocator_, &imageInfo, &allocInfo, &depthImage, &depthImageAllocation_, nullptr) != VK_SUCCESS) {
+    if (vmaCreateImage(allocator_, &imageInfo, &allocInfo, &depthImage_, &depthImageAllocation_, nullptr) != VK_SUCCESS) {
         throw std::runtime_error("failed to create depth image with VMA!");
     }
     
     // 创建深度图像视图
     VkImageViewCreateInfo viewInfo{};
     viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-    viewInfo.image = depthImage;
+    viewInfo.image = depthImage_;
     viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
     viewInfo.format = depthFormat;
     viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
@@ -319,23 +323,23 @@ void VulkanDevice::createDepthResources(VkExtent2D extent, VkSampleCountFlagBits
     viewInfo.subresourceRange.baseArrayLayer = 0;
     viewInfo.subresourceRange.layerCount = 1;
     
-    if (vkCreateImageView(device, &viewInfo, nullptr, &depthImageView) != VK_SUCCESS) {
+    if (vkCreateImageView(device_, &viewInfo, nullptr, &depthImageView_) != VK_SUCCESS) {
         throw std::runtime_error("failed to create depth image view!");
     }
     
     // 转换深度图像布局
-    transitionImageLayout(depthImage, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+    transitionImageLayout(depthImage_, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
                           VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT);
 }
 
 void VulkanDevice::cleanupDepthResources() {
-    if (depthImageView != VK_NULL_HANDLE) {
-        vkDestroyImageView(device, depthImageView, nullptr);
-        depthImageView = VK_NULL_HANDLE;
+    if (depthImageView_ != VK_NULL_HANDLE) {
+        vkDestroyImageView(device_, depthImageView_, nullptr);
+        depthImageView_ = VK_NULL_HANDLE;
     }
-    if (depthImage != VK_NULL_HANDLE) {
-        vmaDestroyImage(allocator_, depthImage, depthImageAllocation_);
-        depthImage = VK_NULL_HANDLE;
+    if (depthImage_ != VK_NULL_HANDLE) {
+        vmaDestroyImage(allocator_, depthImage_, depthImageAllocation_);
+        depthImage_ = VK_NULL_HANDLE;
         depthImageAllocation_ = VK_NULL_HANDLE;
     }
 }
