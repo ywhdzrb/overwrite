@@ -356,6 +356,96 @@ for (auto entity : players) {
 
 ---
 
+---
+
+## InventoryComponent
+
+背包组件，管理玩家的物品堆叠存储。定义在 `shared/include/ecs/resource_types.h`。
+
+### ResourceType 枚举
+
+```cpp
+enum class ResourceType : uint8_t {
+    None = 0,
+    Wood,          // 木材 — 从树木采集
+    Stone,         // 石材 — 从岩石采集
+    IronOre,       // 铁矿石
+    CopperOre,     // 铜矿石
+    PlantFiber,    // 植物纤维 — 从草丛采集
+};
+```
+
+每种资源类型在 `RESOURCE_DATA_TABLE` 中有对应的名称、描述和最大堆叠数。
+
+### ItemStack
+
+物品堆叠，表示背包中的一个槽位。
+
+```cpp
+struct ItemStack {
+    ResourceType type{ResourceType::None};
+    uint32_t count{0};
+
+    bool isEmpty() const;
+    uint32_t maxStack() const;         // 该物品类型的最大堆叠
+    const char* name() const;          // 中文名
+    uint32_t add(uint32_t amount);     // 尝试加入，返回实际加入数
+    uint32_t remove(uint32_t amount);  // 尝试移除，返回实际移除数
+};
+```
+
+### InventoryComponent
+
+```cpp
+struct InventoryComponent {
+    static constexpr uint32_t DEFAULT_SLOTS = 20;
+    static constexpr uint32_t HOTBAR_SLOTS = 5;
+
+    std::array<ItemStack, DEFAULT_SLOTS> slots{};
+    uint32_t selectedHotbarIndex{0};   // 当前选中的快捷栏索引
+
+    uint32_t addItem(ResourceType type, uint32_t amount);    // 加入物品
+    uint32_t removeItem(ResourceType type, uint32_t amount); // 移除物品
+    uint32_t countItem(ResourceType type) const;             // 查询数量
+    void swapSlots(uint32_t a, uint32_t b);                  // 交换槽位
+    bool isEmpty() const;
+};
+```
+
+### 设计说明
+
+- **20 格主背包 + 5 格快捷栏**：共 25 格，快捷栏渲染在屏幕底部且始终可见
+- **自动堆叠**：`addItem()` 优先填充已有堆叠，再放入空格
+- **拖拽排序**：`swapSlots()` 支持任意两槽位交换，配合 ImGui drag-drop
+- **快捷栏选择**：`selectedHotbarIndex` 由滚轮切换，E 键开/关背包界面
+- **F 键采集**：资源直接加入背包，无需手动拾取
+
+### 使用示例
+
+```cpp
+// 挂载到玩家实体（在 createClientPlayer 中）
+registry().emplace<InventoryComponent>(playerEntity);
+
+// 添加资源
+auto& inv = registry().get<InventoryComponent>(playerEntity);
+uint32_t added = inv.addItem(ResourceType::Wood, 5);
+
+// 查询数量
+uint32_t totalWood = inv.countItem(ResourceType::Wood);
+
+// 交换槽位（拖拽）
+inv.swapSlots(sourceSlot, targetSlot);
+
+// 检查快捷栏选中的物品
+uint32_t selectedIdx = inv.selectedHotbarIndex;
+auto& selected = inv.slots[selectedIdx];
+if (!selected.isEmpty()) {
+    // 使用选中的物品
+}
+```
+
+---
+
 ## 组件组合示例
 
 ### 创建完整玩家
