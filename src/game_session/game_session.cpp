@@ -66,6 +66,9 @@ void GameSession::init(const GameSessionInitParams& params) {
     // 加载玩家模型
     loadPlayerModels();
 
+    // 从现有树/石系统填充资源节点
+    resourceNodeSystem_.init(treeSystem_, stoneSystem_);
+
     // 初始化时间基准
     lastTime_ = std::chrono::high_resolution_clock::now();
 }
@@ -116,6 +119,11 @@ void GameSession::update(float deltaTime) {
     ecsClientWorld_->setPlayerSensitivity(userSensitivity);
     ecsClientWorld_->setPlayerDirection(camera_->getFront(), camera_->getRight());
 
+    if (inventoryOpen_ && ecsClientWorld_) {
+        auto* ecsInput = ecsClientWorld_->getInputSystem();
+        if (ecsInput) ecsInput->resetMouseDelta();
+    }
+
     // === Phase 1: 同步阶段（输入 + 网络接收，必须主线程） ===
     {
         auto t0 = std::chrono::high_resolution_clock::now();
@@ -135,11 +143,12 @@ void GameSession::update(float deltaTime) {
         ecsClientWorld_->updateAsync(deltaTime);
     });
 
-    // === Phase 3: 主线程地形/树/石/草更新（与异步 ECS 并行） ===
+    // === Phase 3: 主线程地形/树/石/草/资源节点更新（与异步 ECS 并行） ===
     if (terrainRenderer_) terrainRenderer_->update(playerPos);
     if (treeSystem_) treeSystem_->update(playerPos, *camera_);
     if (stoneSystem_) stoneSystem_->update(playerPos, *camera_);
     if (grassSystem_) grassSystem_->update(playerPos, *camera_, deltaTime);
+    resourceNodeSystem_.update(deltaTime);
 
     // === Phase 4: 等待异步模拟完成 ===
     ecsFuture.wait();
@@ -147,12 +156,12 @@ void GameSession::update(float deltaTime) {
     // === Phase 5: 发送网络输入 ===
     ecsClientWorld_->sendNetInputs();
 
-    // === Phase 6: 飞行模式切换 ===
+    // === Phase 6: 飞行模式切换（R 键） ===
     {
-        static bool prevF = false;
-        bool curF = glfwGetKey(window_, GLFW_KEY_F) == GLFW_PRESS;
-        if (curF && !prevF) ecsClientWorld_->setPlayerFlying(!ecsClientWorld_->isPlayerFlying());
-        prevF = curF;
+        static bool prevR = false;
+        bool curR = glfwGetKey(window_, GLFW_KEY_R) == GLFW_PRESS;
+        if (curR && !prevR) ecsClientWorld_->setPlayerFlying(!ecsClientWorld_->isPlayerFlying());
+        prevR = curR;
     }
     ecsClientWorld_->updateFlight(deltaTime,
         glfwGetKey(window_, GLFW_KEY_SPACE) == GLFW_PRESS,
@@ -222,6 +231,115 @@ void GameSession::update(float deltaTime) {
 
     // === Phase 9: 远程玩家模型管理 ===
     updateRemotePlayers(deltaTime);
+
+    // === Phase 10: 背包开关（E 键） ===
+    {
+        static bool prevE = false;
+        bool curE = glfwGetKey(window_, GLFW_KEY_E) == GLFW_PRESS;
+        if (curE && !prevE) {
+            inventoryOpen_ = !inventoryOpen_;
+            // 打开背包时释放鼠标，关闭时恢复捕获
+            bool captured = !inventoryOpen_;
+            if (input_) {
+                input_->setCursorCaptured(captured);
+            }
+            if (ecsClientWorld_) {
+                auto* ecsInput = ecsClientWorld_->getInputSystem();
+                if (ecsInput) {
+                    ecsInput->setCursorCaptured(captured);
+                    ecsInput->resetMouseDelta();
+                }
+            }
+        }
+        prevE = curE;
+    }
+
+    // === Phase 10.5: ESC 关闭所有界面 ===
+    {
+        static bool prevEsc = false;
+        bool curEsc = glfwGetKey(window_, GLFW_KEY_ESCAPE) == GLFW_PRESS;
+        if (curEsc && !prevEsc) {
+            bool anyOpen = false;
+            if (inventoryOpen_) {
+                inventoryOpen_ = false;
+                anyOpen = true;
+            }
+            if (anyOpen) {
+                bool captured = true;
+                if (input_) input_->setCursorCaptured(captured);
+                if (ecsClientWorld_) {
+                    auto* ecsInput = ecsClientWorld_->getInputSystem();
+                    if (ecsInput) {
+                        ecsInput->setCursorCaptured(captured);
+                        ecsInput->resetMouseDelta();
+                    }
+                }
+            }
+        }
+        prevEsc = curEsc;
+    }
+
+    // === Phase 11: 采集交互（F 键采集，背包打开时不触发） ===
+    {
+        // 更新准星指向的目标（背包关闭时显示提示）
+        updateHarvestTarget();
+
+        if (!inventoryOpen_) {
+            static bool prevFHarvest = false;
+            bool curFHarvest = glfwGetKey(window_, GLFW_KEY_F) == GLFW_PRESS;
+            if (curFHarvest && !prevFHarvest && harvestTarget_.valid) {
+                auto harvested = resourceNodeSystem_.harvest(harvestTarget_.position);
+                if (!harvested.isEmpty()) {
+                    // 加入玩家背包
+                    auto* clientWorld = static_cast<ecs::ClientWorld*>(ecsClientWorld_.get());
+                    auto* registry = clientWorld->getRegistry();
+                    if (registry) {
+                        auto player = clientWorld->getPlayer();
+                        if (auto* inv = registry->try_get<ecs::InventoryComponent>(player)) {
+                            inv->addItem(harvested.type, harvested.count);
+                            Logger::info("[Harvest] 采集到 " + std::string(harvested.name()));
+                        }
+                    }
+                }
+            }
+            prevFHarvest = curFHarvest;
+        }
+    }
+
+    // === Phase 12: 快捷栏选择（数字键 1-5 + 滚轮） ===
+    {
+        static bool prevHotbarKeys[5] = {false};
+        static const int hotbarKeys[5] = {GLFW_KEY_1, GLFW_KEY_2, GLFW_KEY_3, GLFW_KEY_4, GLFW_KEY_5};
+        auto* registry = ecsClientWorld_ ? ecsClientWorld_->getRegistry() : nullptr;
+        auto* inv = registry ? registry->try_get<ecs::InventoryComponent>(ecsClientWorld_->getPlayer()) : nullptr;
+
+        if (inv) {
+            // 数字键 1-5 直接选择
+            for (int i = 0; i < 5; i++) {
+                bool cur = glfwGetKey(window_, hotbarKeys[i]) == GLFW_PRESS;
+                if (cur && !prevHotbarKeys[i]) {
+                    inv->selectedHotbarIndex = static_cast<uint32_t>(i);
+                }
+                prevHotbarKeys[i] = cur;
+            }
+
+            // 滚轮切换（仅在背包关闭时生效，避免与背包内滚动冲突）
+            if (!inventoryOpen_ && input_) {
+                double scroll = input_->consumeScrollY();
+                if (scroll > 0.0) {
+                    // 上滚 ← 前一个
+                    inv->selectedHotbarIndex = (inv->selectedHotbarIndex == 0)
+                        ? ecs::InventoryComponent::HOTBAR_SLOTS - 1
+                        : inv->selectedHotbarIndex - 1;
+                } else if (scroll < 0.0) {
+                    // 下滚 → 后一个
+                    inv->selectedHotbarIndex = (inv->selectedHotbarIndex >= ecs::InventoryComponent::HOTBAR_SLOTS - 1)
+                        ? 0
+                        : inv->selectedHotbarIndex + 1;
+                }
+            }
+        }
+    }
 
     // 清除帧输入标记（justPressed 等标记仅持续一帧）
     if (input_) input_->resetJustPressedFlags();
@@ -461,6 +579,37 @@ void GameSession::updateRemotePlayers(float deltaTime) {
 
 ecs::IGameWorld* GameSession::getECSWorld() const {
     return ecsClientWorld_.get();
+}
+
+void GameSession::updateHarvestTarget() {
+    harvestTarget_ = HarvestTarget{};
+    if (!ecsClientWorld_ || resourceNodeSystem_.getNodeCount() == 0) return;
+
+    // 使用玩家位置而非相机位置（第三人称相机在玩家身后 8m）
+    glm::vec3 playerPos = ecsClientWorld_->getPlayerPosition();
+    const float maxRange = 3.0f;
+
+    // 纯距离判定：找最近的可采集节点（无需准星对准）
+    ResourceNode* bestNode = nullptr;
+    float bestDist = maxRange;
+
+    auto nearby = resourceNodeSystem_.queryNodes(playerPos.x, playerPos.z, maxRange);
+    for (auto* node : nearby) {
+        if (!node || node->remainingHarvests <= 0) continue;
+
+        float dist = glm::length(node->position - playerPos);
+        if (dist < bestDist) {
+            bestDist = dist;
+            bestNode = node;
+        }
+    }
+
+    if (bestNode) {
+        harvestTarget_.valid = true;
+        harvestTarget_.type = bestNode->type;
+        harvestTarget_.distance = bestDist;
+        harvestTarget_.position = bestNode->position;
+    }
 }
 
 } // namespace owengine

@@ -68,6 +68,7 @@ public:
 
     // ── 玩家查询 ──────────────────────────────
     virtual bool isPlayerValid() const = 0;
+    virtual entt::entity getPlayerEntity() const = 0;
     virtual glm::vec3 getPlayerPosition() const = 0;
     virtual glm::vec3 getCameraFront() const = 0;
     virtual glm::vec3 getCameraRight() const = 0;

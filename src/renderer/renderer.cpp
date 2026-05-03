@@ -333,6 +333,19 @@ void Renderer::mainLoop() {
             glfwPollEvents();
         }
 
+        // === 背包打开首帧：在 NewFrame 前强制同步鼠标位置 ===
+        // GLFW_CURSOR_DISABLED 模式下光标回调报告相对增量，
+        // 切换到 NORMAL 后 ImGui 的 io.MousePos 可能仍有旧坐标。
+        // 必须在 NewFrame() 之前设置，否则 AddMousePosEvent 会排队到下一帧。
+        static bool s_prevInvOpen = false;
+        bool invJustOpened = gameSession_ && gameSession_->isInventoryOpen() && !s_prevInvOpen;
+        if (invJustOpened) {
+            double mx, my;
+            glfwGetCursorPos(window_, &mx, &my);
+            ImGui::GetIO().AddMousePosEvent(static_cast<float>(mx), static_cast<float>(my));
+        }
+        s_prevInvOpen = gameSession_ ? gameSession_->isInventoryOpen() : false;
+
         // === ImGui 新帧 + HUD ===
         imguiManager_->newFrame();
         if (gameSession_) {
@@ -346,6 +359,173 @@ void Renderer::mainLoop() {
             }
             ImGui::SetWindowPos(ImVec2(10, 10), ImGuiCond_FirstUseEver);
             ImGui::End();
+        }
+
+        // === 采集交互提示（准星指向资源时显示） ===
+        if (gameSession_ && !gameSession_->isInventoryOpen()) {
+            const auto& target = gameSession_->getHarvestTarget();
+            if (target.valid) {
+                const char* resName = ecs::resourceTypeName(target.type);
+                ImGui::SetNextWindowPos(
+                    ImVec2(static_cast<float>(windowWidth_) * 0.5f - 80.0f,
+                           static_cast<float>(windowHeight_) * 0.5f + 20.0f),
+                    ImGuiCond_Always);
+                ImGui::Begin("##harvestPrompt", nullptr,
+                    ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize
+                    | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing
+                    | ImGuiWindowFlags_NoInputs);
+                ImGui::TextColored(ImVec4(1.0f, 1.0f, 0.7f, 1.0f), "[F] 采集 %s", resName);
+                ImGui::End();
+            }
+        }
+
+        // === HUD 快捷栏（Minecraft 风格，始终显示在底部） ===
+        if (gameSession_) {
+            auto* ecs = gameSession_->getECSWorld();
+            if (ecs) {
+                auto* reg = ecs->getRegistry();
+                auto player = ecs->getPlayerEntity();
+                if (reg && reg->valid(player)) {
+                    auto* inv = reg->try_get<ecs::InventoryComponent>(player);
+                    if (inv) {
+                        // 底部居中
+                        ImVec2 hotbarPos(static_cast<float>(windowWidth_) * 0.5f,
+                                        static_cast<float>(windowHeight_) - 50.0f);
+                        ImGui::SetNextWindowPos(hotbarPos, ImGuiCond_Always, ImVec2(0.5f, 0.5f));
+                        ImGui::SetNextWindowBgAlpha(0.4f);
+                        ImGui::Begin("##hudHotbar", nullptr,
+                            ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize
+                            | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing
+                            | ImGuiWindowFlags_NoInputs);
+                        for (uint32_t i = 0; i < ecs::InventoryComponent::HOTBAR_SLOTS; i++) {
+                            if (i > 0) ImGui::SameLine();
+                            auto& slot = inv->slots[i];
+                            ImVec4 bgColor = (i == inv->selectedHotbarIndex)
+                                ? ImVec4(0.3f, 0.6f, 0.3f, 1.0f)
+                                : ImVec4(0.15f, 0.15f, 0.15f, 0.8f);
+                            ImGui::PushStyleColor(ImGuiCol_Button, bgColor);
+                            if (slot.isEmpty()) {
+                                ImGui::Button("##hudslot", ImVec2(48, 48));
+                            } else {
+                                char label[32];
+                                snprintf(label, sizeof(label), "%s\nx%d", slot.name(), slot.count);
+                                ImGui::Button(label, ImVec2(48, 48));
+                            }
+                            ImGui::PopStyleColor();
+                        }
+                        ImGui::End();
+                    }
+                }
+            }
+        }
+
+        // === 背包 ImGui 窗口 ===
+        if (gameSession_ && gameSession_->isInventoryOpen()) {
+
+            // 获取背包组件
+            auto* ecs = gameSession_->getECSWorld();
+            if (ecs) {
+                auto* reg = ecs->getRegistry();
+                auto player = ecs->getPlayerEntity();
+                if (reg && reg->valid(player)) {
+                    auto* inv = reg->try_get<ecs::InventoryComponent>(player);
+                    if (inv) {
+                        const ImVec2 viewport = ImGui::GetMainViewport()->Size;
+                        ImGui::SetNextWindowPos(ImVec2(viewport.x * 0.5f, viewport.y * 0.5f),
+                                                ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+                        ImGui::SetNextWindowSize(ImVec2(400, 320), ImGuiCond_FirstUseEver);
+                        ImGui::Begin("背包", nullptr, ImGuiWindowFlags_NoCollapse);
+                        
+                        // 快捷栏（前5格）
+                        ImGui::Text("快捷栏");
+                        ImGui::Separator();
+                        for (uint32_t i = 0; i < ecs::InventoryComponent::HOTBAR_SLOTS; i++) {
+                            auto& slot = inv->slots[i];
+                            ImGui::PushID(static_cast<int>(i));
+                            if (i > 0) ImGui::SameLine();
+                            // 绘制物品槽
+                            ImVec4 bgColor = (i == inv->selectedHotbarIndex)
+                                ? ImVec4(0.3f, 0.6f, 0.3f, 1.0f)  // 选中绿色
+                                : ImVec4(0.2f, 0.2f, 0.2f, 1.0f);  // 默认深灰
+                            ImGui::PushStyleColor(ImGuiCol_Button, bgColor);
+                            if (slot.isEmpty()) {
+                                ImGui::Button("##slot", ImVec2(48, 48));
+                            } else {
+                                char label[32];
+                                snprintf(label, sizeof(label), "%s\nx%d", slot.name(), slot.count);
+                                ImGui::Button(label, ImVec2(48, 48));
+                            }
+                            ImGui::PopStyleColor();
+                            // 拖拽源：有物品的格子可拖出
+                            if (!slot.isEmpty()) {
+                                if (ImGui::BeginDragDropSource()) {
+                                    ImGui::SetDragDropPayload("INVENTORY_SLOT", &i, sizeof(uint32_t));
+                                    ImGui::Text("拖动 %s", slot.name());
+                                    ImGui::EndDragDropSource();
+                                }
+                            }
+                            // 拖拽目标：所有格子都可接收
+                            if (ImGui::BeginDragDropTarget()) {
+                                if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("INVENTORY_SLOT")) {
+                                    uint32_t srcIdx = *(const uint32_t*)payload->Data;
+                                    if (srcIdx != i) {
+                                        inv->swapSlots(srcIdx, i);
+                                    }
+                                }
+                                ImGui::EndDragDropTarget();
+                            }
+                            ImGui::PopID();
+                        }
+                        
+                        // 背包主体（6~19格，4列布局）
+                        ImGui::Spacing();
+                        ImGui::Separator();
+                        ImGui::Text("背包");
+                        ImGui::Separator();
+                        constexpr int COLS = 4;
+                        for (uint32_t i = ecs::InventoryComponent::HOTBAR_SLOTS;
+                             i < ecs::InventoryComponent::DEFAULT_SLOTS; i++) {
+                            auto& slot = inv->slots[i];
+                            ImGui::PushID(static_cast<int>(i));
+                            if ((i - ecs::InventoryComponent::HOTBAR_SLOTS) % COLS != 0)
+                                ImGui::SameLine();
+                            ImVec4 bgColor(0.2f, 0.2f, 0.2f, 1.0f);
+                            ImGui::PushStyleColor(ImGuiCol_Button, bgColor);
+                            if (slot.isEmpty()) {
+                                ImGui::Button("##slot", ImVec2(48, 48));
+                            } else {
+                                char label[32];
+                                snprintf(label, sizeof(label), "%s\nx%d", slot.name(), slot.count);
+                                ImGui::Button(label, ImVec2(48, 48));
+                            }
+                            ImGui::PopStyleColor();
+                            // 拖拽源
+                            if (!slot.isEmpty()) {
+                                if (ImGui::BeginDragDropSource()) {
+                                    ImGui::SetDragDropPayload("INVENTORY_SLOT", &i, sizeof(uint32_t));
+                                    ImGui::Text("拖动 %s", slot.name());
+                                    ImGui::EndDragDropSource();
+                                }
+                            }
+                            // 拖拽目标
+                            if (ImGui::BeginDragDropTarget()) {
+                                if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("INVENTORY_SLOT")) {
+                                    uint32_t srcIdx = *(const uint32_t*)payload->Data;
+                                    if (srcIdx != i) {
+                                        inv->swapSlots(srcIdx, i);
+                                    }
+                                }
+                                ImGui::EndDragDropTarget();
+                            }
+                            ImGui::PopID();
+                        }
+                        
+                        ImGui::End();
+                    }
+                }
+            }
+        } else {
+            s_prevInvOpen = false;
         }
 
         // === 更新游戏逻辑（委托给 GameSession） ===

@@ -8,6 +8,8 @@
 
 namespace owengine {
 
+Input* Input::s_instance = nullptr;
+
 Input::Input(GLFWwindow* window)
     : window_(window),
       mouseX_(0.0),
@@ -22,6 +24,9 @@ Input::Input(GLFWwindow* window)
       jumpJustPressed_(false),
       smoothMouseX_(0.0),
       smoothMouseY_(0.0) {
+    
+    // 注册单例实例（ECS InputSystem 会覆盖 glfwSetWindowUserPointer，因此回调中用 s_instance 代替）
+    s_instance = this;
     
     // 初始化状态数组
     keys_.fill(false);
@@ -38,9 +43,10 @@ Input::Input(GLFWwindow* window)
     }
     
     glfwSetKeyCallback(window, keyCallback);
-    glfwSetMouseButtonCallback(window, mouseButtonCallback);
-    glfwSetCursorPosCallback(window, cursorPosCallback);
-    glfwSetScrollCallback(window, scrollCallback);
+    // 保存前一个回调（ImGui 注册的），后续回调函数会自动链式转发
+    prevMouseButtonCallback_ = glfwSetMouseButtonCallback(window, mouseButtonCallback);
+    prevCursorPosCallback_ = glfwSetCursorPosCallback(window, cursorPosCallback);
+    prevScrollCallback_ = glfwSetScrollCallback(window, scrollCallback);
     
     // 获取初始鼠标位置
     glfwGetCursorPos(window_, &mouseX_, &mouseY_);
@@ -171,6 +177,12 @@ void Input::getScrollDelta(double& deltaX, double& deltaY) const noexcept {
     deltaY = scrollY_;
 }
 
+double Input::consumeScrollY() noexcept {
+    double value = scrollY_;
+    scrollY_ = 0.0;
+    return value;
+}
+
 void Input::setCursorCaptured(bool captured) {
     cursorCaptured_ = captured;
     if (captured) {
@@ -192,13 +204,14 @@ void Input::setCursorCaptured(bool captured) {
 
 // GLFW回调函数实现
 void Input::keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods) {
-    Input* input = static_cast<Input*>(glfwGetWindowUserPointer(window));
-    if (input) {
+    // 使用 s_instance 而非 glfwGetWindowUserPointer
+    // （ECS InputSystem 会覆盖 user pointer，与 scrollCallback 同理）
+    if (s_instance) {
         if (key >= 0 && key < GLFW_KEY_LAST) {
             if (action == GLFW_PRESS) {
-                input->keys_[key] = true;
+                s_instance->keys_[key] = true;
             } else if (action == GLFW_RELEASE) {
-                input->keys_[key] = false;
+                s_instance->keys_[key] = false;
             }
             // GLFW_REPEAT 不需要特殊处理
         }
@@ -206,47 +219,59 @@ void Input::keyCallback(GLFWwindow* window, int key, int scancode, int action, i
 }
 
 void Input::mouseButtonCallback(GLFWwindow* window, int button, int action, int mods) {
-    Input* input = static_cast<Input*>(glfwGetWindowUserPointer(window));
-    if (input && button >= 0 && button < 8) {
+    // 链式转发给前一个回调（ImGui 的鼠标按钮回调）
+    if (s_instance && s_instance->prevMouseButtonCallback_) {
+        s_instance->prevMouseButtonCallback_(window, button, action, mods);
+    }
+    // ECS InputSystem 会覆盖 glfwGetWindowUserPointer，因此使用 s_instance
+    if (s_instance && button >= 0 && button < 8) {
         if (action == GLFW_PRESS) {
-            input->mouseButtons_[button] = true;
+            s_instance->mouseButtons_[button] = true;
         } else if (action == GLFW_RELEASE) {
-            input->mouseButtons_[button] = false;
+            s_instance->mouseButtons_[button] = false;
         }
     }
 }
 
 void Input::cursorPosCallback(GLFWwindow* window, double xpos, double ypos) {
-    Input* input = static_cast<Input*>(glfwGetWindowUserPointer(window));
-    if (input) {
-        if (input->isCursorCaptured()) {
+    // 链式转发给前一个回调（ImGui 的光标位置回调）
+    if (s_instance && s_instance->prevCursorPosCallback_) {
+        s_instance->prevCursorPosCallback_(window, xpos, ypos);
+    }
+    // ECS InputSystem 会覆盖 glfwGetWindowUserPointer，因此使用 s_instance
+    if (s_instance) {
+        if (s_instance->isCursorCaptured()) {
             // 在捕获模式下，Wayland 返回的是相对于中心的位置（会累积）
             // 计算相对于上一帧位置的增量
-            double deltaX = xpos - input->previousMouseX_;
-            double deltaY = ypos - input->previousMouseY_;
+            double deltaX = xpos - s_instance->previousMouseX_;
+            double deltaY = ypos - s_instance->previousMouseY_;
             
             // 累积增量到 mouseX_/mouseY_
-            input->mouseX_ += deltaX;
-            input->mouseY_ += deltaY;
+            s_instance->mouseX_ += deltaX;
+            s_instance->mouseY_ += deltaY;
             
             // 更新上一帧的位置
-            input->previousMouseX_ = xpos;
-            input->previousMouseY_ = ypos;
+            s_instance->previousMouseX_ = xpos;
+            s_instance->previousMouseY_ = ypos;
         } else {
             // 非捕获模式，使用绝对位置
-            input->mouseX_ = xpos;
-            input->mouseY_ = ypos;
-            input->previousMouseX_ = xpos;
-            input->previousMouseY_ = ypos;
+            s_instance->mouseX_ = xpos;
+            s_instance->mouseY_ = ypos;
+            s_instance->previousMouseX_ = xpos;
+            s_instance->previousMouseY_ = ypos;
         }
     }
 }
 
 void Input::scrollCallback(GLFWwindow* window, double xoffset, double yoffset) {
-    Input* input = static_cast<Input*>(glfwGetWindowUserPointer(window));
-    if (input) {
-        input->scrollX_ = xoffset;
-        input->scrollY_ = yoffset;
+    // 注意：ECS InputSystem 会覆盖 glfwGetWindowUserPointer，因此使用 s_instance 代替
+    if (s_instance) {
+        s_instance->scrollX_ += xoffset;
+        s_instance->scrollY_ += yoffset;
+        // 链式转发给前一个回调（ImGui 的滚轮回调），确保 ImGui 窗口能滚动
+        if (s_instance->prevScrollCallback_) {
+            s_instance->prevScrollCallback_(window, xoffset, yoffset);
+        }
     }
 }
 

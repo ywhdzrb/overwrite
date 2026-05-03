@@ -95,6 +95,26 @@ public:
      */
     std::vector<std::pair<glm::vec3, float>> queryPositions(float x, float z, float radius) const;
 
+    /// 树木实例的公开信息（包含槽位索引，用于 ResourceNodeSystem 关联）
+    struct TreeInstanceInfo {
+        glm::vec3 position;
+        float scale;
+        int slotIndex;
+    };
+
+    /**
+     * @brief 获取所有树木实例的详细信息（含槽位索引）
+     * @return 树木实例信息列表
+     */
+    std::vector<TreeInstanceInfo> getTreeInstances() const;
+
+    /**
+     * @brief 设置树木实例的可见状态（采集耗尽后隐藏，重生后恢复）
+     * @param slotIndex 树木槽位索引
+     * @param active true=可见可采集, false=隐藏
+     */
+    void setTreeActive(int slotIndex, bool active);
+
 private:
     struct TreeChunkKey {
         int x, z;
@@ -110,6 +130,7 @@ private:
         glm::vec3 position;
         float scale = 1.0f;
         float yaw = 0.0f;
+        bool active = true;      // false=采集耗尽已隐藏
     };
 
     void generateTreesAtStartup(const TreeConfig& cfg);

@@ -5,4 +5,5 @@
 
 // 共享 ECS（shared library）
 #include "ecs/components.h"
+#include "ecs/resource_types.h"
 #include "ecs/systems.h"

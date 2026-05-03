@@ -1,6 +1,7 @@
 // 客户端 ECS 系统实现
 #include "ecs/client_systems.h"
 #include "ecs/components.h"
+#include "ecs/resource_types.h"
 #include <iostream>
 #include <cstring>
 
@@ -23,12 +24,12 @@ glm::mat4 CameraComponent::getProjectionMatrix() const {
 
 InputSystem::InputSystem(World& world, GLFWwindow* window)
     : world_(world), window_(window) {
-    // 设置 GLFW 回调
+    // 设置 GLFW 回调，保存前一个回调（引擎 Input → ImGui 的链）
     glfwSetWindowUserPointer(window, this);
     glfwSetKeyCallback(window, keyCallback);
-    glfwSetMouseButtonCallback(window, mouseButtonCallback);
-    glfwSetCursorPosCallback(window, cursorPosCallback);
-    
+    prevMouseButtonCallback_ = glfwSetMouseButtonCallback(window, mouseButtonCallback);
+    prevCursorPosCallback_ = glfwSetCursorPosCallback(window, cursorPosCallback);
+
     std::cout << "[InputSystem] 初始化完成" << std::endl;
 }
 
@@ -117,7 +118,11 @@ void InputSystem::keyCallback(GLFWwindow* window, int key, int scancode, int act
 }
 
 void InputSystem::mouseButtonCallback(GLFWwindow* window, int button, int action, int mods) {
+    // 先链式转发给前一个回调（引擎 Input → ImGui），再处理本系统状态
     auto* inputSystem = static_cast<InputSystem*>(glfwGetWindowUserPointer(window));
+    if (inputSystem && inputSystem->prevMouseButtonCallback_) {
+        inputSystem->prevMouseButtonCallback_(window, button, action, mods);
+    }
     if (inputSystem && button >= 0 && button < 8) {
         if (action == GLFW_PRESS) {
             inputSystem->mouseButtons_[button] = true;
@@ -128,7 +133,11 @@ void InputSystem::mouseButtonCallback(GLFWwindow* window, int button, int action
 }
 
 void InputSystem::cursorPosCallback(GLFWwindow* window, double xpos, double ypos) {
+    // 先链式转发给前一个回调（引擎 Input → ImGui），再计算增量
     auto* inputSystem = static_cast<InputSystem*>(glfwGetWindowUserPointer(window));
+    if (inputSystem && inputSystem->prevCursorPosCallback_) {
+        inputSystem->prevCursorPosCallback_(window, xpos, ypos);
+    }
     if (inputSystem) {
         inputSystem->mouseDeltaX_ = xpos - inputSystem->mouseX_;
         inputSystem->mouseDeltaY_ = ypos - inputSystem->mouseY_;
@@ -346,6 +355,9 @@ entt::entity ClientWorld::createClientPlayer(int viewportWidth, int viewportHeig
     
     // 添加相机控制器组件
     registry().emplace<CameraControllerComponent>(cameraEntity);
+    
+    // 挂载背包组件（默认20格 + 5格快捷栏）
+    registry().emplace<InventoryComponent>(playerEntity);
     
     // 设置为主相机
     setMainCamera(cameraEntity);

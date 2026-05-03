@@ -211,6 +211,7 @@ set(SOURCES
     src/core/resource_manager.cpp
     src/core/scene_manager.cpp
     src/game_session/game_session.cpp
+    src/game_session/resource_node_system.cpp
     src/renderer/renderer.cpp
     src/renderer/model.cpp
     src/renderer/mesh.cpp

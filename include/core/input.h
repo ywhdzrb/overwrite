@@ -44,6 +44,9 @@ public:
     // 获取鼠标滚轮偏移
     void getScrollDelta(double& deltaX, double& deltaY) const noexcept;
     
+    // 获取并重置滚轮 Y 偏移（用于热键切换等单次消费场景）
+    [[nodiscard]] double consumeScrollY() noexcept;
+    
     // 捕获/释放鼠标
     void setCursorCaptured(bool captured);
     [[nodiscard]] bool isCursorCaptured() const noexcept { return cursorCaptured_; }
@@ -79,6 +82,9 @@ private:
     static void cursorPosCallback(GLFWwindow* window, double xpos, double ypos);
     static void scrollCallback(GLFWwindow* window, double xoffset, double yoffset);
 
+    /** @brief 单例实例指针，替代 glfwGetWindowUserPointer（ECS InputSystem 会覆盖 user pointer） */
+    static Input* s_instance;
+
 private:
     GLFWwindow* window_;
     
@@ -103,6 +109,11 @@ private:
     // 鼠标滚轮
     double scrollX_;
     double scrollY_;
+    
+    // 前一个回调（由 ImGui 注册，Input 创建后自动链式转发）
+    GLFWmousebuttonfun prevMouseButtonCallback_ = nullptr;
+    GLFWcursorposfun prevCursorPosCallback_ = nullptr;
+    GLFWscrollfun prevScrollCallback_ = nullptr;
     
     // 鼠标捕获状态
     bool cursorCaptured_;

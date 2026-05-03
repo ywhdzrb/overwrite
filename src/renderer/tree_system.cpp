@@ -146,6 +146,7 @@ void TreeSystem::update(const glm::vec3& playerPos, const Camera& camera) {
                     trees_[slot].position = {wx, y, wz};
                     trees_[slot].scale = scaleGen(chunkGen);
                     trees_[slot].yaw = yawGen(chunkGen);
+                    trees_[slot].active = true;  // 重置 active（槽位可能被回收自已耗尽的树）
                     break;
                 }
             }
@@ -158,7 +159,7 @@ void TreeSystem::render(VkCommandBuffer commandBuffer, VkPipelineLayout pipeline
     if (!sharedTreeModel_) return;
 
     for (const auto& tree : trees_) {
-        if (tree.id.empty()) continue;
+        if (tree.id.empty() || !tree.active) continue;
 
         float distance = glm::length(tree.position - camera.getPosition());
         if (distance > config_.renderDistance) continue;
@@ -185,7 +186,7 @@ std::vector<std::pair<glm::vec3, float>> TreeSystem::queryPositions(float x, flo
     float radiusSq = radius * radius;
     result.reserve(trees_.size() / 8);
     for (const auto& tree : trees_) {
-        if (tree.id.empty()) continue;
+        if (tree.id.empty() || !tree.active) continue;
         float dx = tree.position.x - x;
         float dz = tree.position.z - z;
         if (dx * dx + dz * dz < radiusSq) {
@@ -203,6 +204,23 @@ void TreeSystem::cleanup() {
     }
     trees_.clear();
     loadedChunks_.clear();
+}
+
+std::vector<TreeSystem::TreeInstanceInfo> TreeSystem::getTreeInstances() const {
+    std::vector<TreeInstanceInfo> result;
+    result.reserve(trees_.size());
+    for (int i = 0; i < static_cast<int>(trees_.size()); ++i) {
+        const auto& tree = trees_[i];
+        if (tree.id.empty() || !tree.active) continue;
+        result.push_back({tree.position, tree.scale, i});
+    }
+    return result;
+}
+
+void TreeSystem::setTreeActive(int slotIndex, bool active) {
+    if (slotIndex >= 0 && slotIndex < static_cast<int>(trees_.size())) {
+        trees_[slotIndex].active = active;
+    }
 }
 
 } // namespace owengine

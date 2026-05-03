@@ -95,6 +95,25 @@ public:
      */
     std::vector<std::pair<glm::vec3, float>> queryPositions(float x, float z, float radius) const;
 
+    /// 石头实例的公开信息（包含槽位索引）
+    struct StoneInstanceInfo {
+        glm::vec3 position;
+        float scale;
+        int slotIndex;
+    };
+
+    /**
+     * @brief 获取所有石头实例的详细信息（含槽位索引）
+     */
+    std::vector<StoneInstanceInfo> getStoneInstances() const;
+
+    /**
+     * @brief 设置石头实例的可见状态（采集耗尽后隐藏，重生后恢复）
+     * @param slotIndex 石头槽位索引
+     * @param active true=可见, false=隐藏
+     */
+    void setStoneActive(int slotIndex, bool active);
+
 private:
     struct StoneChunkKey {
         int x, z;
@@ -110,6 +129,7 @@ private:
         glm::vec3 position;
         float scale = 1.0f;
         float yaw = 0.0f;
+        bool active = true;      // false=采集耗尽已隐藏
     };
 
     void generateStonesAtStartup(const StoneConfig& cfg);

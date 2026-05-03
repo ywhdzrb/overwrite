@@ -35,6 +35,8 @@ public:
     void setCursorCaptured(bool captured);
     bool isCursorCaptured() const { return cursorCaptured_; }
     
+    void resetMouseDelta() { mouseDeltaX_ = 0.0; mouseDeltaY_ = 0.0; }
+    
     // 重置帧状态
     void resetFrameState();
     
@@ -59,6 +61,10 @@ private:
     static void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods);
     static void mouseButtonCallback(GLFWwindow* window, int button, int action, int mods);
     static void cursorPosCallback(GLFWwindow* window, double xpos, double ypos);
+
+    // 前一个 GLFW 回调（用于链式转发到引擎 Input → ImGui）
+    GLFWmousebuttonfun prevMouseButtonCallback_ = nullptr;
+    GLFWcursorposfun prevCursorPosCallback_ = nullptr;
 };
 
 /**
@@ -136,6 +142,7 @@ public:
     // ── IGameWorld 接口实现 ────────────────
     void reset() override;
     bool isPlayerValid() const override;
+    entt::entity getPlayerEntity() const override { return getPlayer(); }
     glm::vec3 getPlayerPosition() const override;
     glm::vec3 getCameraFront() const override { return getCameraFrontImpl(); }
     glm::vec3 getCameraRight() const override { return getCameraRightImpl(); }

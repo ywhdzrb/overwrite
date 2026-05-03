@@ -146,6 +146,7 @@ void StoneSystem::update(const glm::vec3& playerPos, const Camera& camera) {
                     stones_[slot].position = {wx, y, wz};
                     stones_[slot].scale = scaleGen(chunkGen);
                     stones_[slot].yaw = yawGen(chunkGen);
+                    stones_[slot].active = true;  // 重置 active（槽位可能被回收自已耗尽的石头）
                     break;
                 }
             }
@@ -158,7 +159,7 @@ void StoneSystem::render(VkCommandBuffer commandBuffer, VkPipelineLayout pipelin
     if (!sharedStoneModel_) return;
 
     for (const auto& stone : stones_) {
-        if (stone.id.empty()) continue;
+        if (stone.id.empty() || !stone.active) continue;
 
         float distance = glm::length(stone.position - camera.getPosition());
         if (distance > config_.renderDistance) continue;
@@ -185,7 +186,7 @@ std::vector<std::pair<glm::vec3, float>> StoneSystem::queryPositions(float x, fl
     float radiusSq = radius * radius;
     result.reserve(stones_.size() / 8);
     for (const auto& stone : stones_) {
-        if (stone.id.empty()) continue;
+        if (stone.id.empty() || !stone.active) continue;
         float dx = stone.position.x - x;
         float dz = stone.position.z - z;
         if (dx * dx + dz * dz < radiusSq) {
@@ -203,6 +204,23 @@ void StoneSystem::cleanup() {
     }
     stones_.clear();
     loadedChunks_.clear();
+}
+
+std::vector<StoneSystem::StoneInstanceInfo> StoneSystem::getStoneInstances() const {
+    std::vector<StoneInstanceInfo> result;
+    result.reserve(stones_.size());
+    for (int i = 0; i < static_cast<int>(stones_.size()); ++i) {
+        const auto& stone = stones_[i];
+        if (stone.id.empty() || !stone.active) continue;
+        result.push_back({stone.position, stone.scale, i});
+    }
+    return result;
+}
+
+void StoneSystem::setStoneActive(int slotIndex, bool active) {
+    if (slotIndex >= 0 && slotIndex < static_cast<int>(stones_.size())) {
+        stones_[slotIndex].active = active;
+    }
 }
 
 } // namespace owengine

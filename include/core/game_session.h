@@ -9,6 +9,8 @@
 #include <functional>
 #include <glm/glm.hpp>
 
+#include "core/resource_node_system.h"
+
 namespace owengine {
 
 // 前向声明
@@ -115,6 +117,9 @@ public:
     /** @brief 获取 ECS 客户端世界 */
     ecs::IGameWorld* getECSWorld() const;
 
+    /** @brief 获取资源节点系统（供 ImGui 调试面板和采集系统使用） */
+    ResourceNodeSystem* getResourceNodeSystem() { return &resourceNodeSystem_; }
+
     // ========== 游戏状态（供 ImGui 调试面板读写） ==========
 
     // FPS 性能
@@ -174,6 +179,7 @@ private:
     class TreeSystem* treeSystem_ = nullptr;
     class StoneSystem* stoneSystem_ = nullptr;
     class GrassSystem* grassSystem_ = nullptr;
+    ResourceNodeSystem resourceNodeSystem_;
 
     // Vulkan 资源（用于模型描述符集创建）
     VkDescriptorPool descriptorPool_ = VK_NULL_HANDLE;
@@ -188,6 +194,36 @@ private:
     std::chrono::high_resolution_clock::time_point lastTime_;
     float currentFPS_ = 0.0f;
     double profLogicMs_ = 0.0;
+
+    // 背包状态
+    bool inventoryOpen_ = false;
+
+public:
+    /** @brief 背包是否打开（供 Renderer 绘制 ImGui 窗口） */
+    bool isInventoryOpen() const { return inventoryOpen_; }
+
+    /** @brief 设置背包打开/关闭状态 */
+    void setInventoryOpen(bool open) { inventoryOpen_ = open; }
+
+    // ========== 采集交互 ==========
+
+    /**
+     * @brief 玩家准星指向的可采集目标信息
+     */
+    struct HarvestTarget {
+        bool valid = false;
+        ecs::ResourceType type;
+        float distance = 0.0f;
+        glm::vec3 position{0.0f};
+    };
+
+    /** @brief 获取当前准星指向的可采集目标 */
+    const HarvestTarget& getHarvestTarget() const { return harvestTarget_; }
+
+private:
+    void updateHarvestTarget();
+
+    HarvestTarget harvestTarget_;
 };
 
 } // namespace owengine
