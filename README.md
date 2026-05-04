@@ -62,13 +62,7 @@ sudo apt install vulkan-sdk libglfw3-dev libglm-dev cmake build-essential
 
 ### 首次运行前获取资源包
 
-素材（模型、贴图等）通过 GitHub Releases 分发，首次使用需下载：
-
-```bash
-# 从 Release 下载并解压
-curl -L -o assets.tar.xz https://github.com/ywhdzrb/overwrite/releases/download/v0.1.0-alpha/overwrite-assets-0.1.0-alpha.tar.xz
-tar -xJf assets.tar.xz
-```
+素材（模型、贴图等）通过 GitHub Releases 分发，首次使用需下载
 
 ---
 
@@ -90,5 +84,3 @@ tar -xJf assets.tar.xz
 ```
 
 发布包输出为 `overwrite-<version>-linux.tar.xz`。
-
-
