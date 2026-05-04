@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="assets/logo/logo.png" alt="OverWrite Logo" width="480">
+<h1>OverWrite</h1>
 
 **开源 · 社区驱动 · 二次元风格**
 
@@ -56,7 +56,39 @@ sudo apt install vulkan-sdk libglfw3-dev libglm-dev cmake build-essential
 ### 运行
 
 ```bash
-./build.sh run
+./build.sh run         # 运行客户端
+./build.sh run-server  # 运行服务端
 ```
+
+### 首次运行前获取资源包
+
+素材（模型、贴图等）通过 GitHub Releases 分发，首次使用需下载：
+
+```bash
+# 从 Release 下载并解压
+curl -L -o assets.tar.xz https://github.com/ywhdzrb/overwrite/releases/download/v0.1.0-alpha/overwrite-assets-0.1.0-alpha.tar.xz
+tar -xJf assets.tar.xz
+```
+
+---
+
+## 开发工作流
+
+### 提交推送
+
+```bash
+./push.sh                         # 交互式输入 message → add + commit + push
+./push.sh -m "feat: 添加xxx功能"  # 直接指定 message
+./push.sh --push-only             # 仅执行 git push（跳过 add/commit）
+```
+
+### 打包发布
+
+```bash
+./push.sh --release               # 构建 + 打包可执行文件 + 资源
+./push.sh --release --download    # 同上，从 Release 下载最新资源包
+```
+
+发布包输出为 `overwrite-<version>-linux.tar.xz`。
 
 
