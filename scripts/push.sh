@@ -1,0 +1,201 @@
+#!/bin/bash
+#
+# OverWrite 推送脚本
+# 普通模式：git add → commit → push
+# 发布模式：构建 → 打包上传 Release
+#
+# Usage:
+#   ./scripts/push.sh                         # 交互式 git push
+#   ./scripts/push.sh -m "说明"                # 直接指定 message
+#   ./scripts/push.sh --push-only              # 仅 push（跳过 add/commit）
+#   ./scripts/push.sh --release                # 发布打包
+#   ./scripts/push.sh --release --download     # 发布打包 + 从 Release 下载 assets
+#
+# 输出（发布模式）: overwrite-<version>-linux.tar.xz
+
+set -e
+
+# ==================== 配置 ====================
+VERSION="0.1.0-alpha"
+RELEASE_TAG="v${VERSION}"
+REPO="ywhdzrb/overwrite"
+OUTPUT_DIR="/tmp/overwrite-package-$$"
+ASSETS_URL="https://github.com/${REPO}/releases/download/${RELEASE_TAG}/overwrite-assets-${VERSION}.tar.xz"
+DOWNLOAD_ASSETS=false
+RELEASE_MODE=false
+COMMIT_MSG=""
+PUSH_ONLY=false
+BUILD_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+
+# ==================== 解析参数 ====================
+for arg in "$@"; do
+    case $arg in
+        --release)
+            RELEASE_MODE=true
+            ;;
+        --download)
+            DOWNLOAD_ASSETS=true
+            ;;
+        -m=*)
+            COMMIT_MSG="${arg#*=}"
+            ;;
+        --push-only)
+            PUSH_ONLY=true
+            ;;
+        --version=*)
+            VERSION="${arg#*=}"
+            RELEASE_TAG="v${VERSION}"
+            ASSETS_URL="https://github.com/${REPO}/releases/download/${RELEASE_TAG}/overwrite-assets-${VERSION}.tar.xz"
+            ;;
+        --help|-h)
+            echo "OverWrite 推送脚本"
+            echo ""
+            echo "Usage: ./scripts/push.sh [options]"
+            echo ""
+            echo "普通模式："
+            echo "  ./scripts/push.sh              交互式输入 commit message"
+            echo "  ./scripts/push.sh -m \"说明\"     直接 push"
+            echo "  ./scripts/push.sh --push-only   仅 git push"
+            echo ""
+            echo "发布模式："
+            echo "  ./scripts/push.sh --release              构建+打包 tar.xz"
+            echo "  ./scripts/push.sh --release --download   下载 assets 后打包"
+            echo ""
+            echo "版本："
+            echo "  --version=VERSION   指定版本（默认: ${VERSION}）"
+            exit 0
+            ;;
+    esac
+done
+
+# 处理 -m 后面跟的 message
+if [[ "$*" == *"-m"* ]] && [ -z "$COMMIT_MSG" ]; then
+    for i in $(seq 1 $#); do
+        if [ "${!i}" = "-m" ]; then
+            next=$((i + 1))
+            COMMIT_MSG="${!next}"
+            break
+        fi
+    done
+fi
+
+# ==================== 发布模式 ====================
+if [ "$RELEASE_MODE" = true ]; then
+    echo "=================================="
+    echo "OverWrite 发布打包"
+    echo "=================================="
+    echo "版本: ${VERSION}"
+    echo "构建目录: ${BUILD_DIR}"
+    echo ""
+
+    # 第1步：构建
+    echo "[1/4] 构建项目..."
+    cd "${BUILD_DIR}"
+    ./build.sh release
+    echo ""
+
+    # 第2步：资源包
+    echo "[2/4] 准备资源包..."
+    if [ "$DOWNLOAD_ASSETS" = true ]; then
+        echo "  从 Release 下载..."
+        mkdir -p "${OUTPUT_DIR}/assets"
+        cd "${OUTPUT_DIR}"
+        echo "  下载: ${ASSETS_URL}"
+        curl -L -o "assets.tar.xz" "${ASSETS_URL}"
+        tar -xJf "assets.tar.xz" -C "${OUTPUT_DIR}"
+        rm "assets.tar.xz"
+        cd "${BUILD_DIR}"
+    else
+        if [ -d "assets" ]; then
+            echo "  使用本地 assets/"
+            mkdir -p "${OUTPUT_DIR}"
+            cp -r "assets" "${OUTPUT_DIR}/assets"
+        else
+            echo "  ERROR: assets/ 不存在！"
+            echo "  下载: curl -L -o /tmp/assets.tar.xz ${ASSETS_URL}"
+            exit 1
+        fi
+    fi
+    echo ""
+
+    # 第3步：收集文件
+    echo "[3/4] 收集可执行文件..."
+    mkdir -p "${OUTPUT_DIR}/bin"
+    cp "build/OverWrite" "${OUTPUT_DIR}/bin/"
+    cp "build/overwrite-server" "${OUTPUT_DIR}/bin/"
+    [ -d "shaders" ] && cp -r "shaders" "${OUTPUT_DIR}/shaders"
+    [ -d "config" ] && cp -r "config" "${OUTPUT_DIR}/config"
+    cat > "${OUTPUT_DIR}/run.sh" << 'RUNEOF'
+#!/bin/bash
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+cd "${SCRIPT_DIR}"
+if [ "$1" = "server" ]; then
+    exec ./bin/overwrite-server "$@"
+else
+    exec ./bin/OverWrite "$@"
+fi
+RUNEOF
+    chmod +x "${OUTPUT_DIR}/run.sh"
+    echo ""
+
+    # 第4步：打包
+    echo "[4/4] 打包..."
+    PACKAGE_NAME="overwrite-${VERSION}-linux"
+    cd /tmp
+    mv "${OUTPUT_DIR}" "${PACKAGE_NAME}"
+    export XZ_OPT="-9e -T0"
+    tar -cJf "${BUILD_DIR}/${PACKAGE_NAME}.tar.xz" "${PACKAGE_NAME}"
+    rm -rf "${PACKAGE_NAME}"
+
+    echo ""
+    echo "打包完成: ${BUILD_DIR}/${PACKAGE_NAME}.tar.xz"
+    echo "大小: $(du -h "${BUILD_DIR}/${PACKAGE_NAME}.tar.xz" | cut -f1)"
+    exit 0
+fi
+
+# ==================== 普通模式：git push ====================
+cd "${BUILD_DIR}"
+
+# 检查是否真的需要 push
+HAS_CHANGES=false
+git diff --quiet || HAS_CHANGES=true
+git diff --cached --quiet || HAS_CHANGES=true
+[ -n "$(git ls-files --others --exclude-standard)" ] && HAS_CHANGES=true
+
+if [ "$HAS_CHANGES" = false ] && [ "$PUSH_ONLY" = false ]; then
+    echo "没有待提交的变更。"
+    exit 0
+fi
+
+# --push-only
+if [ "$PUSH_ONLY" = true ]; then
+    echo "git push..."
+    git push
+    echo "推送完成。"
+    exit 0
+fi
+
+# add
+echo "git add -A"
+git add -A
+echo ""
+echo "===== 变更 ====="
+git status --short
+echo "================"
+echo ""
+
+# commit
+if [ -n "$COMMIT_MSG" ]; then
+    git commit -m "$COMMIT_MSG"
+else
+    echo "输入 commit message（回车取消）："
+    read -r MSG
+    [ -z "$MSG" ] && echo "已取消。" && exit 0
+    git commit -m "$MSG"
+fi
+
+# push
+echo ""
+echo "git push..."
+git push
+echo "推送完成。"
