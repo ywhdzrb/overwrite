@@ -1,15 +1,15 @@
 #!/bin/bash
 #
 # OverWrite 推送脚本
-# 普通模式：git add → commit → push
-# 发布模式：构建 → 打包上传 Release
+# git 模式：add + commit + push
+# 发布模式：build + package + upload to GitHub Releases
 #
 # Usage:
 #   ./push.sh                          # 交互式 git push
 #   ./push.sh -m "说明"                # 直接指定 message
-#   ./push.sh --push-only              # 仅 push（跳过 add/commit）
-#   ./push.sh --release                # 发布打包
-#   ./push.sh --release --download     # 发布打包 + 从 Release 下载 assets
+#   ./push.sh --push-only              # 仅 git push
+#   ./push.sh --release                # 构建+打包+上传 Release
+#   ./push.sh --release --no-upload    # 仅构建+打包，不上传
 #
 # 输出（发布模式）: overwrite-<version>-linux.tar.xz
 
@@ -26,6 +26,7 @@ RELEASE_MODE=false
 COMMIT_MSG=""
 PUSH_ONLY=false
 BUNDLE_LIBS=false
+NO_UPLOAD=false
 BUILD_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 # ==================== 解析参数 ====================
@@ -39,6 +40,9 @@ for arg in "$@"; do
             ;;
         --bundle)
             BUNDLE_LIBS=true
+            ;;
+        --no-upload)
+            NO_UPLOAD=true
             ;;
         -m=*)
             COMMIT_MSG="${arg#*=}"
@@ -62,7 +66,8 @@ for arg in "$@"; do
             echo "  ./push.sh --push-only   仅 git push"
             echo ""
             echo "发布模式："
-            echo "  ./push.sh --release                       构建+打包（assets 不存在时自动下载）"
+            echo "  ./push.sh --release                       构建+打包+上传 GitHub Release"
+            echo "  ./push.sh --release --no-upload           构建+打包，不上传"
             echo "  ./push.sh --release --download            强制重新下载 assets 资源包"
             echo "  ./push.sh --release --bundle              捆绑运行时 .so 库（推荐）"
             echo "  ./push.sh --release --download --bundle   全部一起"
@@ -87,8 +92,9 @@ fi
 
 # ==================== 发布模式 ====================
 if [ "$RELEASE_MODE" = true ]; then
-    TOTAL_STEPS=4
-    [ "$BUNDLE_LIBS" = true ] && TOTAL_STEPS=5
+    TOTAL_STEPS=5
+    [ "$BUNDLE_LIBS" = false ] && TOTAL_STEPS=4
+    [ "$NO_UPLOAD" = true ] && TOTAL_STEPS=$((TOTAL_STEPS - 1))
 
     echo "=================================="
     echo "OverWrite 发布打包"
@@ -212,9 +218,41 @@ RUNEOF
     tar -cJf "${BUILD_DIR}/${PACKAGE_NAME}.tar.xz" "${PACKAGE_NAME}"
     rm -rf "${PACKAGE_NAME}"
 
+    PACKAGE_PATH="${BUILD_DIR}/${PACKAGE_NAME}.tar.xz"
+    PACKAGE_SIZE=$(du -h "${PACKAGE_PATH}" | cut -f1)
     echo ""
-    echo "打包完成: ${BUILD_DIR}/${PACKAGE_NAME}.tar.xz"
-    echo "大小: $(du -h "${BUILD_DIR}/${PACKAGE_NAME}.tar.xz" | cut -f1)"
+    echo "打包完成: ${PACKAGE_PATH}"
+    echo "大小: ${PACKAGE_SIZE}"
+    echo ""
+
+    # 最后一步：上传 GitHub Release
+    if [ "$NO_UPLOAD" = true ]; then
+        echo "[${TOTAL_STEPS}/${TOTAL_STEPS}] 跳过上传（--no-upload）"
+    else
+        echo "[${TOTAL_STEPS}/${TOTAL_STEPS}] 上传 GitHub Release..."
+
+        # 检查 release 是否已存在
+        if gh release view "${RELEASE_TAG}" --repo "${REPO}" &>/dev/null; then
+            echo "  Release ${RELEASE_TAG} 已存在，上传附加资产..."
+        else
+            echo "  创建 Release ${RELEASE_TAG}..."
+            # 先 git push 确保 tag 对应的 commit 在远端
+            git push origin "HEAD:master" 2>/dev/null || true
+            gh release create "${RELEASE_TAG}" \
+                --repo "${REPO}" \
+                --title "OverWrite ${RELEASE_TAG}" \
+                --notes "自动发布 $(date +%Y-%m-%d)" \
+                --target "$(git rev-parse HEAD)"
+        fi
+
+        # 上传打包文件
+        echo "  上传: ${PACKAGE_NAME}.tar.xz (${PACKAGE_SIZE})"
+        gh release upload "${RELEASE_TAG}" "${PACKAGE_PATH}" \
+            --repo "${REPO}" \
+            --clobber
+
+        echo "  https://github.com/${REPO}/releases/tag/${RELEASE_TAG}"
+    fi
     exit 0
 fi
 
