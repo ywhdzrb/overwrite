@@ -63,3 +63,6 @@ AGENTS.md
 *.blend1
 
 build-ci/
+
+# Assets 通过 GitHub Releases 分发，不再由 git 追踪
+assets/
