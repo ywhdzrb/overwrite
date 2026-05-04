@@ -62,8 +62,8 @@ for arg in "$@"; do
             echo "  ./push.sh --push-only   仅 git push"
             echo ""
             echo "发布模式："
-            echo "  ./push.sh --release                       构建+打包 tar.xz"
-            echo "  ./push.sh --release --download            下载 assets 后打包"
+            echo "  ./push.sh --release                       构建+打包（assets 不存在时自动下载）"
+            echo "  ./push.sh --release --download            强制重新下载 assets 资源包"
             echo "  ./push.sh --release --bundle              捆绑运行时 .so 库（推荐）"
             echo "  ./push.sh --release --download --bundle   全部一起"
             echo ""
@@ -105,8 +105,18 @@ if [ "$RELEASE_MODE" = true ]; then
 
     # 第2步：资源包
     echo "[2/${TOTAL_STEPS}] 准备资源包..."
-    if [ "$DOWNLOAD_ASSETS" = true ]; then
-        echo "  从 Release 下载..."
+
+    # 先检查本地 assets/ 是否存在
+    if [ "$DOWNLOAD_ASSETS" = false ] && [ -d "assets" ]; then
+        echo "  使用本地 assets/ 目录"
+        mkdir -p "${OUTPUT_DIR}"
+        cp -r "assets" "${OUTPUT_DIR}/assets"
+    else
+        if [ "$DOWNLOAD_ASSETS" = true ]; then
+            echo "  强制从 Release 下载（--download）..."
+        else
+            echo "  本地 assets/ 不存在，自动从 Release 下载..."
+        fi
         mkdir -p "${OUTPUT_DIR}/assets"
         cd "${OUTPUT_DIR}"
         echo "  下载: ${ASSETS_URL}"
@@ -114,16 +124,6 @@ if [ "$RELEASE_MODE" = true ]; then
         tar -xJf "assets.tar.xz" -C "${OUTPUT_DIR}"
         rm "assets.tar.xz"
         cd "${BUILD_DIR}"
-    else
-        if [ -d "assets" ]; then
-            echo "  使用本地 assets/"
-            mkdir -p "${OUTPUT_DIR}"
-            cp -r "assets" "${OUTPUT_DIR}/assets"
-        else
-            echo "  ERROR: assets/ 不存在！"
-            echo "  下载: curl -L -o /tmp/assets.tar.xz ${ASSETS_URL}"
-            exit 1
-        fi
     fi
     echo ""
 
