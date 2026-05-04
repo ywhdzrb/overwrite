@@ -10,6 +10,7 @@
 #   ./push.sh --push-only              # 仅 git push
 #   ./push.sh --release                # 构建+打包+上传 Release
 #   ./push.sh --release --no-upload    # 仅构建+打包，不上传
+#   ./push.sh --release --notes="说明" # 发布模式自定义更新记录
 #
 # 输出（发布模式）: overwrite-<version>-linux.tar.xz
 
@@ -24,6 +25,7 @@ ASSETS_URL="https://github.com/${REPO}/releases/download/${RELEASE_TAG}/overwrit
 DOWNLOAD_ASSETS=false
 RELEASE_MODE=false
 COMMIT_MSG=""
+RELEASE_NOTES=""
 PUSH_ONLY=false
 BUNDLE_LIBS=false
 NO_UPLOAD=false
@@ -50,6 +52,9 @@ for arg in "$@"; do
         --push-only)
             PUSH_ONLY=true
             ;;
+        --notes=*)
+            RELEASE_NOTES="${arg#*=}"
+            ;;
         --version=*)
             VERSION="${arg#*=}"
             RELEASE_TAG="v${VERSION}"
@@ -74,6 +79,10 @@ for arg in "$@"; do
             echo ""
             echo "版本："
             echo "  --version=VERSION   指定版本（默认: ${VERSION}）"
+            echo ""
+            echo "更新记录："
+            echo "  --notes=\"说明\"       自定义 Release 更新记录"
+            echo "  未指定时进入交互式输入，空行结束"
             exit 0
             ;;
     esac
@@ -232,8 +241,29 @@ RUNEOF
         echo "[${TOTAL_STEPS}/${TOTAL_STEPS}] 上传 GitHub Release..."
 
         # 检查 release 是否已存在
+        if [ -z "$RELEASE_NOTES" ]; then
+            echo "  输入更新记录（多行，空行结束）："
+            NOTES_BODY=""
+            while IFS= read -r LINE; do
+                [ -z "$LINE" ] && break
+                NOTES_BODY="${NOTES_BODY}${LINE}"$'\n'
+            done
+            RELEASE_NOTES="$NOTES_BODY"
+        fi
+
+        RELEASE_BODY="OverWrite ${RELEASE_TAG}
+
+更新记录：
+${RELEASE_NOTES}"
+
         if gh release view "${RELEASE_TAG}" --repo "${REPO}" &>/dev/null; then
             echo "  Release ${RELEASE_TAG} 已存在，上传附加资产..."
+            EXISTING_NOTES=$(gh release view "${RELEASE_TAG}" --repo "${REPO}" --json body -q '.body')
+            gh release edit "${RELEASE_TAG}" \
+                --repo "${REPO}" \
+                --notes "${EXISTING_NOTES}
+
+${RELEASE_BODY}"
         else
             echo "  创建 Release ${RELEASE_TAG}..."
             # 先 git push 确保 tag 对应的 commit 在远端
@@ -241,7 +271,7 @@ RUNEOF
             gh release create "${RELEASE_TAG}" \
                 --repo "${REPO}" \
                 --title "OverWrite ${RELEASE_TAG}" \
-                --notes "自动发布 $(date +%Y-%m-%d)" \
+                --notes "${RELEASE_BODY}" \
                 --target "$(git rev-parse HEAD)"
         fi
 
