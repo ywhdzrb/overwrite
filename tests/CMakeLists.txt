@@ -22,3 +22,9 @@ target_include_directories(test_config PRIVATE
 )
 target_compile_definitions(test_config PRIVATE TEST_CONFIG_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
 add_test(NAME GameConfig COMMAND test_config)
+
+# 测试：TransformComponent 数学运算（前向量/模型矩阵/四元数）
+add_executable(test_transform test_transform.cpp)
+target_link_libraries(test_transform GTest::gtest_main OverWriteShared)
+target_include_directories(test_transform PRIVATE ${CMAKE_SOURCE_DIR}/include)
+add_test(NAME Transform COMMAND test_transform)

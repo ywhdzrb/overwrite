@@ -58,8 +58,8 @@ private:
     
     static constexpr uint32_t TEXTURE_WIDTH = 256;
     static constexpr uint32_t TEXTURE_HEIGHT = 64;
-    static constexpr uint32_t CHAR_WIDTH = 16;
-    static constexpr uint32_t CHAR_HEIGHT = 16;
+    static constexpr uint32_t GLYPH_WIDTH = 16;
+    static constexpr uint32_t GLYPH_HEIGHT = 16;
 };
 
 } // namespace owengine

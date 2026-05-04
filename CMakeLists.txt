@@ -135,13 +135,11 @@ target_include_directories(vma PUBLIC
 target_link_libraries(vma PUBLIC Vulkan::Vulkan)
 
 # ==================== 共享库 (shared) ====================
-add_library(OverWriteShared STATIC
-    shared/src/ecs/components.cpp
-    shared/src/ecs/systems.cpp
-    shared/src/network/server_discovery.cpp
-    shared/src/terrain_query.cpp
-    src/utils/logger.cpp
+file(GLOB_RECURSE OVERWRITE_SHARED_SOURCES CONFIGURE_DEPENDS
+    ${CMAKE_CURRENT_SOURCE_DIR}/shared/src/*.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/utils/logger.cpp
 )
+add_library(OverWriteShared STATIC ${OVERWRITE_SHARED_SOURCES})
 
 target_include_directories(OverWriteShared PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/shared/include
@@ -155,11 +153,10 @@ target_link_libraries(OverWriteShared PUBLIC
 )
 
 # ==================== 客户端库 (client) ====================
-add_library(OverWriteClient STATIC
-    client/src/ecs/client_systems.cpp
-    client/src/ecs/camera_controller_system.cpp
-    client/src/network/network_system.cpp
+file(GLOB_RECURSE OVERWRITE_CLIENT_SOURCES CONFIGURE_DEPENDS
+    ${CMAKE_CURRENT_SOURCE_DIR}/client/src/*.cpp
 )
+add_library(OverWriteClient STATIC ${OVERWRITE_CLIENT_SOURCES})
 
 target_include_directories(OverWriteClient PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/client/include
@@ -178,10 +175,10 @@ target_link_libraries(OverWriteClient PUBLIC
 )
 
 # ==================== 服务器库 (server) ====================
-add_library(OverWriteServer STATIC
-    server/src/server/server_world.cpp
-    server/src/server/websocket_server.cpp
+file(GLOB_RECURSE OVERWRITE_SERVER_SOURCES CONFIGURE_DEPENDS
+    ${CMAKE_CURRENT_SOURCE_DIR}/server/src/*.cpp
 )
+add_library(OverWriteServer STATIC ${OVERWRITE_SERVER_SOURCES})
 
 target_include_directories(OverWriteServer PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/server/include
@@ -198,44 +195,13 @@ target_link_libraries(OverWriteServer PUBLIC
 )
 
 # ==================== 客户端主程序 ====================
-# 源文件
-set(SOURCES
-    src/main.cpp
-    src/core/vulkan_instance.cpp
-    src/core/vulkan_device.cpp
-    src/core/vulkan_swapchain.cpp
-    src/core/vulkan_render_pass.cpp
-    src/core/vulkan_pipeline.cpp
-    src/core/vulkan_framebuffer.cpp
-    src/core/vulkan_command_buffer.cpp
-    src/core/vulkan_sync.cpp
-    src/core/camera.cpp
-    src/core/input.cpp
-    src/core/physics.cpp
-    src/core/light.cpp
-    src/core/light_manager.cpp
-    src/core/resource_manager.cpp
-    src/core/scene_manager.cpp
-    src/game_session/game_session.cpp
-    src/game_session/resource_node_system.cpp
-    src/renderer/renderer.cpp
-    src/renderer/model.cpp
-    src/renderer/mesh.cpp
-    src/renderer/model_renderer.cpp
-    src/renderer/floor_renderer.cpp
-    src/renderer/terrain_renderer.cpp
-    src/renderer/skybox_renderer.cpp
-    src/renderer/imgui_manager.cpp
-    src/renderer/texture.cpp
-    src/renderer/texture_loader.cpp
-    src/renderer/gltf_model.cpp
-    src/renderer/tree_system.cpp
-    src/renderer/stone_system.cpp
-    src/renderer/grass_system.cpp
-    src/renderer/fsr1_pass.cpp
-    src/utils/shader_compiler.cpp
-    src/utils/logger.cpp
-    src/utils/scene_config.cpp
+# 源文件（自动扫描 src/ 目录，CONFIGURE_DEPENDS 使 CMake 在文件变更时自动重跑）
+file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp
+)
+# vma_impl.cpp 已单独编译为 vma 静态库，排除重复编译
+list(REMOVE_ITEM SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/core/vma_impl.cpp
 )
 
 # 创建客户端可执行文件
