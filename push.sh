@@ -5,11 +5,11 @@
 # 发布模式：构建 → 打包上传 Release
 #
 # Usage:
-#   ./scripts/push.sh                         # 交互式 git push
-#   ./scripts/push.sh -m "说明"                # 直接指定 message
-#   ./scripts/push.sh --push-only              # 仅 push（跳过 add/commit）
-#   ./scripts/push.sh --release                # 发布打包
-#   ./scripts/push.sh --release --download     # 发布打包 + 从 Release 下载 assets
+#   ./push.sh                         # 交互式 git push
+#   ./push.sh -m "说明"                # 直接指定 message
+#   ./push.sh --push-only              # 仅 push（跳过 add/commit）
+#   ./push.sh --release                # 发布打包
+#   ./push.sh --release --download     # 发布打包 + 从 Release 下载 assets
 #
 # 输出（发布模式）: overwrite-<version>-linux.tar.xz
 
@@ -25,7 +25,7 @@ DOWNLOAD_ASSETS=false
 RELEASE_MODE=false
 COMMIT_MSG=""
 PUSH_ONLY=false
-BUILD_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+BUILD_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 # ==================== 解析参数 ====================
 for arg in "$@"; do
@@ -50,16 +50,16 @@ for arg in "$@"; do
         --help|-h)
             echo "OverWrite 推送脚本"
             echo ""
-            echo "Usage: ./scripts/push.sh [options]"
+            echo "Usage: ./push.sh [options]"
             echo ""
             echo "普通模式："
-            echo "  ./scripts/push.sh              交互式输入 commit message"
-            echo "  ./scripts/push.sh -m \"说明\"     直接 push"
-            echo "  ./scripts/push.sh --push-only   仅 git push"
+            echo "  ./push.sh              交互式输入 commit message"
+            echo "  ./push.sh -m \"说明\"     直接 push"
+            echo "  ./push.sh --push-only   仅 git push"
             echo ""
             echo "发布模式："
-            echo "  ./scripts/push.sh --release              构建+打包 tar.xz"
-            echo "  ./scripts/push.sh --release --download   下载 assets 后打包"
+            echo "  ./push.sh --release              构建+打包 tar.xz"
+            echo "  ./push.sh --release --download   下载 assets 后打包"
             echo ""
             echo "版本："
             echo "  --version=VERSION   指定版本（默认: ${VERSION}）"
