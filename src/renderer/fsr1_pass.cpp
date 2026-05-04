@@ -16,7 +16,12 @@ VkShaderModule createMod_(VkDevice d, const std::vector<char>& c) {
     VkShaderModuleCreateInfo ci{};
     ci.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
     ci.codeSize = c.size(); ci.pCode = reinterpret_cast<const uint32_t*>(c.data());
-    VkShaderModule m; vkCreateShaderModule(d, &ci, nullptr, &m); return m;
+    VkShaderModule m;
+    if (vkCreateShaderModule(d, &ci, nullptr, &m) != VK_SUCCESS) {
+        Logger::error("[Fsr1Pass] Failed to create shader module");
+        return VK_NULL_HANDLE;
+    }
+    return m;
 }
 void easuCon(uint32_t con[16], float inW, float inH, float outW, float outH) {
     float rx = outW / inW, ry = outH / inH;
@@ -60,11 +65,15 @@ void Fsr1Pass::createRenderTarget() {
     ci.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
     ci.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
     VmaAllocationCreateInfo ai{}; ai.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
-    vmaCreateImage(device_->getAllocator(), &ci, &ai, &colorImage_, &colorAllocation_, nullptr);
+    if (vmaCreateImage(device_->getAllocator(), &ci, &ai, &colorImage_, &colorAllocation_, nullptr) != VK_SUCCESS) {
+        throw std::runtime_error("[Fsr1Pass] Failed to create color image");
+    }
     VkImageViewCreateInfo iv{}; iv.sType=VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
     iv.image = colorImage_; iv.viewType = VK_IMAGE_VIEW_TYPE_2D; iv.format = colorFormat_;
     iv.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT,0,1,0,1};
-    vkCreateImageView(dev, &iv, nullptr, &colorView_);
+    if (vkCreateImageView(dev, &iv, nullptr, &colorView_) != VK_SUCCESS) {
+        throw std::runtime_error("[Fsr1Pass] Failed to create color image view");
+    }
 }
 
 void Fsr1Pass::createDescriptorResources() {
@@ -76,7 +85,9 @@ void Fsr1Pass::createDescriptorResources() {
     b[2] = {2, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1, VK_SHADER_STAGE_COMPUTE_BIT};
     b[3] = {3, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT};
     VkDescriptorSetLayoutCreateInfo lc{}; lc.sType=VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO; lc.bindingCount=4; lc.pBindings=b;
-    vkCreateDescriptorSetLayout(dev, &lc, nullptr, &descSetLayout_);
+    if (vkCreateDescriptorSetLayout(dev, &lc, nullptr, &descSetLayout_) != VK_SUCCESS) {
+        throw std::runtime_error("[Fsr1Pass] Failed to create descriptor set layout");
+    }
 
     VkDescriptorPoolSize ps[4] = {};
     ps[0] = {VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, MAX_FRAMES};
@@ -85,25 +96,33 @@ void Fsr1Pass::createDescriptorResources() {
     ps[3] = {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, MAX_FRAMES};
     VkDescriptorPoolCreateInfo pc{}; pc.sType=VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
     pc.maxSets = MAX_FRAMES; pc.poolSizeCount=4; pc.pPoolSizes=ps;
-    vkCreateDescriptorPool(dev, &pc, nullptr, &descPool_);
+    if (vkCreateDescriptorPool(dev, &pc, nullptr, &descPool_) != VK_SUCCESS) {
+        throw std::runtime_error("[Fsr1Pass] Failed to create descriptor pool");
+    }
 
     VkDescriptorSetAllocateInfo ai{}; ai.sType=VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
     ai.descriptorPool=descPool_; ai.descriptorSetCount=MAX_FRAMES;
     VkDescriptorSetLayout layouts[MAX_FRAMES] = {descSetLayout_, descSetLayout_};
     ai.pSetLayouts = layouts;
-    vkAllocateDescriptorSets(dev, &ai, descSets_);
+    if (vkAllocateDescriptorSets(dev, &ai, descSets_) != VK_SUCCESS) {
+        throw std::runtime_error("[Fsr1Pass] Failed to allocate descriptor sets");
+    }
 
     VkSamplerCreateInfo sc{}; sc.sType=VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
     sc.magFilter=VK_FILTER_LINEAR; sc.minFilter=VK_FILTER_LINEAR;
     sc.addressModeU=VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE; sc.addressModeV=VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
     sc.addressModeW=VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE; sc.maxLod=1.0f;
-    vkCreateSampler(dev, &sc, nullptr, &sampler_);
+    if (vkCreateSampler(dev, &sc, nullptr, &sampler_) != VK_SUCCESS) {
+        throw std::runtime_error("[Fsr1Pass] Failed to create sampler");
+    }
 
     VkBufferCreateInfo bci{}; bci.sType=VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
     bci.size=sizeof(constData_); bci.usage=VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
     VmaAllocationCreateInfo bai{}; bai.usage=VMA_MEMORY_USAGE_AUTO_PREFER_HOST;
     bai.flags=VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
-    vmaCreateBuffer(device_->getAllocator(), &bci, &bai, &constBuffer_, &constBufferAllocation_, nullptr);
+    if (vmaCreateBuffer(device_->getAllocator(), &bci, &bai, &constBuffer_, &constBufferAllocation_, nullptr) != VK_SUCCESS) {
+        throw std::runtime_error("[Fsr1Pass] Failed to create uniform buffer");
+    }
 
     // 初始化所有 desc set 的静态绑定（sampled=0, sampler=1, uniform=3）
     for (int f = 0; f < MAX_FRAMES; f++) {
@@ -132,10 +151,14 @@ void Fsr1Pass::createEasuPipeline() {
     VkPushConstantRange p{}; p.stageFlags=VK_SHADER_STAGE_COMPUTE_BIT; p.size=8;
     VkPipelineLayoutCreateInfo lc{}; lc.sType=VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
     lc.setLayoutCount=1; lc.pSetLayouts=&descSetLayout_; lc.pushConstantRangeCount=1; lc.pPushConstantRanges=&p;
-    vkCreatePipelineLayout(dev, &lc, nullptr, &easuLayout_);
+    if (vkCreatePipelineLayout(dev, &lc, nullptr, &easuLayout_) != VK_SUCCESS) {
+        throw std::runtime_error("[Fsr1Pass] Failed to create pipeline layout");
+    }
     VkComputePipelineCreateInfo ci{}; ci.sType=VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
     ci.stage=s; ci.layout=easuLayout_;
-    vkCreateComputePipelines(dev, VK_NULL_HANDLE, 1, &ci, nullptr, &easuPipeline_);
+    if (vkCreateComputePipelines(dev, VK_NULL_HANDLE, 1, &ci, nullptr, &easuPipeline_) != VK_SUCCESS) {
+        throw std::runtime_error("[Fsr1Pass] Failed to create compute pipeline");
+    }
     vkDestroyShaderModule(dev, mod, nullptr);
 }
 

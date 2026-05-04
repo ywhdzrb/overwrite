@@ -26,36 +26,33 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
     return VK_FALSE;
 }
 
-// 创建调试工具信使的扩展函数
-// 用于获取和调用vkCreateDebugUtilsMessengerEXT扩展函数
-VkResult createDebugUtilsMessengerEXT(
+// VulkanInstance::createDebugUtilsMessengerEXT（静态）
+// 封装 PFN_vkCreateDebugUtilsMessengerEXT 的函数指针查找与调用
+VkResult VulkanInstance::createDebugUtilsMessengerEXT(
     VkInstance instance,
     const VkDebugUtilsMessengerCreateInfoEXT* pCreateInfo,
     const VkAllocationCallbacks* pAllocator,
     VkDebugUtilsMessengerEXT* pDebugMessenger) {
-    
-    // 获取扩展函数地址
+
     auto func = (PFN_vkCreateDebugUtilsMessengerEXT) vkGetInstanceProcAddr(
         instance, "vkCreateDebugUtilsMessengerEXT");
-    
+
     if (func != nullptr) {
         return func(instance, pCreateInfo, pAllocator, pDebugMessenger);
-    } else {
-        return VK_ERROR_EXTENSION_NOT_PRESENT;
     }
+    return VK_ERROR_EXTENSION_NOT_PRESENT;
 }
 
-// 销毁调试工具信使的扩展函数
-// 用于获取和调用vkDestroyDebugUtilsMessengerEXT扩展函数
-void destroyDebugUtilsMessengerEXT(
+// VulkanInstance::destroyDebugUtilsMessengerEXT（静态）
+// 封装 PFN_vkDestroyDebugUtilsMessengerEXT 的函数指针查找与调用
+void VulkanInstance::destroyDebugUtilsMessengerEXT(
     VkInstance instance,
     VkDebugUtilsMessengerEXT debugMessenger,
     const VkAllocationCallbacks* pAllocator) {
-    
-    // 获取扩展函数地址
+
     auto func = (PFN_vkDestroyDebugUtilsMessengerEXT) vkGetInstanceProcAddr(
         instance, "vkDestroyDebugUtilsMessengerEXT");
-    
+
     if (func != nullptr) {
         func(instance, debugMessenger, pAllocator);
     }
