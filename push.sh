@@ -17,7 +17,13 @@
 set -e
 
 # ==================== 配置 ====================
-VERSION="0.1.0-alpha"
+BUILD_DIR="$(cd "$(dirname "$0")" && pwd)"
+VERSION_FILE="${BUILD_DIR}/VERSION"
+if [ -f "$VERSION_FILE" ]; then
+    VERSION="$(cat "$VERSION_FILE" | tr -d '[:space:]')"
+else
+    VERSION="0.1.0-alpha"
+fi
 RELEASE_TAG="v${VERSION}"
 REPO="ywhdzrb/overwrite"
 OUTPUT_DIR="/tmp/overwrite-package-$$"
@@ -29,7 +35,6 @@ RELEASE_NOTES=""
 PUSH_ONLY=false
 BUNDLE_LIBS=false
 NO_UPLOAD=false
-BUILD_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 # ==================== 解析参数 ====================
 for arg in "$@"; do
