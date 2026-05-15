@@ -6,7 +6,7 @@
 //   update() 每帧分四阶段：
 //     Phase 1: 收集中已完成的异步任务 → 主线程上传 Vulkan 缓冲
 //     Phase 2: 扫描 generationRadius 范围内缺失区块 → 去重（已存在/已排队）
-//     Phase 3: 按距离排序，每帧最多启动 maxChunksPerFrame 个 std::async
+//     Phase 3: 按距离排序，每帧最多启动 maxChunksPerFrame 个异步任务（线程池）
 //     Phase 4: 移除 renderRadius + 2 范围外的旧区块
 //
 //   computeChunkMesh()：纯计算（噪声采样 + 顶点/索引生成），无 Vulkan 调用，线程安全
@@ -32,6 +32,7 @@
 #include <unordered_map>
 #include <vector>
 #include <future>
+#include "utils/thread_pool.h"
 
 namespace owengine {
 
@@ -166,6 +167,10 @@ private:
     
     // 异步生成队列：Phase 1 消费就绪项，Phase 2 用于去重
     std::vector<PendingChunk> pendingChunks_;
+
+    // 固定线程池：替代 std::async，避免每帧创建销毁线程
+    // 与 GrassSystem 各自独立池，互不干扰
+    ThreadPool threadPool_;
 };
 
 } // namespace owengine

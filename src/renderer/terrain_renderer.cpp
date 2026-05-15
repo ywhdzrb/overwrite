@@ -385,7 +385,9 @@ void TerrainRenderer::update(const glm::vec3& playerPos) {
     }
     
     // Phase 2: Find chunks that need generation (use generationRadius for preloading)
+    const int candidateCount = (2 * generationRadius + 1) * (2 * generationRadius + 1);
     std::vector<std::pair<int, int>> candidates;
+    candidates.reserve(static_cast<size_t>(candidateCount));
     for (int dz = -generationRadius; dz <= generationRadius; ++dz) {
         for (int dx = -generationRadius; dx <= generationRadius; ++dx) {
             int chunkX = playerChunkX + dx;
@@ -428,7 +430,7 @@ void TerrainRenderer::update(const glm::vec3& playerPos) {
         PendingChunk pending;
         pending.chunkX = cX;
         pending.chunkZ = cZ;
-        pending.future = std::async(std::launch::async, [this, cX, cZ]() {
+        pending.future = threadPool_.enqueue([this, cX, cZ]() {
             return computeChunkMesh(cX, cZ);
         });
         pendingChunks_.push_back(std::move(pending));
@@ -437,6 +439,7 @@ void TerrainRenderer::update(const glm::vec3& playerPos) {
     
     // Phase 4: Remove chunks outside render radius + margin
     std::vector<ChunkKey> toRemove;
+    toRemove.reserve(chunks.size());
     for (const auto& pair : chunks) {
         int dx = pair.first.x - playerChunkX;
         int dz = pair.first.z - playerChunkZ;

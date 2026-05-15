@@ -11,6 +11,7 @@
 #include <string>
 #include <random>
 #include <cstddef>
+#include "utils/thread_pool.h"
 
 namespace owengine {
 
@@ -334,6 +335,9 @@ private:
     // 状态
     bool created_ = false;
     bool initialized_ = false;
+
+    // 固定线程池：替代 std::async，复用线程避免每帧创建销毁
+    ThreadPool threadPool_;
 };
 
 } // namespace owengine

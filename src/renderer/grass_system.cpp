@@ -440,12 +440,12 @@ void GrassSystem::updateChunks(const glm::vec3& playerPos) {
 
         for (size_t ki = 0; ki < newKeys.size(); ki++) {
             const auto& key = newKeys[ki];
-            // 按值捕获邻近数据，线程安全
-            auto nearbyTrees = treeDataPerKey[ki];
-            auto nearbyStones = stoneDataPerKey[ki];
+            auto nearbyTrees = std::move(treeDataPerKey[ki]);
+            auto nearbyStones = std::move(stoneDataPerKey[ki]);
             auto lightDir = lightDir_;
-            futures.push_back(std::async(std::launch::async,
-                [this, key, nearbyTrees, nearbyStones, lightDir]() -> GenResult {
+            futures.push_back(threadPool_.enqueue(
+                [this, key, nearbyTrees = std::move(nearbyTrees),
+                 nearbyStones = std::move(nearbyStones), lightDir]() -> GenResult {
                     std::mt19937 chunkGen(key.x * 100000 + key.z);
                     return {key, generateChunkBlades(config_, key.x, key.z, chunkGen,
                                                      nearbyTrees, nearbyStones, lightDir)};
@@ -630,21 +630,24 @@ void GrassSystem::render(VkCommandBuffer commandBuffer, const Camera& camera) {
 
     vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_);
 
-    PushBlock push;
-    push.view = camera.getViewMatrix();
-    push.proj = camera.getProjectionMatrix();
-    push.timeParams = glm::vec4(time_, config_.windStrength,
-                                 config_.playerRadius, config_.playerForce);
-    push.playerPosVec = glm::vec4(playerPosition_, 1.0f);
+    PushBlock pushBase;
+    pushBase.view = camera.getViewMatrix();
+    pushBase.proj = camera.getProjectionMatrix();
+    pushBase.timeParams = glm::vec4(time_, config_.windStrength,
+                                    0.0f, config_.playerForce);  // z 由 LOD 循环覆写
+    pushBase.playerPosVec = glm::vec4(playerPosition_, 1.0f);
 
-    vkCmdPushConstants(commandBuffer, pipelineLayout_,
-                       VK_SHADER_STAGE_VERTEX_BIT,
-                       0, sizeof(PushBlock), &push);
-
-    // 逐 LOD 层绘制
+    // 逐 LOD 层绘制，每层传入不同 LOD 等级以精简远距离风场计算
     for (int lod = 0; lod < LOD_COUNT; lod++) {
         size_t count = lodVisibleInstances_[lod].size();
         if (count == 0) continue;
+
+        // 覆写 timeParams.z 为当前 LOD 等级，着色器据此降级风场复杂度
+        PushBlock push = pushBase;
+        push.timeParams.z = static_cast<float>(lod);
+        vkCmdPushConstants(commandBuffer, pipelineLayout_,
+                           VK_SHADER_STAGE_VERTEX_BIT,
+                           0, sizeof(PushBlock), &push);
 
         VkBuffer vbs[] = {lodVertexBuffers_[lod], instanceBuffers_[currentInstanceBuffer_]};
         VkDeviceSize offsets[] = {0, lodInstanceOffsets_[lod]};

@@ -50,34 +50,61 @@ void main() {
 
     float heightFrac = localPos.y;
 
-    // === 2. 复合风场 + 阵风系统 ===
+    // === 2. LOD 风场降级 ===
+    // push.timeParams.z = LOD 等级（0~3），CPU 端逐 LOD 层传入
+    // LOD 越高（越远）风场计算越精简，视觉不可感知处节省 ALU
     float windTime = push.timeParams.x;
     float windStr  = push.timeParams.y;
+    int   lodLevel = int(push.timeParams.z);
     float bendFact = heightFrac * heightFrac;
 
     float windPhase = hash(instanceWindSeed) * 6.28318;
-    float freq1 = 0.6 + hash(instanceWindSeed + 1.0) * 0.8;
-    float freq2 = 1.8 + hash(instanceWindSeed + 2.0) * 1.2;
-    float freq3 = 3.5 + hash(instanceWindSeed + 3.0) * 2.0;
 
-    float wave1 = sin(windTime * freq1 + windPhase);
-    float wave2 = sin(windTime * freq2 + windPhase * 1.7) * 0.35;
-    float wave3 = sin(windTime * freq3 + windPhase * 3.1) * 0.15;
-    float windOsc = (wave1 + wave2 + wave3) / 1.2;
+    vec2 windDir;
+    float windMag;
 
-    float gustRaw = sin(windTime * 0.13 + hash(instanceWindSeed + 4.0) * 1.5) * 0.5 + 0.5;
-    float gust = gustRaw * gustRaw * gustRaw;
-    float gustFactor = 0.6 + gust * 0.4;
+    if (lodLevel >= 3) {
+        // LOD3（>95m）：静态偏移，无时间变化动画
+        float angle = instanceWindSeed * 6.28318;
+        windDir = vec2(sin(angle), cos(angle));
+        windMag = windStr * 0.08 * bendFact;
+    } else if (lodLevel >= 2) {
+        // LOD2（65-95m）：单频正弦波，无阵风/湍流
+        float freq = 0.6 + hash(instanceWindSeed + 1.0) * 0.8;
+        float wave = sin(windTime * freq + windPhase);
+        windDir = vec2(sin(windTime * 0.2), cos(windTime * 0.2));
+        windMag = wave * windStr * bendFact * 0.20;
+    } else if (lodLevel >= 1) {
+        // LOD1（35-65m）：双频波，无阵风/湍流
+        float freq1 = 0.6 + hash(instanceWindSeed + 1.0) * 0.8;
+        float freq2 = 1.8 + hash(instanceWindSeed + 2.0) * 1.2;
+        float wave1 = sin(windTime * freq1 + windPhase);
+        float wave2 = sin(windTime * freq2 + windPhase * 1.7) * 0.35;
+        float windOsc = (wave1 + wave2) / 1.2;
+        float angle = windTime * 0.2 + instanceWindSeed * 0.5;
+        windDir = vec2(sin(angle), cos(angle));
+        windMag = windOsc * windStr * bendFact * 0.30;
+    } else {
+        // LOD0（0-35m）：全精度风场 — 3 频复合波 + 阵风 + 湍流方向抖动
+        float freq1 = 0.6 + hash(instanceWindSeed + 1.0) * 0.8;
+        float freq2 = 1.8 + hash(instanceWindSeed + 2.0) * 1.2;
+        float freq3 = 3.5 + hash(instanceWindSeed + 3.0) * 2.0;
+        float wave1 = sin(windTime * freq1 + windPhase);
+        float wave2 = sin(windTime * freq2 + windPhase * 1.7) * 0.35;
+        float wave3 = sin(windTime * freq3 + windPhase * 3.1) * 0.15;
+        float windOsc = (wave1 + wave2 + wave3) / 1.2;
+        float gustRaw = sin(windTime * 0.13 + hash(instanceWindSeed + 4.0) * 1.5) * 0.5 + 0.5;
+        float gust = gustRaw * gustRaw * gustRaw;
+        float gustFactor = 0.6 + gust * 0.4;
+        float windAngle = windTime * 0.2 + hash(instanceWindSeed + 5.0) * 0.5;
+        windDir = vec2(sin(windAngle), cos(windAngle));
+        float turbX = sin(windTime * 2.5 + instanceWindSeed * 15.0) * 0.2;
+        float turbZ = cos(windTime * 3.1 + instanceWindSeed * 25.0) * 0.2;
+        windDir += vec2(turbX, turbZ);
+        windDir = normalize(windDir);
+        windMag = windOsc * windStr * gustFactor * bendFact * 0.35;
+    }
 
-    float windAngle = windTime * 0.2 + hash(instanceWindSeed + 5.0) * 0.5;
-    vec2 windDir = vec2(sin(windAngle), cos(windAngle));
-
-    float turbX = sin(windTime * 2.5 + instanceWindSeed * 15.0) * 0.2;
-    float turbZ = cos(windTime * 3.1 + instanceWindSeed * 25.0) * 0.2;
-    windDir += vec2(turbX, turbZ);
-    windDir = normalize(windDir);
-
-    float windMag = windOsc * windStr * gustFactor * bendFact * 0.35;
     vec3 windDisp = vec3(windDir * windMag, 0.0);
     windDisp.y -= abs(windMag) * 0.15;
 
