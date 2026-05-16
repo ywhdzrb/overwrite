@@ -70,6 +70,7 @@ struct GameConfig {
                 cfg.tree.density         = t.value("density",           cfg.tree.density);
                 cfg.tree.renderDistance  = t.value("render_distance",   cfg.tree.renderDistance);
                 cfg.tree.heightThreshold = t.value("height_threshold",  cfg.tree.heightThreshold);
+                cfg.tree.windStrength    = t.value("wind_strength",     cfg.tree.windStrength);
             }
 
             // 石头参数

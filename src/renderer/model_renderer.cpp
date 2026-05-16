@@ -83,6 +83,8 @@ void ModelRenderer::render(VkCommandBuffer commandBuffer, VkPipelineLayout pipel
     pushConstants.roughness = 0.5f;
     pushConstants.hasTexture = useTexture ? 1 : 0;
     pushConstants._pad0 = 0.0f;
+    pushConstants.windTime = 0.0f;
+    pushConstants.windStrength = 0.0f;  // OBJ模型不受风场影响
 
     vkCmdPushConstants(commandBuffer, pipelineLayout,
                       VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 

@@ -229,23 +229,23 @@ void Renderer::initVulkan() {
     createDescriptorSets();
 
     // 加载渲染器配置
-    auto gameConfig = GameConfig::load(AssetPaths::GAME_CONFIG);
-    targetFPS_ = gameConfig.renderer.targetFPS;
+    gameConfig_ = GameConfig::load(AssetPaths::GAME_CONFIG);
+    targetFPS_ = gameConfig_.renderer.targetFPS;
 
     // 初始化树系统
     treeSystem_ = std::make_unique<TreeSystem>(vulkanDevice_, textureLoader_, textureDescriptorSetLayout_);
     treeSystem_->setHeightSampler(terrainHeightQuery);
-    treeSystem_->init(gameConfig.tree);
+    treeSystem_->init(gameConfig_.tree);
 
     // 初始化石头系统
     stoneSystem_ = std::make_unique<StoneSystem>(vulkanDevice_, textureLoader_, textureDescriptorSetLayout_);
     stoneSystem_->setHeightSampler(terrainHeightQuery);
-    stoneSystem_->init(gameConfig.stone);
+    stoneSystem_->init(gameConfig_.stone);
 
     // 初始化草丛系统
     grassSystem_ = std::make_unique<GrassSystem>(vulkanDevice_);
     grassSystem_->setHeightSampler(terrainHeightQuery);
-    grassSystem_->init(gameConfig.grass, renderPass_->getRenderPass(),
+    grassSystem_->init(gameConfig_.grass, renderPass_->getRenderPass(),
                        swapchain_->getExtent(), msaaSamples_);
 
     grassSystem_->setTreeQuery([this](float x, float z, float radius) {
@@ -315,6 +315,9 @@ void Renderer::mainLoop() {
         if (deltaTime > ecs::MAX_DELTA_TIME) {
             deltaTime = ecs::MAX_DELTA_TIME;
         }
+        
+        // 累计全局时间（用于风场动画等连续效果）
+        totalTime_ += deltaTime;
         
         // 检查是否有延迟的 MSAA 更改
         if (pendingMsaaChange_) {
@@ -734,8 +737,9 @@ void Renderer::drawFrame() {
         }
     }
 
-    // 渲染树木/石头/草丛
-    treeSystem_->render(commandBuffer, graphicsPipeline_->getPipelineLayout(), *cam);
+    // 渲染树木（带风场效果）/ 石头 / 草丛
+    treeSystem_->render(commandBuffer, graphicsPipeline_->getPipelineLayout(), *cam,
+                        totalTime_, gameConfig_.tree.windStrength);
     if (stoneSystem_) stoneSystem_->render(commandBuffer, graphicsPipeline_->getPipelineLayout(), *cam);
     if (grassSystem_) grassSystem_->render(commandBuffer, *cam);
 

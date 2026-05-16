@@ -42,6 +42,7 @@
 #include "renderer/gltf_model.h"
 #include "core/scene_config.h"
 #include "core/resource_manager.h"
+#include "core/game_config.h"
 #include "renderer/fsr1_pass.h"
 
 // 前向声明：游戏会话（Renderer 不拥有游戏逻辑，仅通过指针读取渲染所需数据）
@@ -146,6 +147,12 @@ private:
     std::unique_ptr<GameSession> ownedGameSession_;  // 内部创建时持有
     GameSession* gameSession_ = nullptr;             // 始终指向活跃会话
     GameSession* externalGameSession_ = nullptr;     // 外部注入（覆盖内部创建）
+
+    // ========== 累计时间（风场动画等） ==========
+    float totalTime_ = 0.0f;
+
+    // ========== 游戏配置（供 drawFrame 等访问） ==========
+    GameConfig gameConfig_;
 
     // ========== 帧率控制 ==========
     std::chrono::high_resolution_clock::time_point lastTime_;

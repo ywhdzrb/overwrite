@@ -209,11 +209,11 @@ void VulkanPipeline::create() {
         pushConstantRange.size = sizeof(glm::mat4) * 2;  // view + projection (天空盒)
     } else {
         // PushConstants结构体大小计算：
-        // model(mat4) + view(mat4) + proj(mat4) + baseColor(vec3) + metallic(float) + roughness(float) + hasTexture(int) + _pad0(float)
-        // = 64*3 + 12 + 4 + 4 + 4 + 4
-        // = 192 + 28
-        // = 220 bytes
-        pushConstantRange.size = 220;
+        // model(mat4) + view(mat4) + proj(mat4) + baseColor(vec3) + metallic(float) + roughness(float) + hasTexture(int) + _pad0(float) + windTime(float) + windStrength(float)
+        // = 64*3 + 12 + 4 + 4 + 4 + 4 + 4 + 4
+        // = 192 + 12 + 24
+        // = 228 bytes
+        pushConstantRange.size = 228;
     }
     
     VkPipelineLayoutCreateInfo pipelineLayoutInfo{};

@@ -25,6 +25,7 @@ struct TreeConfig {
     double density = 0.15;            // 泊松 λ，每区块平均树数
     float renderDistance = 250.0f;    // 渲染距离（米）
     float heightThreshold = -2.0f;    // 地形高度下限
+    float windStrength = 0.5f;        // 树木风场强度
 };
 
 /**
@@ -66,9 +67,11 @@ public:
 
     /**
      * @brief 渲染所有可见树木
+     * @param time 全局累计时间（秒），用于风场动画
+     * @param windStrength 风场强度（来自 TreeConfig）
      */
     void render(VkCommandBuffer commandBuffer, VkPipelineLayout pipelineLayout,
-                const Camera& camera) const;
+                const Camera& camera, float time, float windStrength) const;
 
     /**
      * @brief 设置地形高度采样器（注入外部高度查询委托，如 TerrainRenderer::getHeight）

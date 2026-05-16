@@ -230,11 +230,17 @@ void GLTFModel::setHiddenNodeNames(const std::vector<std::string>& names) {
     hiddenNodeNames = names;
 }
 
+void GLTFModel::setWindNodePrefixes(const std::vector<std::string>& prefixes) {
+    windNodePrefixes = prefixes;
+}
+
 void GLTFModel::render(VkCommandBuffer commandBuffer,
                        VkPipelineLayout pipelineLayout,
                        const glm::mat4& viewMatrix,
                        const glm::mat4& projectionMatrix,
-                       const glm::mat4& modelMatrix) {
+                        const glm::mat4& modelMatrix,
+                        float windTime,
+                        float windStrength) {
     // 渲染所有根节点
     for (size_t i = 0; i < nodes.size(); ++i) {
         // 检查是否是根节点（没有被其他节点引用）
@@ -247,7 +253,7 @@ void GLTFModel::render(VkCommandBuffer commandBuffer,
         }
         
         if (isRoot) {
-            renderNode(commandBuffer, pipelineLayout, viewMatrix, projectionMatrix, i, modelMatrix);
+            renderNode(commandBuffer, pipelineLayout, viewMatrix, projectionMatrix, i, modelMatrix, windTime, windStrength);
         }
     }
 }
@@ -257,7 +263,9 @@ void GLTFModel::renderNode(VkCommandBuffer commandBuffer,
                           const glm::mat4& viewMatrix,
                           const glm::mat4& projectionMatrix,
                           size_t nodeIndex,
-                          const glm::mat4& parentMatrix) {
+                           const glm::mat4& parentMatrix,
+                           float windTime,
+                           float windStrength) {
     if (nodeIndex >= nodes.size()) {
         return;
     }
@@ -295,6 +303,8 @@ void GLTFModel::renderNode(VkCommandBuffer commandBuffer,
                 float roughness;
                 int hasTexture;
                 float _pad0;
+                float windTime;
+                float windStrength;  // x=time, y=windStrength
             };
             
             PushConstants pushConstants{};
@@ -311,6 +321,24 @@ void GLTFModel::renderNode(VkCommandBuffer commandBuffer,
                 pushConstants.hasTexture = material.useBaseColorTexture ? 1 : 0;
             }
             
+            // === 风场节点过滤：只有匹配 windNodePrefixes 的节点才受风 ===
+            float effectiveWindStrength = windStrength;
+            if (windStrength > 0.001f && !windNodePrefixes.empty()) {
+                bool matchesWind = node.name.empty();  // 无名节点默认受风
+                for (const auto& prefix : windNodePrefixes) {
+                    if (node.name == prefix ||
+                        (prefix.back() == '.' && node.name.find(prefix) == 0)) {
+                        matchesWind = true;
+                        break;
+                    }
+                }
+                if (!matchesWind) {
+                    effectiveWindStrength = 0.0f;
+                }
+            }
+            pushConstants.windTime = windTime;
+            pushConstants.windStrength = effectiveWindStrength;
+
             vkCmdPushConstants(commandBuffer, pipelineLayout,
                              VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
                              0, sizeof(PushConstants), &pushConstants);
@@ -329,7 +357,7 @@ void GLTFModel::renderNode(VkCommandBuffer commandBuffer,
     
     // 递归渲染子节点
     for (size_t childIndex : node.children) {
-        renderNode(commandBuffer, pipelineLayout, viewMatrix, projectionMatrix, childIndex, nodeMatrix);
+        renderNode(commandBuffer, pipelineLayout, viewMatrix, projectionMatrix, childIndex, nodeMatrix, windTime, windStrength);
     }
 }
 

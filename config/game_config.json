@@ -22,7 +22,8 @@
         "max_scale":        0.5,
         "density":          0.15,
         "render_distance":  250.0,
-        "height_threshold": -2.0
+        "height_threshold": -2.0,
+        "wind_strength":    0.5
     },
 
     "stone": {

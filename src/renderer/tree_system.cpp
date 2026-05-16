@@ -30,6 +30,8 @@ void TreeSystem::init(const TreeConfig& cfg) {
 
     sharedTreeModel_ = std::make_unique<GLTFModel>(device_, textureLoader_);
     if (sharedTreeModel_->loadFromFile(AssetPaths::TREE_MODEL)) {
+        // 仅树叶节点(leaf.XXX)受风，树干节点(立方体)保持静止
+        sharedTreeModel_->setWindNodePrefixes({"leaf."});
         VkDescriptorPoolSize poolSize{};
         poolSize.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
         poolSize.descriptorCount = 312;
@@ -155,7 +157,7 @@ void TreeSystem::update(const glm::vec3& playerPos, const Camera& camera) {
 }
 
 void TreeSystem::render(VkCommandBuffer commandBuffer, VkPipelineLayout pipelineLayout,
-                        const Camera& camera) const {
+                        const Camera& camera, float time, float windStrength) const {
     if (!sharedTreeModel_) return;
 
     for (const auto& tree : trees_) {
@@ -177,7 +179,7 @@ void TreeSystem::render(VkCommandBuffer commandBuffer, VkPipelineLayout pipeline
 
         sharedTreeModel_->render(commandBuffer, pipelineLayout,
                                 camera.getViewMatrix(), camera.getProjectionMatrix(),
-                                modelMatrix);
+                                modelMatrix, time, windStrength);
     }
 }
 

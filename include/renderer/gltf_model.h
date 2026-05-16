@@ -139,7 +139,9 @@ public:
                 VkPipelineLayout pipelineLayout,
                 const glm::mat4& viewMatrix,
                 const glm::mat4& projectionMatrix,
-                const glm::mat4& modelMatrix = glm::mat4(1.0f));
+                const glm::mat4& modelMatrix = glm::mat4(1.0f),
+                float windTime = 0.0f,
+                float windStrength = 0.0f);
 
     /**
      * @brief 渲染特定节点
@@ -155,7 +157,9 @@ public:
                    const glm::mat4& viewMatrix,
                    const glm::mat4& projectionMatrix,
                    size_t nodeIndex,
-                   const glm::mat4& parentMatrix = glm::mat4(1.0f));
+                   const glm::mat4& parentMatrix = glm::mat4(1.0f),
+                   float windTime = 0.0f,
+                   float windStrength = 0.0f);
 
     /**
      * @brief 获取模型的包围盒
@@ -207,6 +211,13 @@ public:
      * @param hiddenNames 节点名称列表
      */
     void setHiddenNodeNames(const std::vector<std::string>& hiddenNames);
+
+    /**
+     * @brief 设置受风场影响的节点名称前缀
+     *        只有匹配这些前缀的节点才会被风场偏移（如 "leaf." 匹配树叶节点）
+     * @param prefixes 节点名称前缀列表
+     */
+    void setWindNodePrefixes(const std::vector<std::string>& prefixes);
 
     /**
      * @brief 设置模型位置
@@ -496,6 +507,10 @@ private:
     // 要隐藏的节点名称集合（用于跳过渲染）
     // 支持精确匹配和前缀匹配（如 "leaf." 匹配 "leaf.001"）
     std::vector<std::string> hiddenNodeNames;
+
+    // 受风场影响的节点名称前缀（为空时所有节点都受风）
+    // 支持精确匹配和前缀匹配（如 "leaf." 匹配 "leaf.001"）
+    std::vector<std::string> windNodePrefixes;
 
     // 节点数据
     struct NodeData {

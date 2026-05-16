@@ -65,6 +65,8 @@ layout(push_constant) uniform PushConstants {
     float roughness;
     int hasTexture;
     float _pad0;
+    float windTime;      // 累计时间（秒），用于风场动画
+    float windStrength;  // 风场强度（0=无风）
 } pushConstants;
 
 // 从粗糙度计算镜面高光指数：低粗糙度 = 高光泽度 = 更亮更锐利的高光
