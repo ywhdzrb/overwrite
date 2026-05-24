@@ -54,7 +54,7 @@ struct GrassInstanceData {
     float scale;            // 整体缩放（影响高度）
     float windSeed;         // 随机种子 [0,1]，用于着色器风场差异
     float pushState;        // 挤压弹簧状态 [0,1]，着色器角色交互恢复动画用
-    float _pad0;            // 16 字节对齐填充
+    float widthScale;       // 宽度缩放系数 (0.4~1.8)，每根草粗细不同
 };
 
 /**
@@ -144,10 +144,32 @@ public:
     void setStoneQuery(ProximityQuery q) { stoneQuery_ = std::move(q); }
 
     /**
-     * @brief 设置全局光照方向（用于石头背阴面草衰减）
-     * @param dir 归一化光照方向，从光源指向场景
+     * @brief 设置全局光照方向（用于石头背阴面草衰减 + 着色器昼夜同步）
+     * @param dir 归一化光照方向，场景→光源（太阳方向）
      */
     void setGlobalLightDir(const glm::vec3& dir) { lightDir_ = dir; }
+
+    /**
+     * @brief 设置光照强度（用于昼夜漫反射过渡）
+     * @param intensity 0=全黑(夜晚) ~ 1=全亮(正午)
+     */
+    void setLightIntensity(float intensity) { lightIntensity_ = intensity; }
+
+    /**
+     * @brief 设置环境光颜色（由 Renderer 传入，与 terrain 共享的 ambientColor * ambientIntensity）
+     * @param color 环境光 RGB 颜色（如 (0.15, 0.15, 0.15) 对应正午默认值）
+     */
+    void setAmbientColor(const glm::vec3& color) { ambientColor_ = color; }
+
+    /**
+     * @brief 设置草地纹理描述符集布局（由 Renderer 传入，与 terrain 共享同一布局）
+     */
+    void setTextureDescriptorSetLayout(VkDescriptorSetLayout layout) { textureDescLayout_ = layout; }
+
+    /**
+     * @brief 设置草地纹理描述符集（由 Renderer 传入，与 terrain 共享同一张草地贴图）
+     */
+    void setTexture(VkDescriptorSet descSet) { textureDescSet_ = descSet; }
 
     /**
      * @brief 设置玩家世界坐标（用于着色器交互形变）
@@ -283,7 +305,9 @@ private:
     // 邻近物体查询（树/石 → 草密度/高度调制）
     ProximityQuery treeQuery_;
     ProximityQuery stoneQuery_;
-    glm::vec3 lightDir_ = glm::vec3(0.5f, -0.707f, 0.5f); // 默认光照方向
+    glm::vec3 lightDir_ = glm::vec3(0.5f, -0.707f, 0.5f); // 默认光照方向（场景→光源）
+    float lightIntensity_ = 0.8f;                          // 漫反射强度（0=夜晚, 1=正午）
+    glm::vec3 ambientColor_ = glm::vec3(0.15f);            // 环境光颜色 = ambientColor * ambientIntensity
 
     // 玩家位置（用于着色器交互）
     glm::vec3 playerPosition_ = glm::vec3(0.0f);
@@ -317,6 +341,10 @@ private:
     // 管线
     VkPipeline pipeline_ = VK_NULL_HANDLE;
     VkPipelineLayout pipelineLayout_ = VK_NULL_HANDLE;
+
+    // 纹理描述符（由 Renderer 注入，与 terrain 共享同一张草地 BaseColor 贴图）
+    VkDescriptorSetLayout textureDescLayout_ = VK_NULL_HANDLE;
+    VkDescriptorSet textureDescSet_ = VK_NULL_HANDLE;
 
     // 四层 LOD 的草茎网格缓冲
     std::array<VkBuffer, LOD_COUNT> lodVertexBuffers_ = {};

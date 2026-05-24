@@ -18,13 +18,16 @@ layout(location = 3) in float instanceYaw;
 layout(location = 4) in float instanceScale;
 layout(location = 5) in float instanceWindSeed;
 layout(location = 6) in float instancePushState;
+layout(location = 7) in float instanceWidthScale;   // 宽度缩放（每根草粗细不同）
 
 // ---- Push Constants ----
 layout(push_constant) uniform PushConstants {
     mat4 view;
     mat4 proj;
-    vec4 timeParams;    // x=time, y=windStrength, z=playerRadius, w=playerForce
-    vec4 playerPos;     // xyz=playerWorldPos
+    vec4 timeParams;       // x=time, y=windStrength, z=playerRadius, w=playerForce
+    vec4 playerPos;        // xyz=playerWorldPos
+    vec4 lightDir;         // xyz=光照方向(场景→光源), w=漫反射强度(0-1)
+    vec4 ambientIntensity; // x=环境光强度(由Renderer传入)
 } push;
 
 // ---- 输出到片段着色器 ----
@@ -39,6 +42,14 @@ float hash(float x) {
 
 void main() {
     vec3 localPos = inPosition;
+
+    // === 0. 宽度缩放（每根草粗细不同，由 CPU 端随机化） ===
+    // 缩放 X/Z 使草茎更细或更粗：细草(×0.5) ~ 粗草(×1.8)
+    // 对于 LOD0：bend 偏移也随之缩放（更粗的草弯曲更大，视觉合理）
+    // 对于 LOD1-3：仅宽度受影响，完美
+    // 不影响 Y（高度由 instanceScale 独立控制）
+    localPos.x *= instanceWidthScale;
+    localPos.z *= instanceWidthScale;
 
     // === 1. 绕 Y 轴旋转 ===
     float c = cos(instanceYaw);

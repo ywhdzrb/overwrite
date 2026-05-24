@@ -42,13 +42,13 @@ inline constexpr const char* GRASS_VERT_SHADER = "shaders/grass.vert.spv";
 /** @brief 草地片段着色器 */
 inline constexpr const char* GRASS_FRAG_SHADER = "shaders/grass.frag.spv";
 
+/** @brief 地形草地纹理（BaseColor 漫反射贴图） */
+inline constexpr const char* GRASS_TEXTURE = "assets/textures/grass/Poliigon_GrassPatchyGround_4585_BaseColor.jpg";
+
 /** @brief FSR1 EASU 计算着色器 */
 inline constexpr const char* FSR1_EASU_SHADER = "shaders/fsr1_easu.comp.spv";
 
 // ==================== 纹理文件 ====================
-
-/** @brief 天空盒十字布局纹理 */
-inline constexpr const char* SKYBOX_TEXTURE = "assets/textures/skybox.jpg";
 
 // ==================== 模型文件 ====================
 

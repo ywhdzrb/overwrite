@@ -86,6 +86,9 @@ public:
     
     void update(const glm::vec3& playerPos);
     float getHeight(float x, float z) const;
+
+    /** @brief 设置地形纹理描述符集（指向草地 BaseColor 纹理） */
+    void setTexture(VkDescriptorSet descSet) { terrainTexDescSet_ = descSet; }
     
     struct PushConstants {
         glm::mat4 model;
@@ -167,6 +170,11 @@ private:
     
     // 异步生成队列：Phase 1 消费就绪项，Phase 2 用于去重
     std::vector<PendingChunk> pendingChunks_;
+
+    // 地形纹理描述符集（指向草地 BaseColor 纹理），绑定到 set=0 供 shader.frag 采样
+    VkDescriptorSet terrainTexDescSet_ = VK_NULL_HANDLE;
+    // 地形纹理世界空间平铺缩放：UV = worldPos / uvScale_
+    float uvScale_ = 4.0f;
 
     // 固定线程池：替代 std::async，避免每帧创建销毁线程
     // 与 GrassSystem 各自独立池，互不干扰

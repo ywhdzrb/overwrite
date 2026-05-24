@@ -16,6 +16,43 @@ namespace owengine {
 
 namespace {
 
+/**
+ * @brief 平滑草簇噪声：基于哈希+双线性插值的连续噪声，用于生成自然草簇形状
+ * @param x, z 世界坐标
+ * @param scale 网格缩放（米），控制斑块大小
+ * @return [0,1] 连续噪声值
+ */
+static float smoothClumpNoise(float x, float z, float scale) {
+    float sx = x / scale;
+    float sz = z / scale;
+
+    int ix = static_cast<int>(std::floor(sx));
+    int iz = static_cast<int>(std::floor(sz));
+
+    float fx = sx - std::floor(sx);
+    float fz = sz - std::floor(sz);
+
+    // Smoothstep 缓动，消除线性插值的"搓衣板"纹理
+    fx = fx * fx * (3.0f - 2.0f * fx);
+    fz = fz * fz * (3.0f - 2.0f * fz);
+
+    auto cellHash = [](int x, int z) -> float {
+        uint32_t h = static_cast<uint32_t>(x * 73856093u) ^ static_cast<uint32_t>(z * 19349663u);
+        h ^= h >> 13;
+        h *= 1274126177u;
+        return static_cast<float>(h & 0x7FFFFFFFu) / 2147483648.0f;
+    };
+
+    float n00 = cellHash(ix, iz);
+    float n10 = cellHash(ix + 1, iz);
+    float n01 = cellHash(ix, iz + 1);
+    float n11 = cellHash(ix + 1, iz + 1);
+
+    float nx0 = glm::mix(n00, n10, fx);
+    float nx1 = glm::mix(n01, n11, fx);
+    return glm::mix(nx0, nx1, fz);
+}
+
 std::vector<char> readFile(const std::string& filename) {
     std::ifstream file(filename, std::ios::ate | std::ios::binary);
     if (!file.is_open()) {
@@ -43,10 +80,12 @@ VkShaderModule createShaderModule_(VkDevice device, const std::vector<char>& cod
 }
 
 struct PushBlock {
-    glm::mat4 view;
-    glm::mat4 proj;
-    glm::vec4 timeParams;
-    glm::vec4 playerPosVec;
+    glm::mat4 view;            // 0-63   视图矩阵
+    glm::mat4 proj;            // 64-127 投影矩阵
+    glm::vec4 timeParams;      // 128-143 时间/风/玩家参数
+    glm::vec4 playerPosVec;    // 144-159 玩家世界坐标
+    glm::vec4 lightDir;        // 160-175 光照方向(xyz)+漫反射强度(w)
+    glm::vec4 ambientColor;    // 176-191 xyz=环境光颜色(与terrain一致) w=未用
 };
 
 } // anonymous namespace
@@ -256,6 +295,8 @@ std::vector<GrassInstanceData> GrassSystem::generateChunkBlades(
     std::uniform_real_distribution<float> yawGen(0.0f, 6.28318f);
     std::uniform_real_distribution<float> seedGen(0.0f, 1.0f);
     std::uniform_real_distribution<float> heightNormGen(0.0f, 1.0f);
+    std::uniform_real_distribution<float> heightScaleGen(0.3f, 1.7f);
+    std::uniform_real_distribution<float> widthScaleGen(0.25f, 2.5f);
 
     for (int i = 0; i < count; i++) {
         for (int attempt = 0; attempt < 8; attempt++) {
@@ -263,14 +304,24 @@ std::vector<GrassInstanceData> GrassSystem::generateChunkBlades(
             float wz = worldZ0 + posOffset(rng);
             float y = heightSampler_ ? heightSampler_(wx, wz) : 0.0f;
 
+            // === 草簇生成：使用平滑噪声生成自然形状的草簇 ===
+            // 对 (wx,wz) 位置采样连续噪声（非整数单元哈希），
+            // 噪声经 smoothstep 双线性插值，草簇边缘平滑过渡，消除方格棱角
+            float clumpFactor = smoothClumpNoise(wx, wz, 4.0f);
+            // clumpFactor > 0.55 表示无草区，跳过（约 45% 的覆盖面积，更稀疏的自然斑块）
+            if (clumpFactor > 0.55f) continue;
+
             GrassInstanceData inst;
             inst.position = {wx, y, wz};
             inst.yaw = yawGen(rng);
-            // 区域基准高度 ±40% 波动，区块内仍有明显高度差异
-            float h = (heightNormGen(rng) + heightNormGen(rng)) * 0.5f;
-            float variation = 1.0f + (h - 0.5f) * 0.8f;
-            inst.scale = std::clamp(zoneBase * variation, cfg.bladeHeightMin, cfg.bladeHeightMax);
+            // 高度：0.3~1.7 均匀分布，同区块内高矮对比达到 5.7x
+            // 不用钟形避免大部分草高度接近，确保矮草(<30cm)和高草(>1m)同时可见
+            float heightScale = heightScaleGen(rng);
+            inst.scale = std::clamp(zoneBase * heightScale, cfg.bladeHeightMin, cfg.bladeHeightMax);
             inst.windSeed = seedGen(rng);
+            // 宽度/粗细：0.25~2.5 均匀分布，10x 跨度确保肉眼可见差异
+            // 不使用钟形分布（会导致大部分草茎宽度近似），改用均匀分布产生从极细到极粗的完整谱系
+            inst.widthScale = widthScaleGen(rng);
             inst.pushState = 0.0f;
 
             // ================ P2: 树邻近影响 ================
@@ -634,8 +685,16 @@ void GrassSystem::render(VkCommandBuffer commandBuffer, const Camera& camera) {
     pushBase.view = camera.getViewMatrix();
     pushBase.proj = camera.getProjectionMatrix();
     pushBase.timeParams = glm::vec4(time_, config_.windStrength,
-                                    0.0f, config_.playerForce);  // z 由 LOD 循环覆写
+                                     0.0f, config_.playerForce);  // z 由 LOD 循环覆写
     pushBase.playerPosVec = glm::vec4(playerPosition_, 1.0f);
+    pushBase.lightDir = glm::vec4(glm::normalize(lightDir_), lightIntensity_);
+    pushBase.ambientColor = glm::vec4(ambientColor_, 0.0f);
+
+    // 绑定草地纹理描述符集（与 terrain 共享同一张草地 BaseColor 贴图）
+    if (textureDescSet_ != VK_NULL_HANDLE) {
+        vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                pipelineLayout_, 0, 1, &textureDescSet_, 0, nullptr);
+    }
 
     // 逐 LOD 层绘制，每层传入不同 LOD 等级以精简远距离风场计算
     for (int lod = 0; lod < LOD_COUNT; lod++) {
@@ -646,7 +705,7 @@ void GrassSystem::render(VkCommandBuffer commandBuffer, const Camera& camera) {
         PushBlock push = pushBase;
         push.timeParams.z = static_cast<float>(lod);
         vkCmdPushConstants(commandBuffer, pipelineLayout_,
-                           VK_SHADER_STAGE_VERTEX_BIT,
+                           VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
                            0, sizeof(PushBlock), &push);
 
         VkBuffer vbs[] = {lodVertexBuffers_[lod], instanceBuffers_[currentInstanceBuffer_]};
@@ -691,8 +750,8 @@ void GrassSystem::createPipeline(VkRenderPass renderPass, VkExtent2D extent,
     bindings[1].stride = sizeof(GrassInstanceData);
     bindings[1].inputRate = VK_VERTEX_INPUT_RATE_INSTANCE;
 
-    // 顶点属性：位置(location=0) + UV(location=1) | 实例属性(location=2~6)
-    VkVertexInputAttributeDescription attrs[7] = {};
+    // 顶点属性：位置(location=0) + UV(location=1) | 实例属性(location=2~7)
+    VkVertexInputAttributeDescription attrs[8] = {};
     attrs[0] = {0, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(GrassVertex, position)};
     attrs[1] = {1, 0, VK_FORMAT_R32G32_SFLOAT,    offsetof(GrassVertex, uv)};
     attrs[2] = {2, 1, VK_FORMAT_R32G32B32_SFLOAT, offsetof(GrassInstanceData, position)};
@@ -700,12 +759,13 @@ void GrassSystem::createPipeline(VkRenderPass renderPass, VkExtent2D extent,
     attrs[4] = {4, 1, VK_FORMAT_R32_SFLOAT,        offsetof(GrassInstanceData, scale)};
     attrs[5] = {5, 1, VK_FORMAT_R32_SFLOAT,        offsetof(GrassInstanceData, windSeed)};
     attrs[6] = {6, 1, VK_FORMAT_R32_SFLOAT,        offsetof(GrassInstanceData, pushState)};
+    attrs[7] = {7, 1, VK_FORMAT_R32_SFLOAT,        offsetof(GrassInstanceData, widthScale)};
 
     VkPipelineVertexInputStateCreateInfo vertexInput{};
     vertexInput.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
     vertexInput.vertexBindingDescriptionCount = 2;
     vertexInput.pVertexBindingDescriptions = bindings;
-    vertexInput.vertexAttributeDescriptionCount = 7;
+    vertexInput.vertexAttributeDescriptionCount = 8;
     vertexInput.pVertexAttributeDescriptions = attrs;
 
     VkPipelineInputAssemblyStateCreateInfo inputAssembly{};
@@ -767,14 +827,14 @@ void GrassSystem::createPipeline(VkRenderPass renderPass, VkExtent2D extent,
     colorBlending.pAttachments = &colorBlend;
 
     VkPushConstantRange pushRange{};
-    pushRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+    pushRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
     pushRange.offset = 0;
     pushRange.size = sizeof(PushBlock);
 
     VkPipelineLayoutCreateInfo layoutInfo{};
     layoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-    layoutInfo.setLayoutCount = 0;
-    layoutInfo.pSetLayouts = nullptr;
+    layoutInfo.setLayoutCount = (textureDescLayout_ != VK_NULL_HANDLE) ? 1 : 0;
+    layoutInfo.pSetLayouts = (textureDescLayout_ != VK_NULL_HANDLE) ? &textureDescLayout_ : nullptr;
     layoutInfo.pushConstantRangeCount = 1;
     layoutInfo.pPushConstantRanges = &pushRange;
 

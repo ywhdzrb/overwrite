@@ -277,7 +277,9 @@ ChunkMesh TerrainRenderer::computeChunkMesh(int chunkX, int chunkZ) const {
             vert.pos = glm::vec3(worldX, height, worldZ);
             vert.normal = normal;
             vert.color = color;
-            vert.texCoord = glm::vec2(static_cast<float>(x) / segments, static_cast<float>(z) / segments);
+            // 世界空间 UV 平铺：纹理坐标 = 世界坐标 / 平铺缩放
+            // 相邻区块共用同一坐标空间，自动无缝拼接
+            vert.texCoord = glm::vec2(worldX / uvScale_, worldZ / uvScale_);
             mesh.vertices.push_back(vert);
         }
     }
@@ -466,12 +468,18 @@ void TerrainRenderer::render(VkCommandBuffer commandBuffer, VkPipelineLayout pip
     pushConstants.proj = projectionMatrix;
     pushConstants.baseColor = terrainColor;
     pushConstants.metallic = 0.0f;
-    pushConstants.roughness = 0.35f;  // 降低粗糙度产生镜面高光，地形呈现光滑感
-    pushConstants.hasTexture = 0;
+    pushConstants.roughness = 0.35f;
+    pushConstants.hasTexture = (terrainTexDescSet_ != VK_NULL_HANDLE) ? 1 : 0;
     pushConstants._pad0 = 0.0f;
     
     vkCmdPushConstants(commandBuffer, pipelineLayout,
                       VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(PushConstants), &pushConstants);
+    
+    // 绑定额外的纹理描述符集（覆盖全局默认 set=0），使 terrain 使用草地纹理
+    if (terrainTexDescSet_ != VK_NULL_HANDLE) {
+        vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                pipelineLayout, 0, 1, &terrainTexDescSet_, 0, nullptr);
+    }
     
     for (const auto& pair : chunks) {
         const auto& chunk = pair.second;
