@@ -54,8 +54,6 @@ assets/cache/
 # ImGui config
 imgui.ini
 
-AGENTS.md
-
 .qwen/
 
 .cache/
