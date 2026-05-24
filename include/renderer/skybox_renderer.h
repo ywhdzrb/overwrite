@@ -4,81 +4,63 @@
 #include <vk_mem_alloc.h>
 #include <glm/glm.hpp>
 #include <memory>
-#include <vector>
-#include <string>
 #include "core/i_renderer.h"
 
 namespace owengine {
 
 class VulkanDevice;
-class VulkanPipeline;
 
+/**
+ * @brief 程序化天空盒渲染器
+ * @note 不再加载外部纹理，使用片段着色器中的程序化渐变色生成天空
+ *       生命周期与 Renderer 绑定，遵循 RAII 四步模式
+ */
 class SkyboxRenderer : public IRenderer {
 public:
     explicit SkyboxRenderer(std::shared_ptr<VulkanDevice> device);
     ~SkyboxRenderer() override;
-    
+
     // IRenderer 接口实现
     void create() override;
     void cleanup() override;
-    
-    // 从 6 张纹理文件加载立方体贴图
-    // 顺序: 右, 左, 上, 下, 前, 后
-    void loadCubemapFromFiles(const std::vector<std::string>& facePaths);
-    
-    // 从十字形纹理加载立方体贴图
-    void loadCubemapFromCrossLayout(const std::string& imagePath);
-    
-    // 渲染天空盒
+
+    // 渲染天空盒（纯虚基类实现，使用默认太阳方向）
     void render(VkCommandBuffer commandBuffer, VkPipelineLayout pipelineLayout,
                 const glm::mat4& viewMatrix, const glm::mat4& projectionMatrix) override;
-    
+
+    // 渲染天空盒（带自定义太阳方向的重载版本）
+    void render(VkCommandBuffer commandBuffer, VkPipelineLayout pipelineLayout,
+                const glm::mat4& viewMatrix, const glm::mat4& projectionMatrix,
+                const glm::vec3& sunDirection);
+
     std::string getName() const override { return "SkyboxRenderer"; }
     bool isCreated() const override { return created_; }
-    
+
+    // PushConstants 通过 VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT 传递
+    // view/proj 供顶点着色器使用，sunDir 供片段着色器使用
     struct PushConstants {
-        glm::mat4 view;
-        glm::mat4 proj;
+        glm::mat4 view;   // 视图矩阵（顶点着色器）
+        glm::mat4 proj;   // 投影矩阵（顶点着色器）
+        glm::vec4 sunDir; // 太阳方向（片段着色器），w 保留
     };
-    
+
     VkPipelineLayout getPipelineLayout() const { return pipelineLayout; }
-    VkDescriptorSet getDescriptorSet() const { return descriptorSet; }
-    VkDescriptorSetLayout getDescriptorSetLayout() const { return descriptorSetLayout; }
 
 private:
     void createVertexBuffer();
     void createIndexBuffer();
-    void createCubemapImage(const std::vector<unsigned char*>& faceData, int width, int height);
-    void createCubemapImageView();
-    void createCubemapSampler();
-    void createDescriptorSetLayout();
-    void createDescriptorPool();
-    void createDescriptorSet();
     void cleanupBuffers();
-    void cleanupCubemap();
-    void cleanupDescriptors();
 
 protected:
     std::shared_ptr<VulkanDevice> device;
-    
+
     // 立方体网格
     VkBuffer vertexBuffer;
     VmaAllocation vertexBufferAllocation;
     VkBuffer indexBuffer;
     VmaAllocation indexBufferAllocation;
     uint32_t indexCount;
-    
-    // 立方体贴图
-    VkImage cubemapImage;
-    VmaAllocation cubemapImageAllocation;
-    VkImageView cubemapImageView;
-    VkSampler cubemapSampler;
-    
-    // 描述符
-    VkDescriptorSetLayout descriptorSetLayout;
-    VkDescriptorPool descriptorPool;
-    VkDescriptorSet descriptorSet;
-    
+
     VkPipelineLayout pipelineLayout;
 };
 

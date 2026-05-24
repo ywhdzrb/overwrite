@@ -5,6 +5,7 @@
 #include <atomic>
 #include <vector>
 #include <chrono>
+#include <mutex>
 
 #ifdef _WIN32
 #include <winsock2.h>

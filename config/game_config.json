@@ -2,13 +2,13 @@
     "grass": {
         "chunk_size":         16.0,
         "load_radius":        5,
-        "max_blades":         500000,
-        "density":            10.0,
+        "max_blades":         300000,
+        "density":            8.0,
         "render_distance":    120.0,
-        "blade_height_min":   0.05,
-        "blade_height_max":   1.2,
+        "blade_height_min":   0.15,
+        "blade_height_max":   1.5,
         "segments_per_blade": 4,
-        "blade_width":        0.12,
+        "blade_width":        0.04,
         "wind_strength":      0.5,
         "player_radius":      2.5,
         "player_force":       1.5
@@ -42,6 +42,7 @@
         "movement_speed":     5.0,
         "mouse_sensitivity":  0.1,
         "msaa_samples":       4,
-        "fly_speed":          10.0
+        "fly_speed":          10.0,
+        "sun_direction":      [0.01, 0.05, 0.02]
     }
 }

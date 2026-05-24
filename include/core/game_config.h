@@ -22,6 +22,7 @@ struct RendererConfig {
     float mouseSensitivity = 0.1f;    // 鼠标灵敏度
     int   msaaSamples = 4;            // MSAA 采样数（1/2/4/8/16/32/64）
     float flySpeed = 10.0f;           // 飞行模式上升/下降速度（米/秒）
+    glm::vec3 sunDirection{0.25f, 0.55f, 0.50f}; // 天空盒太阳方向（归一化向量）
 };
 
 /// 游戏全局配置，从 JSON 文件加载所有可调参数
@@ -94,6 +95,11 @@ struct GameConfig {
                 cfg.renderer.mouseSensitivity = r.value("mouse_sensitivity",  cfg.renderer.mouseSensitivity);
                 cfg.renderer.msaaSamples      = r.value("msaa_samples",       cfg.renderer.msaaSamples);
                 cfg.renderer.flySpeed         = r.value("fly_speed",          cfg.renderer.flySpeed);
+                // 太阳方向（JSON 数组 [x, y, z]）
+                if (r.contains("sun_direction") && r["sun_direction"].is_array()) {
+                    auto& sd = r["sun_direction"];
+                    cfg.renderer.sunDirection = glm::vec3(sd[0].get<float>(), sd[1].get<float>(), sd[2].get<float>());
+                }
             }
         } catch (const std::exception& e) {
             Logger::error("解析配置文件失败: " + std::string(e.what()) + "，使用默认参数");

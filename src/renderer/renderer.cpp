@@ -176,20 +176,16 @@ void Renderer::initVulkan() {
     // 初始化光源管理器
     lightManager_ = std::make_unique<LightManager>();
 
-    // 初始化天空盒渲染器
+    // 初始化天空盒渲染器（程序化渐变色，无需纹理加载）
     skyboxRenderer_ = std::make_unique<SkyboxRenderer>(vulkanDevice_);
     skyboxRenderer_->create();
-    try {
-        skyboxRenderer_->loadCubemapFromCrossLayout(AssetPaths::SKYBOX_TEXTURE);
-    } catch (const std::runtime_error& e) {
-        Logger::warning("天空盒纹理加载失败: " + std::string(e.what()));
-    }
 
     // 初始化模型渲染器（不含玩家模型，玩家模型由 GameSession 管理）
     modelRenderer_ = std::make_unique<ModelRenderer>(vulkanDevice_, textureLoader_);
     modelRenderer_->create();
 
     // 创建天空盒管线
+    // 创建天空盒管线（无描述符，仅 push constants）
     skyboxPipeline_ = std::make_shared<VulkanPipeline>(
         vulkanDevice_,
         renderPass_->getRenderPass(),
@@ -197,13 +193,13 @@ void Renderer::initVulkan() {
         AssetPaths::SKYBOX_VERT_SHADER,
         AssetPaths::SKYBOX_FRAG_SHADER,
         VertexFormat::POSITION_ONLY,
-        std::vector<VkDescriptorSetLayout>{skyboxRenderer_->getDescriptorSetLayout()},
+        std::vector<VkDescriptorSetLayout>{},  // 天空盒无描述符
         msaaSamples_
     );
     skyboxPipeline_->create();
 
-    // 基础描述符池
-    createDescriptorPool(20, 20);
+    // 基础描述符池（+1 给地形纹理描述符集预留）
+    createDescriptorPool(26, 26);
 
     // 从 JSON 配置文件加载场景（光源和静态模型）
     SceneConfig sceneConfig = loadSceneConfig(AssetPaths::SCENE_CONFIG);
@@ -228,6 +224,43 @@ void Renderer::initVulkan() {
     // 创建描述符集（默认纹理描述符集 + 光源 uniform buffer）
     createDescriptorSets();
 
+    {
+        // 加载草地 BaseColor 纹理，为地形渲染创建专用描述符集
+        std::shared_ptr<Texture> grassTex = textureLoader_->loadTexture(AssetPaths::GRASS_TEXTURE);
+        if (grassTex) {
+            VkDescriptorSetAllocateInfo allocInfo{};
+            allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+            allocInfo.descriptorPool = descriptorPool_;
+            allocInfo.descriptorSetCount = 1;
+            allocInfo.pSetLayouts = &textureDescriptorSetLayout_;
+
+            VkDescriptorSet terrainDescSet;
+            if (vkAllocateDescriptorSets(vulkanDevice_->getDevice(), &allocInfo, &terrainDescSet) == VK_SUCCESS) {
+                VkDescriptorImageInfo imageInfo{};
+                imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+                imageInfo.imageView = grassTex->getImageView();
+                imageInfo.sampler = grassTex->getSampler();
+
+                VkWriteDescriptorSet descriptorWrite{};
+                descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+                descriptorWrite.dstSet = terrainDescSet;
+                descriptorWrite.dstBinding = 0;
+                descriptorWrite.dstArrayElement = 0;
+                descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+                descriptorWrite.descriptorCount = 1;
+                descriptorWrite.pImageInfo = &imageInfo;
+
+                vkUpdateDescriptorSets(vulkanDevice_->getDevice(), 1, &descriptorWrite, 0, nullptr);
+                terrainRenderer_->setTexture(terrainDescSet);
+                Logger::info("地形草地纹理已加载并绑定");
+            } else {
+                Logger::warning("无法为地形草地纹理分配描述符集");
+            }
+        } else {
+            Logger::warning("地形草地纹理加载失败，地形和草将使用程序化颜色");
+        }
+    }
+
     // 加载渲染器配置
     gameConfig_ = GameConfig::load(AssetPaths::GAME_CONFIG);
     targetFPS_ = gameConfig_.renderer.targetFPS;
@@ -245,6 +278,8 @@ void Renderer::initVulkan() {
     // 初始化草丛系统
     grassSystem_ = std::make_unique<GrassSystem>(vulkanDevice_);
     grassSystem_->setHeightSampler(terrainHeightQuery);
+    // 传入纹理描述符集布局（与 terrain 共享同一 layout），init() 中 createPipeline 将使用它
+    grassSystem_->setTextureDescriptorSetLayout(textureDescriptorSetLayout_);
     grassSystem_->init(gameConfig_.grass, renderPass_->getRenderPass(),
                        swapchain_->getExtent(), msaaSamples_);
 
@@ -256,6 +291,41 @@ void Renderer::initVulkan() {
     });
     if (auto* sunLight = lightManager_->getLightByName("sun")) {
         grassSystem_->setGlobalLightDir(sunLight->getDirection());
+    }
+
+    // 为草渲染创建纹理描述符集（与 terrain 共享同一张贴图）
+    {
+        std::shared_ptr<Texture> grassTex = textureLoader_->loadTexture(AssetPaths::GRASS_TEXTURE);
+        if (grassTex) {
+            VkDescriptorSetAllocateInfo allocInfo{};
+            allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+            allocInfo.descriptorPool = descriptorPool_;
+            allocInfo.descriptorSetCount = 1;
+            allocInfo.pSetLayouts = &textureDescriptorSetLayout_;
+
+            VkDescriptorSet grassDescSet;
+            if (vkAllocateDescriptorSets(vulkanDevice_->getDevice(), &allocInfo, &grassDescSet) == VK_SUCCESS) {
+                VkDescriptorImageInfo imageInfo{};
+                imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+                imageInfo.imageView = grassTex->getImageView();
+                imageInfo.sampler = grassTex->getSampler();
+
+                VkWriteDescriptorSet descriptorWrite{};
+                descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+                descriptorWrite.dstSet = grassDescSet;
+                descriptorWrite.dstBinding = 0;
+                descriptorWrite.dstArrayElement = 0;
+                descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+                descriptorWrite.descriptorCount = 1;
+                descriptorWrite.pImageInfo = &imageInfo;
+
+                vkUpdateDescriptorSets(vulkanDevice_->getDevice(), 1, &descriptorWrite, 0, nullptr);
+                grassSystem_->setTexture(grassDescSet);
+                Logger::info("草叶纹理描述符集已创建");
+            } else {
+                Logger::warning("无法为草叶纹理分配描述符集");
+            }
+        }
     }
 
     // 初始化 ImGui
@@ -537,6 +607,12 @@ void Renderer::mainLoop() {
             gameSession_->update(scaledDt);
         }
 
+        // === 推进昼夜循环 ===
+        dayTime_ += deltaTime;
+        if (dayTime_ >= dayCyclePeriod_) {
+            dayTime_ -= dayCyclePeriod_;
+        }
+
         // === 渲染帧 ===
         {
             auto t0 = std::chrono::high_resolution_clock::now();
@@ -675,11 +751,46 @@ void Renderer::drawFrame() {
         return;
     }
 
-    // 先渲染天空盒（背景）
-    if (skyboxRenderer_ && skyboxRenderer_->getDescriptorSet() != VK_NULL_HANDLE) {
+    // === 更新昼夜循环太阳方向 ===
+    {
+        // 太阳在 XZ 平面圆形轨道上运动，Y 轴为正弦波（-1~+1）
+        float angle = (dayTime_ / dayCyclePeriod_) * 2.0f * glm::pi<float>();
+        glm::vec3 sunDir(
+            cos(angle),                             // 东西方向
+            sin(angle),                             // 仰角
+            sin(angle * 0.7f) * 0.2f               // 微弱的南北摆动
+        );
+        sunDir = glm::normalize(sunDir);
+        gameConfig_.renderer.sunDirection = sunDir;
+
+        // 计算白天因子：-0.2(深夜)~+0.3(白天) 映射到 0~1
+        float elevation = sunDir.y;
+        float dayFactor = glm::clamp((elevation + 0.2f) / 0.5f, 0.0f, 1.0f);
+
+        // 更新场景平行光方向和强度（使用 light-to-scene 方向）
+        if (lightManager_) {
+            Light* sunLight = lightManager_->getLightByName("sun");
+            if (sunLight) {
+                sunLight->setDirection(-sunDir);
+                sunLight->setIntensity(dayFactor);
+                lightManager_->setAmbientIntensity(0.3f * dayFactor + 0.05f);
+            }
+        }
+
+        // 更新草丛着色器光照（使用 scene-to-light 方向，环境光与 terrain 一致）
+        if (grassSystem_) {
+            grassSystem_->setGlobalLightDir(sunDir);
+            grassSystem_->setLightIntensity(dayFactor);
+            grassSystem_->setAmbientColor(lightManager_->getAmbient());
+        }
+    }
+
+    // 先渲染天空盒（背景，程序化渐变色+昼夜切换）
+    if (skyboxRenderer_) {
         vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, skyboxPipeline_->getPipeline());
         skyboxRenderer_->render(commandBuffer, skyboxRenderer_->getPipelineLayout(),
-                             cam->getViewMatrix(), cam->getProjectionMatrix());
+                             cam->getViewMatrix(), cam->getProjectionMatrix(),
+                             gameConfig_.renderer.sunDirection);
         vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline_->getPipeline());
     }
 

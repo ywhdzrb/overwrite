@@ -19,7 +19,6 @@ TEST(AssetPathsTest, AssetPathsNonEmpty) {
     EXPECT_GT(std::strlen(PLAYER_IDLE_MODEL), 0u);
     EXPECT_GT(std::strlen(PLAYER_WALK_MODEL), 0u);
     EXPECT_GT(std::strlen(TREE_MODEL), 0u);
-    EXPECT_GT(std::strlen(SKYBOX_TEXTURE), 0u);
 }
 
 TEST(AssetPathsTest, ConfigPathsNonEmpty) {
@@ -37,5 +36,4 @@ TEST(AssetPathsTest, AssetPathPrefix) {
     // 模型/纹理路径应以 "assets/" 开头
     EXPECT_EQ(std::strncmp(PLAYER_IDLE_MODEL, "assets/", 7), 0);
     EXPECT_EQ(std::strncmp(TREE_MODEL, "assets/", 7), 0);
-    EXPECT_EQ(std::strncmp(SKYBOX_TEXTURE, "assets/", 7), 0);
 }

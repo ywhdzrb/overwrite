@@ -148,8 +148,10 @@ private:
     GameSession* gameSession_ = nullptr;             // 始终指向活跃会话
     GameSession* externalGameSession_ = nullptr;     // 外部注入（覆盖内部创建）
 
-    // ========== 累计时间（风场动画等） ==========
-    float totalTime_ = 0.0f;
+    // ========== 累计时间 ==========
+    float totalTime_ = 0.0f;       // 全局时间（风场动画等）
+    float dayTime_ = 0.0f;          // 昼夜循环时间（秒，120 秒一个完整周期）
+    float dayCyclePeriod_ = 120.0f; // 昼夜完整周期秒数
 
     // ========== 游戏配置（供 drawFrame 等访问） ==========
     GameConfig gameConfig_;
