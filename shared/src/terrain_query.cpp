@@ -1,4 +1,4 @@
-#include "terrain_query.h"
+#include "terrain_query.hpp"
 #include <cmath>
 #include <random>
 

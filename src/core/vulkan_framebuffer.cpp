@@ -1,7 +1,7 @@
 // Vulkan帧缓冲管理实现
 // 负责创建和管理渲染目标的帧缓冲
-#include "core/vulkan_framebuffer.h"
-#include "core/vulkan_device.h"
+#include "core/vulkan_framebuffer.hpp"
+#include "core/vulkan_device.hpp"
 #include <stdexcept>
 
 namespace owengine {

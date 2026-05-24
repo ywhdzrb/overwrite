@@ -1,7 +1,7 @@
 #pragma once
 
-#include "server/server_world.h"
-#include "network/server_discovery.h"
+#include "server/server_world.hpp"
+#include "network/server_discovery.hpp"
 #include <ixwebsocket/IXWebSocketServer.h>
 #include <ixwebsocket/IXWebSocket.h>
 #include <nlohmann/json.hpp>

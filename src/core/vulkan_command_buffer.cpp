@@ -1,7 +1,7 @@
 // Vulkan命令缓冲管理实现
 // 负责创建和管理渲染命令缓冲
-#include "core/vulkan_command_buffer.h"
-#include "core/vulkan_device.h"
+#include "core/vulkan_command_buffer.hpp"
+#include "core/vulkan_device.hpp"
 #include <stdexcept>
 
 namespace owengine {

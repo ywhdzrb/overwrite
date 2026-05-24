@@ -1,8 +1,8 @@
-#include "core/resource_node_system.h"
-#include "renderer/tree_system.h"
-#include "renderer/stone_system.h"
-#include "ecs/resource_types.h"
-#include "utils/logger.h"
+#include "core/resource_node_system.hpp"
+#include "renderer/tree_system.hpp"
+#include "renderer/stone_system.hpp"
+#include "ecs/resource_types.hpp"
+#include "utils/logger.hpp"
 
 namespace owengine {
 

@@ -1,11 +1,11 @@
 #pragma once
 
-#include "core/render_engine.h"
-#include "core/scene_manager.h"
-#include "core/scene_config.h"
-#include "core/input.h"
-#include "renderer/imgui_manager.h"
-#include "utils/asset_paths.h"
+#include "core/render_engine.hpp"
+#include "core/scene_manager.hpp"
+#include "core/scene_config.hpp"
+#include "core/input.hpp"
+#include "renderer/imgui_manager.hpp"
+#include "utils/asset_paths.hpp"
 #include <memory>
 #include <chrono>
 #include <string>

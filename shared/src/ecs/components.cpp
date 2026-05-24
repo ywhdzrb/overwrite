@@ -1,5 +1,5 @@
 // 共享 ECS 组件实现
-#include "ecs/components.h"
+#include "ecs/components.hpp"
 #include <glm/gtc/matrix_transform.hpp>
 
 namespace owengine {

@@ -1,7 +1,7 @@
 // 网格实现
 // 负责创建和管理顶点/索引缓冲区
-#include "renderer/mesh.h"
-#include "core/vulkan_device.h"
+#include "renderer/mesh.hpp"
+#include "core/vulkan_device.hpp"
 #include <stdexcept>
 #include <cstring>
 

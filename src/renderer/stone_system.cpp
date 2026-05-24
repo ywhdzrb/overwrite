@@ -1,10 +1,10 @@
-#include "renderer/stone_system.h"
-#include "renderer/gltf_model.h"
-#include "core/vulkan_device.h"
-#include "renderer/texture_loader.h"
-#include "core/camera.h"
-#include "utils/logger.h"
-#include "utils/asset_paths.h"
+#include "renderer/stone_system.hpp"
+#include "renderer/gltf_model.hpp"
+#include "core/vulkan_device.hpp"
+#include "renderer/texture_loader.hpp"
+#include "core/camera.hpp"
+#include "utils/logger.hpp"
+#include "utils/asset_paths.hpp"
 
 #include <random>
 #include <algorithm>

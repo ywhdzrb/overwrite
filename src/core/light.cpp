@@ -1,6 +1,6 @@
 // 光源类实现
-#include "renderer/light.h"
-#include "utils/logger.h"
+#include "renderer/light.hpp"
+#include "utils/logger.hpp"
 #include <glm/gtc/matrix_transform.hpp>
 #include <cmath>
 

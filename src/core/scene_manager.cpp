@@ -1,9 +1,9 @@
-#include "core/scene_manager.h"
-#include "core/camera.h"
-#include "core/physics.h"
-#include "core/vulkan_device.h"
-#include "renderer/gltf_model.h"
-#include "utils/logger.h"
+#include "core/scene_manager.hpp"
+#include "core/camera.hpp"
+#include "core/physics.hpp"
+#include "core/vulkan_device.hpp"
+#include "renderer/gltf_model.hpp"
+#include "utils/logger.hpp"
 #include <algorithm>
 
 namespace owengine {

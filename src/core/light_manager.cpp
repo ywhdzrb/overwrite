@@ -1,6 +1,6 @@
 // 光源管理器实现
-#include "renderer/light_manager.h"
-#include "utils/logger.h"
+#include "renderer/light_manager.hpp"
+#include "utils/logger.hpp"
 #include <algorithm>
 
 namespace owengine {

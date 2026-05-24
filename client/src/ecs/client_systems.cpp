@@ -1,7 +1,7 @@
 // 客户端 ECS 系统实现
-#include "ecs/client_systems.h"
-#include "ecs/components.h"
-#include "ecs/resource_types.h"
+#include "ecs/client_systems.hpp"
+#include "ecs/components.hpp"
+#include "ecs/resource_types.hpp"
 #include <iostream>
 #include <cstring>
 

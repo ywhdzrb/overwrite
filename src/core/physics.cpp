@@ -1,6 +1,6 @@
 // 物理系统实现
 // 处理简单的物理和碰撞检测
-#include "core/physics.h"
+#include "core/physics.hpp"
 #include <algorithm>
 
 namespace owengine {

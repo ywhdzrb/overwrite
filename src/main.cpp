@@ -2,8 +2,8 @@
 #include <iostream>
 #include <stdexcept>
 
-#include "core/renderer.h"
-#include "utils/logger.h"
+#include "core/renderer.hpp"
+#include "utils/logger.hpp"
 
 int main() {
     try {

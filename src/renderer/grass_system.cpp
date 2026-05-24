@@ -1,8 +1,8 @@
-#include "renderer/grass_system.h"
-#include "core/vulkan_device.h"
-#include "core/camera.h"
-#include "utils/logger.h"
-#include "utils/asset_paths.h"
+#include "renderer/grass_system.hpp"
+#include "core/vulkan_device.hpp"
+#include "core/camera.hpp"
+#include "utils/logger.hpp"
+#include "utils/asset_paths.hpp"
 #include <glm/gtc/matrix_transform.hpp>
 #include <algorithm>
 #include <cmath>

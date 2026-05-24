@@ -4,7 +4,7 @@
 #include <memory>
 #include <vector>
 #include <glm/glm.hpp>
-#include "ecs/components.h"
+#include "ecs/components.hpp"
 
 namespace owengine {
 namespace ecs {

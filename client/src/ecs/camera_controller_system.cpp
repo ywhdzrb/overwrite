@@ -1,6 +1,6 @@
 // 相机控制系统实现
-#include "ecs/camera_controller_system.h"
-#include "utils/logger.h"
+#include "ecs/camera_controller_system.hpp"
+#include "utils/logger.hpp"
 #include <iostream>
 #include <cmath>
 #include <sstream>

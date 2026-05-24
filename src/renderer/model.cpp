@@ -1,8 +1,8 @@
 // 3D模型加载实现
 // 负责加载和处理OBJ格式的3D模型
 #define TINYOBJLOADER_IMPLEMENTATION
-#include "renderer/model.h"
-#include "core/vulkan_device.h"
+#include "renderer/model.hpp"
+#include "core/vulkan_device.hpp"
 #include <tiny_obj_loader.h>
 #include <iostream>
 #include <array>

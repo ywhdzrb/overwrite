@@ -1,6 +1,6 @@
-#include "renderer/terrain_renderer.h"
-#include "utils/logger.h"
-#include "core/vulkan_device.h"
+#include "renderer/terrain_renderer.hpp"
+#include "utils/logger.hpp"
+#include "core/vulkan_device.hpp"
 #include <glm/glm.hpp>
 #include <stdexcept>
 #include <cstring>

@@ -2,14 +2,14 @@
 // 负责 Vulkan 管线生命周期、帧缓冲、命令缓冲录制、渲染子系统调度。
 // 游戏逻辑（ECS/物理/碰撞/网络/玩家动画）已提取至 GameSession。
 #include "imgui.h"
-#include "core/renderer.h"
-#include "core/camera.h"
-#include "core/input.h"
-#include "core/game_session.h"
-#include "ecs/i_game_world.h"
-#include "core/scene_config.h"
-#include "utils/logger.h"
-#include "utils/asset_paths.h"
+#include "core/renderer.hpp"
+#include "core/camera.hpp"
+#include "core/input.hpp"
+#include "core/game_session.hpp"
+#include "ecs/i_game_world.hpp"
+#include "core/scene_config.hpp"
+#include "utils/logger.hpp"
+#include "utils/asset_paths.hpp"
 #include <nlohmann/json.hpp>
 #include <fstream>
 #include <iostream>
@@ -20,11 +20,11 @@
 #include <random>
 #include <thread>
 #include <future>
-#include "renderer/tree_system.h"
-#include "renderer/stone_system.h"
-#include "renderer/grass_system.h"
-#include "core/game_config.h"
-#include "ecs/ecs.h"
+#include "renderer/tree_system.hpp"
+#include "renderer/stone_system.hpp"
+#include "renderer/grass_system.hpp"
+#include "core/game_config.hpp"
+#include "ecs/ecs.hpp"
 
 namespace owengine {
 

@@ -2,8 +2,8 @@
 
 #include <entt/entt.hpp>
 #include <glm/glm.hpp>
-#include "ecs/client_components.h"
-#include "ecs/systems.h"  // 共享系统
+#include "ecs/client_components.hpp"
+#include "ecs/systems.hpp"  // 共享系统
 
 namespace owengine {
 namespace ecs {

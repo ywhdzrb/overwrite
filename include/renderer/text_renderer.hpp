@@ -7,7 +7,7 @@
 #include <vector>
 #include <array>
 
-#include "core/vulkan_device.h"
+#include "core/vulkan_device.hpp"
 
 namespace owengine {
 

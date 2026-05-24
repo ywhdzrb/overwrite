@@ -6,7 +6,7 @@
 #include <glm/glm.hpp>
 #include <memory>
 
-#include "core/vulkan_device.h"
+#include "core/vulkan_device.hpp"
 
 namespace owengine {
 

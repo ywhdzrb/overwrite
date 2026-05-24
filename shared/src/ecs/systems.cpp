@@ -8,8 +8,8 @@
 // 产生带 Y 分量的三维速度，直接更新 position.xyz 使角色沿地形轮廓平滑移动。
 // PhysicsSystem 仅在容差范围内做微小修正（足部穿透/悬空 < 0.1f）。
 // 两者配合避免了 "水平移动 → Y 不变 → 物理弹回" 的锯齿形卡顿。
-#include "ecs/systems.h"
-#include "utils/logger.h"
+#include "ecs/systems.hpp"
+#include "utils/logger.hpp"
 #include <iostream>
 #include <algorithm>
 #include <sstream>

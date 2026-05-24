@@ -1,7 +1,7 @@
 // 天空盒渲染器实现
 // 使用程序化片段着色器生成天空背景，无需外部纹理
-#include "renderer/skybox_renderer.h"
-#include "core/vulkan_device.h"
+#include "renderer/skybox_renderer.hpp"
+#include "core/vulkan_device.hpp"
 #include <stdexcept>
 #include <cstring>
 

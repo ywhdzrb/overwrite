@@ -4,6 +4,6 @@
 // 仅包含共享 ECS 头文件，客户端专用头文件需单独包含
 
 // 共享 ECS（shared library）
-#include "ecs/components.h"
-#include "ecs/resource_types.h"
-#include "ecs/systems.h"
+#include "ecs/components.hpp"
+#include "ecs/resource_types.hpp"
+#include "ecs/systems.hpp"

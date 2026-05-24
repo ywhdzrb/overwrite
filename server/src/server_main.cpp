@@ -8,9 +8,9 @@
 
 #include <nlohmann/json.hpp>
 
-#include "ecs/ecs.h"
-#include "server/websocket_server.h"
-#include "utils/logger.h"
+#include "ecs/ecs.hpp"
+#include "server/websocket_server.hpp"
+#include "utils/logger.hpp"
 
 std::atomic<bool> g_running{true};
 

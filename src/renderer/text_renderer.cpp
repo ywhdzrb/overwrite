@@ -1,4 +1,4 @@
-#include "renderer/text_renderer.h"
+#include "renderer/text_renderer.hpp"
 #include <stdexcept>
 #include <cstring>
 #include <iostream>

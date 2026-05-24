@@ -7,10 +7,10 @@
 #include <map>
 #include <glm/glm.hpp>
 #include <glm/gtc/quaternion.hpp>
-#include "core/vulkan_device.h"
-#include "renderer/mesh.h"
-#include "renderer/texture.h"
-#include "renderer/texture_loader.h"
+#include "core/vulkan_device.hpp"
+#include "renderer/mesh.hpp"
+#include "renderer/texture.hpp"
+#include "renderer/texture_loader.hpp"
 
 // 包含 tinygltf 头文件
 #include "tiny_gltf.h"

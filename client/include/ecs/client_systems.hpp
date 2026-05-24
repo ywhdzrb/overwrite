@@ -4,12 +4,12 @@
 #include <GLFW/glfw3.h>
 #include <memory>
 #include <glm/glm.hpp>
-#include "ecs/client_components.h"
-#include "ecs/systems.h"  // 共享系统
-#include "ecs/i_game_world.h"  // 游戏世界接口
-#include "ecs/camera_controller_system.h"  // 相机控制系统
-#include "network/network_system.h"  // 网络系统
-#include "network/server_discovery.h"  // 服务器发现
+#include "ecs/client_components.hpp"
+#include "ecs/systems.hpp"  // 共享系统
+#include "ecs/i_game_world.hpp"  // 游戏世界接口
+#include "ecs/camera_controller_system.hpp"  // 相机控制系统
+#include "network/network_system.hpp"  // 网络系统
+#include "network/server_discovery.hpp"  // 服务器发现
 
 namespace owengine {
 namespace ecs {

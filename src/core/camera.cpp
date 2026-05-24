@@ -1,6 +1,6 @@
 // 摄像机实现
 // 处理第一人称和第三人称视角的摄像机控制
-#include "core/camera.h"
+#include "core/camera.hpp"
 #include <glm/gtc/type_ptr.hpp>
 #include <cmath>
 #include <iostream>

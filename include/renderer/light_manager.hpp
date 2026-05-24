@@ -1,6 +1,6 @@
 #pragma once
 
-#include "renderer/light.h"
+#include "renderer/light.hpp"
 #include <vector>
 #include <memory>
 #include <map>

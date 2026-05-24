@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
 #include <glm/gtc/epsilon.hpp>
-#include "ecs/components.h"
+#include "ecs/components.hpp"
 
 using namespace owengine::ecs;
 

@@ -1,6 +1,6 @@
-#include "renderer/fsr1_pass.h"
-#include "utils/logger.h"
-#include "utils/asset_paths.h"
+#include "renderer/fsr1_pass.hpp"
+#include "utils/logger.hpp"
+#include "utils/asset_paths.hpp"
 #include <fstream>
 #include <cstring>
 

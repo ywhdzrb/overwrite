@@ -4,12 +4,12 @@
 #include <glm/glm.hpp>
 #include <memory>
 #include <vector>
-#include "core/i_renderer.h"
-#include "core/vulkan_device.h"
-#include "renderer/model.h"
-#include "renderer/mesh.h"
-#include "renderer/texture.h"
-#include "renderer/texture_loader.h"
+#include "core/i_renderer.hpp"
+#include "core/vulkan_device.hpp"
+#include "renderer/model.hpp"
+#include "renderer/mesh.hpp"
+#include "renderer/texture.hpp"
+#include "renderer/texture_loader.hpp"
 
 namespace owengine {
 

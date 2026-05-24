@@ -1,9 +1,9 @@
 #pragma once
 
-#include "core/i_renderer.h"
-#include "core/scene_config.h"
-#include "core/resource_manager.h"
-#include "renderer/light_manager.h"
+#include "core/i_renderer.hpp"
+#include "core/scene_config.hpp"
+#include "core/resource_manager.hpp"
+#include "renderer/light_manager.hpp"
 #include <memory>
 #include <vector>
 #include <unordered_map>

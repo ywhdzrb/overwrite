@@ -11,7 +11,7 @@
 #include <string>
 #include <random>
 #include <cstddef>
-#include "utils/thread_pool.h"
+#include "utils/thread_pool.hpp"
 
 namespace owengine {
 

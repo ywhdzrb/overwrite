@@ -1,8 +1,8 @@
 // 纹理加载器实现
-#include "renderer/texture_loader.h"
-#include "renderer/texture.h"
-#include "core/vulkan_device.h"
-#include "utils/logger.h"
+#include "renderer/texture_loader.hpp"
+#include "renderer/texture.hpp"
+#include "core/vulkan_device.hpp"
+#include "utils/logger.hpp"
 #include <stb_image.h>
 #include <stdexcept>
 #include <algorithm>

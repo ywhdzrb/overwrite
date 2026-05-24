@@ -1,4 +1,4 @@
-#include "network/server_discovery.h"
+#include "network/server_discovery.hpp"
 #include <nlohmann/json.hpp>
 #include <iostream>
 #include <cstring>

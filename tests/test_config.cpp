@@ -7,7 +7,7 @@
 // 测试 GameConfig::load 的 JSON 解析逻辑
 // 不直接依赖 GameConfig 结构体（避免引入 Vulkan/GLFW 依赖），
 // 而是测试 nlohmann_json 的核心解析能力 + 路径常量。
-#include "utils/asset_paths.h"
+#include "utils/asset_paths.hpp"
 
 using json = nlohmann::json;
 

@@ -1,7 +1,7 @@
 // Vulkan交换链管理实现
 // 负责创建和管理渲染交换链，实现双缓冲或三缓冲渲染
-#include "core/vulkan_swapchain.h"
-#include "core/vulkan_device.h"
+#include "core/vulkan_swapchain.hpp"
+#include "core/vulkan_device.hpp"
 #include <GLFW/glfw3.h>
 #include <iostream>
 #include <stdexcept>

@@ -1,7 +1,7 @@
 // Vulkan同步对象管理实现
 // 负责创建和管理信号量和栅栏，用于帧同步
-#include "core/vulkan_sync.h"
-#include "core/vulkan_device.h"
+#include "core/vulkan_sync.hpp"
+#include "core/vulkan_device.hpp"
 #include <stdexcept>
 
 namespace owengine {

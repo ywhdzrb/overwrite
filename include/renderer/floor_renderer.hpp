@@ -4,7 +4,7 @@
 #include <vk_mem_alloc.h>
 #include <glm/glm.hpp>
 #include <memory>
-#include "core/i_renderer.h"
+#include "core/i_renderer.hpp"
 
 namespace owengine {
 

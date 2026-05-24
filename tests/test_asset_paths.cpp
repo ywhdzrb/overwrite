@@ -2,7 +2,7 @@
 #include <cstring>
 
 // 仅包含资产路径常量，不依赖 Vulkan/GLFW
-#include "utils/asset_paths.h"
+#include "utils/asset_paths.hpp"
 
 using namespace owengine::AssetPaths;
 

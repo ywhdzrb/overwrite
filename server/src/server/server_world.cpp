@@ -1,6 +1,6 @@
-#include "server/server_world.h"
-#include "ecs/components.h"
-#include "terrain_query.h"
+#include "server/server_world.hpp"
+#include "ecs/components.hpp"
+#include "terrain_query.hpp"
 #include <iostream>
 
 namespace owengine {

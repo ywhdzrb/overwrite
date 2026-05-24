@@ -2,7 +2,7 @@
 #include <vulkan/vulkan.h>
 #include <vk_mem_alloc.h>
 #include <memory>
-#include "core/vulkan_device.h"
+#include "core/vulkan_device.hpp"
 
 namespace owengine {
 

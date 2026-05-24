@@ -6,20 +6,20 @@
 // 依赖注入：init() 接收 GameSessionInitParams，包含来自 Renderer 的共享 Vulkan 资源。
 // 生命周期：init() 在 Renderer::initVulkan() 之后调用，cleanup() 在 Renderer::cleanup() 之前调用。
 
-#include "core/game_session.h"
-#include "core/camera.h"
-#include "core/input.h"
-#include "core/vulkan_device.h"
-#include "utils/asset_paths.h"
-#include "renderer/gltf_model.h"
-#include "renderer/texture_loader.h"
-#include "renderer/terrain_renderer.h"
-#include "renderer/tree_system.h"
-#include "renderer/stone_system.h"
-#include "renderer/grass_system.h"
-#include "ecs/client_systems.h"
-#include "ecs/ecs.h"
-#include "utils/logger.h"
+#include "core/game_session.hpp"
+#include "core/camera.hpp"
+#include "core/input.hpp"
+#include "core/vulkan_device.hpp"
+#include "utils/asset_paths.hpp"
+#include "renderer/gltf_model.hpp"
+#include "renderer/texture_loader.hpp"
+#include "renderer/terrain_renderer.hpp"
+#include "renderer/tree_system.hpp"
+#include "renderer/stone_system.hpp"
+#include "renderer/grass_system.hpp"
+#include "ecs/client_systems.hpp"
+#include "ecs/ecs.hpp"
+#include "utils/logger.hpp"
 #include <future>
 #include <iostream>
 

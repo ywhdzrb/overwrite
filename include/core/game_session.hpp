@@ -9,7 +9,7 @@
 #include <functional>
 #include <glm/glm.hpp>
 
-#include "core/resource_node_system.h"
+#include "core/resource_node_system.hpp"
 
 namespace owengine {
 

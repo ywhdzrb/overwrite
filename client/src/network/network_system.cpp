@@ -1,4 +1,4 @@
-#include "network/network_system.h"
+#include "network/network_system.hpp"
 #include <ixwebsocket/IXNetSystem.h>
 #include <ixwebsocket/IXWebSocket.h>
 #include <iostream>
