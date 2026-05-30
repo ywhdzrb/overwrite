@@ -23,7 +23,8 @@ glm::vec3 TransformComponent::getUp() const {
 }
 
 void TransformComponent::updateRotationFromEuler() {
-    rotation = glm::quat(glm::vec3(glm::radians(pitch), glm::radians(yaw), glm::radians(roll)));
+    // 反轉 yaw 以匹配 getFront() 的符號約定（正 yaw = 右轉）
+    rotation = glm::quat(glm::vec3(glm::radians(pitch), -glm::radians(yaw), glm::radians(roll)));
 }
 
 glm::mat4 TransformComponent::getModelMatrix() const {
