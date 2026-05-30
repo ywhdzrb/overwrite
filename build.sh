@@ -14,6 +14,7 @@
 #   ./build.sh run-server   # 构建并运行服务端
 #   ./build.sh all          # 构建所有目标（默认）
 #   ./build.sh test         # 构建并运行单元测试（需联网下载 GTest）
+#   ./build.sh dashboard    # 生成项目综合仪表盘（Python3 + matplotlib）
 
 set -e  # Exit on error
 
@@ -50,6 +51,8 @@ for arg in "$@"; do
             rm -rf external
             echo -e "${YELLOW}Cleaning config files...${NC}"
             rm -f imgui.ini
+            echo -e "${YELLOW}Cleaning dashboard artifacts...${NC}"
+            rm -f dashboard/dashboard.png
             echo -e "${GREEN}Clean completed!${NC}"
             exit 0
             ;;
@@ -66,6 +69,12 @@ for arg in "$@"; do
         test|tests)
             BUILD_TESTS="ON"
             ;;
+        dashboard)
+            echo -e "${GREEN}Generating project dashboard...${NC}"
+            python3 dashboard/gen_dashboard.py
+            echo -e "${GREEN}Dashboard generated: dashboard/dashboard.png${NC}"
+            exit 0
+            ;;
         all)
             BUILD_TARGET="all"
             ;;
@@ -77,7 +86,8 @@ for arg in "$@"; do
             echo "Options:"
             echo "  release      构建 release 版本（默认）"
             echo "  debug        构建 debug 版本"
-            echo "  clean        清理构建目录、着色器和依赖"
+            echo "  clean        清理构建目录、着色器、依赖和仪表盘"
+            echo "  dashboard    生成项目综合仪表盘 (需 Python3 + matplotlib)"
             echo "  run          构建并运行客户端"
             echo "  run-server   构建并运行服务端"
             echo "  client       仅构建客户端"
