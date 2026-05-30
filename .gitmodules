@@ -35,5 +35,5 @@
 # VMA - Vulkan Memory Allocator（基于 Vulkan 内存管理）
 [submodule "external/vma"]
 	path = external/vma
-	url = https://gitee.com/mirrors/VulkanMemoryAllocator.git
+	url = https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator.git
 
