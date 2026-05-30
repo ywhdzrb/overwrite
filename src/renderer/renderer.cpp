@@ -226,7 +226,7 @@ void Renderer::initVulkan() {
 
     {
         // 加载草地 BaseColor 纹理，为地形渲染创建专用描述符集
-        std::shared_ptr<Texture> grassTex = textureLoader_->loadTexture(AssetPaths::GRASS_TEXTURE);
+        std::shared_ptr<Texture> grassTex = textureLoader_->loadTexture("assets/textures/grass/Poliigon_GrassPatchyGround_4585_BaseColor.jpg");
         if (grassTex) {
             VkDescriptorSetAllocateInfo allocInfo{};
             allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
@@ -278,8 +278,6 @@ void Renderer::initVulkan() {
     // 初始化草丛系统
     grassSystem_ = std::make_unique<GrassSystem>(vulkanDevice_);
     grassSystem_->setHeightSampler(terrainHeightQuery);
-    // 传入纹理描述符集布局（与 terrain 共享同一 layout），init() 中 createPipeline 将使用它
-    grassSystem_->setTextureDescriptorSetLayout(textureDescriptorSetLayout_);
     grassSystem_->init(gameConfig_.grass, renderPass_->getRenderPass(),
                        swapchain_->getExtent(), msaaSamples_);
 
@@ -293,40 +291,6 @@ void Renderer::initVulkan() {
         grassSystem_->setGlobalLightDir(sunLight->getDirection());
     }
 
-    // 为草渲染创建纹理描述符集（与 terrain 共享同一张贴图）
-    {
-        std::shared_ptr<Texture> grassTex = textureLoader_->loadTexture(AssetPaths::GRASS_TEXTURE);
-        if (grassTex) {
-            VkDescriptorSetAllocateInfo allocInfo{};
-            allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-            allocInfo.descriptorPool = descriptorPool_;
-            allocInfo.descriptorSetCount = 1;
-            allocInfo.pSetLayouts = &textureDescriptorSetLayout_;
-
-            VkDescriptorSet grassDescSet;
-            if (vkAllocateDescriptorSets(vulkanDevice_->getDevice(), &allocInfo, &grassDescSet) == VK_SUCCESS) {
-                VkDescriptorImageInfo imageInfo{};
-                imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-                imageInfo.imageView = grassTex->getImageView();
-                imageInfo.sampler = grassTex->getSampler();
-
-                VkWriteDescriptorSet descriptorWrite{};
-                descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-                descriptorWrite.dstSet = grassDescSet;
-                descriptorWrite.dstBinding = 0;
-                descriptorWrite.dstArrayElement = 0;
-                descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-                descriptorWrite.descriptorCount = 1;
-                descriptorWrite.pImageInfo = &imageInfo;
-
-                vkUpdateDescriptorSets(vulkanDevice_->getDevice(), 1, &descriptorWrite, 0, nullptr);
-                grassSystem_->setTexture(grassDescSet);
-                Logger::info("草叶纹理描述符集已创建");
-            } else {
-                Logger::warning("无法为草叶纹理分配描述符集");
-            }
-        }
-    }
 
     // 初始化 ImGui
     imguiManager_ = std::make_unique<ImGuiManager>(vulkanDevice_, swapchain_, renderPass_, window_, vulkanInstance_->getInstance(), msaaSamples_);

@@ -1,16 +1,16 @@
 #version 450
-// 草丛实例化顶点着色器（交叉十字面片版）
+// 草丛实例化顶点着色器（交叉十字面片版，纯程序化颜色，无纹理依赖）
 //
 // 功能：
-//   1. 实例化渲染：binding 0 = 十字交叉面片顶点（带 UV），binding 1 = 实例数据
+//   1. 实例化渲染：binding 0 = 交叉十字面片顶点，binding 1 = 实例数据
 //   2. 复合多频风场 + 阵风系统
 //   3. 角色交互挤压 + 弹簧恢复动画
 //   4. 草尖弯曲随高度二次增长，根部固定
-//   5. 传递 UV 坐标到片段着色器
+//   5. 传递世界坐标和高度到片段着色器
 
 // ---- 顶点输入（binding 0：十字面片几何体） ----
 layout(location = 0) in vec3 inPosition;    // 局部坐标
-layout(location = 1) in vec2 inUV;          // 纹理坐标
+layout(location = 1) in vec2 inUV;          // 纹理坐标（未使用，保留顶点格式兼容）
 
 // ---- 实例输入（binding 1：每根草茎独有数据） ----
 layout(location = 2) in vec3 instancePosition;
@@ -31,9 +31,8 @@ layout(push_constant) uniform PushConstants {
 } push;
 
 // ---- 输出到片段着色器 ----
-layout(location = 0) out vec2 fragUV;
-layout(location = 1) out vec3 fragWorldPos;
-layout(location = 2) out float fragHeight;
+layout(location = 0) out vec3 fragWorldPos;
+layout(location = 1) out float fragHeight;
 
 // 简单伪随机函数
 float hash(float x) {
@@ -44,10 +43,6 @@ void main() {
     vec3 localPos = inPosition;
 
     // === 0. 宽度缩放（每根草粗细不同，由 CPU 端随机化） ===
-    // 缩放 X/Z 使草茎更细或更粗：细草(×0.5) ~ 粗草(×1.8)
-    // 对于 LOD0：bend 偏移也随之缩放（更粗的草弯曲更大，视觉合理）
-    // 对于 LOD1-3：仅宽度受影响，完美
-    // 不影响 Y（高度由 instanceScale 独立控制）
     localPos.x *= instanceWidthScale;
     localPos.z *= instanceWidthScale;
 
@@ -62,8 +57,6 @@ void main() {
     float heightFrac = localPos.y;
 
     // === 2. LOD 风场降级 ===
-    // push.timeParams.z = LOD 等级（0~3），CPU 端逐 LOD 层传入
-    // LOD 越高（越远）风场计算越精简，视觉不可感知处节省 ALU
     float windTime = push.timeParams.x;
     float windStr  = push.timeParams.y;
     int   lodLevel = int(push.timeParams.z);
@@ -130,9 +123,8 @@ void main() {
     float playerForce  = push.timeParams.w;
 
     if (instancePushState > 0.001) {
-        // 向外推挤 + 向下压弯（模拟踩踏效果，防止草在脚下变长）
         vec3 pushDir = normalize(toPlayer);
-        pushDir.y = -0.5;  // 强制向下分量，草被踩弯而不是向上窜长
+        pushDir.y = -0.5;
         pushDir = normalize(pushDir);
 
         float pushMag = instancePushState * playerForce * bendFact;
@@ -144,7 +136,6 @@ void main() {
     gl_Position.y = -gl_Position.y;
 
     // === 输出到片段着色器 ===
-    fragUV        = inUV;
     fragWorldPos  = worldPos;
     fragHeight    = heightFrac;
 }

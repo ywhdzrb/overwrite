@@ -162,16 +162,6 @@ public:
     void setAmbientColor(const glm::vec3& color) { ambientColor_ = color; }
 
     /**
-     * @brief 设置草地纹理描述符集布局（由 Renderer 传入，与 terrain 共享同一布局）
-     */
-    void setTextureDescriptorSetLayout(VkDescriptorSetLayout layout) { textureDescLayout_ = layout; }
-
-    /**
-     * @brief 设置草地纹理描述符集（由 Renderer 传入，与 terrain 共享同一张草地贴图）
-     */
-    void setTexture(VkDescriptorSet descSet) { textureDescSet_ = descSet; }
-
-    /**
      * @brief 设置玩家世界坐标（用于着色器交互形变）
      */
     void setPlayerPosition(const glm::vec3& pos) { playerPosition_ = pos; }
@@ -188,9 +178,10 @@ public:
     void cleanup();
 
 private:
-    // 上次 LOD 剔除的相机位置（用于移动阈值跳过）
+    // 上次 LOD 剔除时的相机位置与玩家位置（用于移动阈值跳过 + 增量更新）
     glm::vec3 lastCullCameraPos_{0.0f};
-    static constexpr float CULL_MOVE_THRESHOLD = 1.5f;  // 相机移动超过此值才重新剔除
+    glm::vec3 lastCullPlayerPos_{0.0f};
+    static constexpr float CULL_MOVE_THRESHOLD = 3.0f;  // 相机移动≥3m 才重新剔除（降低走路时触发频率）
     // ==================== 区块键定义 ====================
 
     struct GrassChunkKey {
@@ -273,9 +264,26 @@ private:
      *
      * 玩家靠近时 pushState 快速增加至 1.0，
      * 玩家远离时指数衰减至 0.0（弹簧恢复）。
+     * moveDir/speed 用于方向性推压：前方草被推倒，后方草快速回弹。
      * 状态存储在 chunkData_ 各实例中跨帧持久化。
+     *
+     * @param moveDir 玩家移动方向（归一化），静止时为 (0,0,0)
+     * @param speed   玩家移动速度（m/s）
      */
-    void updatePushStates(const glm::vec3& playerPos, float deltaTime);
+    void updatePushStates(const glm::vec3& playerPos, float deltaTime,
+                          const glm::vec3& moveDir, float speed);
+
+    /**
+     * @brief 更新可见草的推压状态并上传到 GPU（每帧执行，与 LOD 剔除解耦）
+     *
+     * Phase 4 核心函数：LOD 剔除延迟执行，但草茎弯曲动画每帧刷新上传，
+     * 保证玩家走动时推压状态连续平滑。
+     *
+     * @param moveDir 玩家移动方向（归一化），静止时为 (0,0,0)
+     * @param speed   玩家移动速度（m/s）
+     */
+    void uploadVisibleToGpu(const glm::vec3& playerPos, float deltaTime,
+                            const glm::vec3& moveDir, float speed);
 
     // ==================== Vulkan 资源 ====================
 
@@ -341,10 +349,6 @@ private:
     // 管线
     VkPipeline pipeline_ = VK_NULL_HANDLE;
     VkPipelineLayout pipelineLayout_ = VK_NULL_HANDLE;
-
-    // 纹理描述符（由 Renderer 注入，与 terrain 共享同一张草地 BaseColor 贴图）
-    VkDescriptorSetLayout textureDescLayout_ = VK_NULL_HANDLE;
-    VkDescriptorSet textureDescSet_ = VK_NULL_HANDLE;
 
     // 四层 LOD 的草茎网格缓冲
     std::array<VkBuffer, LOD_COUNT> lodVertexBuffers_ = {};

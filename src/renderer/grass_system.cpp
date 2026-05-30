@@ -16,43 +16,6 @@ namespace owengine {
 
 namespace {
 
-/**
- * @brief 平滑草簇噪声：基于哈希+双线性插值的连续噪声，用于生成自然草簇形状
- * @param x, z 世界坐标
- * @param scale 网格缩放（米），控制斑块大小
- * @return [0,1] 连续噪声值
- */
-static float smoothClumpNoise(float x, float z, float scale) {
-    float sx = x / scale;
-    float sz = z / scale;
-
-    int ix = static_cast<int>(std::floor(sx));
-    int iz = static_cast<int>(std::floor(sz));
-
-    float fx = sx - std::floor(sx);
-    float fz = sz - std::floor(sz);
-
-    // Smoothstep 缓动，消除线性插值的"搓衣板"纹理
-    fx = fx * fx * (3.0f - 2.0f * fx);
-    fz = fz * fz * (3.0f - 2.0f * fz);
-
-    auto cellHash = [](int x, int z) -> float {
-        uint32_t h = static_cast<uint32_t>(x * 73856093u) ^ static_cast<uint32_t>(z * 19349663u);
-        h ^= h >> 13;
-        h *= 1274126177u;
-        return static_cast<float>(h & 0x7FFFFFFFu) / 2147483648.0f;
-    };
-
-    float n00 = cellHash(ix, iz);
-    float n10 = cellHash(ix + 1, iz);
-    float n01 = cellHash(ix, iz + 1);
-    float n11 = cellHash(ix + 1, iz + 1);
-
-    float nx0 = glm::mix(n00, n10, fx);
-    float nx1 = glm::mix(n01, n11, fx);
-    return glm::mix(nx0, nx1, fz);
-}
-
 std::vector<char> readFile(const std::string& filename) {
     std::ifstream file(filename, std::ios::ate | std::ios::binary);
     if (!file.is_open()) {
@@ -298,18 +261,57 @@ std::vector<GrassInstanceData> GrassSystem::generateChunkBlades(
     std::uniform_real_distribution<float> heightScaleGen(0.3f, 1.7f);
     std::uniform_real_distribution<float> widthScaleGen(0.25f, 2.5f);
 
+    // === 连续分形噪声：用多频正弦波替代传统网格值噪声，彻底消除方块可见性 ===
+    // 无整数网格结构，采样完全连续，相邻空间返回相近值。5 层非整数比叠加破坏周期性。
+    auto organicNoise = [](float x, float z, int seed) -> float {
+        float val = 0.0f;
+        float amp = 0.5f;
+        float freq = 0.03f;
+        float phaseOff = static_cast<float>(seed) * 73.937f;
+        for (int oct = 0; oct < 5; oct++) {
+            float phase = x * freq + z * freq * 0.73f + phaseOff;
+            val += amp * (std::sin(phase) * 0.5f + 0.5f);
+            freq *= 2.17f;
+            amp *= 0.46f;
+        }
+        return std::clamp(val, 0.0f, 1.0f);
+    };
+
+    // 地形坡度采样（连续，无网格）
+    auto sampleSlope = [&](float x, float z) -> float {
+        if (!heightSampler_) return 0.0f;
+        float eps = 0.5f;
+        float hx1 = heightSampler_(x + eps, z);
+        float hx2 = heightSampler_(x - eps, z);
+        float hz1 = heightSampler_(x, z + eps);
+        float hz2 = heightSampler_(x, z - eps);
+        float dx = (hx1 - hx2) / (2.0f * eps);
+        float dz = (hz1 - hz2) / (2.0f * eps);
+        return std::sqrt(dx * dx + dz * dz);
+    };
+
+    // 位置微抖动 ±0.3m，打破均匀分布带来的残留等间距感
+    std::uniform_real_distribution<float> jitter(-0.3f, 0.3f);
+
     for (int i = 0; i < count; i++) {
         for (int attempt = 0; attempt < 8; attempt++) {
-            float wx = worldX0 + posOffset(rng);
-            float wz = worldZ0 + posOffset(rng);
+            float wx = worldX0 + posOffset(rng) + jitter(rng);
+            float wz = worldZ0 + posOffset(rng) + jitter(rng);
             float y = heightSampler_ ? heightSampler_(wx, wz) : 0.0f;
 
-            // === 草簇生成：使用平滑噪声生成自然形状的草簇 ===
-            // 对 (wx,wz) 位置采样连续噪声（非整数单元哈希），
-            // 噪声经 smoothstep 双线性插值，草簇边缘平滑过渡，消除方格棱角
-            float clumpFactor = smoothClumpNoise(wx, wz, 4.0f);
-            // clumpFactor > 0.55 表示无草区，跳过（约 45% 的覆盖面积，更稀疏的自然斑块）
-            if (clumpFactor > 0.55f) continue;
+            // 坡度驱动密度：缓坡/平地草密，陡坡草稀，连续变化网格不可见
+            float slope = sampleSlope(wx, wz);
+            float flatDensity = 1.0f - std::min(slope / 0.7f, 1.0f);
+            flatDensity = flatDensity * flatDensity * flatDensity;
+
+            // 有机噪声替代旧 4m 网格 clump noise
+            float organicPatch = organicNoise(wx, wz, 5000);
+            float organicDetail = organicNoise(wx, wz, 6000);
+            float clumpValue = organicPatch * 0.65f + organicDetail * 0.35f;
+
+            // 综合接受概率 = 坡度 × 有机簇值，坡度陡或噪声低的区域无草
+            float acceptProb = flatDensity * (0.55f + clumpValue * 0.35f);
+            if (heightNormGen(rng) > acceptProb) continue;
 
             GrassInstanceData inst;
             inst.position = {wx, y, wz};
@@ -512,7 +514,8 @@ void GrassSystem::updateChunks(const glm::vec3& playerPos) {
     }
 }
 
-void GrassSystem::updatePushStates(const glm::vec3& playerPos, float deltaTime) {
+void GrassSystem::updatePushStates(const glm::vec3& playerPos, float deltaTime,
+                                    const glm::vec3& moveDir, float speed) {
     float playerRadius = config_.playerRadius * 1.5f;
     float attackSpeed = 5.0f;   // 挤压蓄力速度（越快草茎响应越灵敏）
     float decayRate  = 3.0f;    // 弹簧恢复速率（越大回弹越快）
@@ -521,12 +524,17 @@ void GrassSystem::updatePushStates(const glm::vec3& playerPos, float deltaTime) 
     float chunkSkipDist = playerRadius + config_.chunkSize;
     float chunkSkipDistSq = chunkSkipDist * chunkSkipDist;
 
+    // ============ 预计算衰减因子，避免 per-blade std::exp ============
+    float decayFactor = std::exp(-decayRate * deltaTime);
+
+    // 玩家是否在有效移动（用于方向性推压）
+    bool isMoving = speed > 0.1f;
+
     for (auto& [key, blades] : chunkData_) {
         // 区块级快速跳过：计算区块中心到玩家的平方距离
         float cx = (static_cast<float>(key.x) + 0.5f) * config_.chunkSize - playerPos.x;
         float cz = (static_cast<float>(key.z) + 0.5f) * config_.chunkSize - playerPos.z;
         if (cx * cx + cz * cz > chunkSkipDistSq) {
-            // 整个区块超出交互范围，pushState 保持 0，无需处理
             continue;
         }
         for (auto& inst : blades) {
@@ -536,17 +544,120 @@ void GrassSystem::updatePushStates(const glm::vec3& playerPos, float deltaTime) 
             float distSq = dx * dx + dy * dy + dz * dz;
 
             if (distSq < radiusSq) {
+                // 玩家附近：将草茎向下挤压
                 float dist = std::sqrt(distSq);
                 float influence = 1.0f - (dist / playerRadius);
                 float target = influence * influence;
+
+                // 方向权重：移动时前方草被推倒，后方/侧方草保留→自然"划过"效果
+                if (isMoving) {
+                    float hDist = std::sqrt(dx * dx + dz * dz);
+                    if (hDist > 0.3f) {
+                        // player→grass 方向与 moveDir 的点积：正=前方，负=后方
+                        float dot = (dx / hDist) * moveDir.x + (dz / hDist) * moveDir.z;
+                        // 前方(dot=1)→dirWeight=1.0 全压；后方/侧方=拖尾区域
+                        float frontWeight = std::pow(std::max(0.0f, dot), 0.4f);
+                        target *= 0.15f + 0.85f * frontWeight;
+                    }
+                }
+
                 inst.pushState = std::min(1.0f,
                     inst.pushState + (target - inst.pushState) * attackSpeed * deltaTime);
             } else {
-                // 玩家远离：指数衰减模拟弹簧恢复
-                inst.pushState *= std::exp(-decayRate * deltaTime);
-                if (inst.pushState < 0.001f) inst.pushState = 0.0f;
+                // 玩家远离：已归零则跳过，否则指数衰减
+                if (inst.pushState < 0.0001f) {
+                    inst.pushState = 0.0f;
+                    continue;
+                }
+                inst.pushState *= decayFactor;
+                if (inst.pushState < 0.0001f) inst.pushState = 0.0f;
             }
         }
+    }
+}
+
+/**
+ * @brief 更新所有可见草的推压状态并上传到 GPU（每帧执行）
+ *
+ * 与 LOD 剔除（Phase 3）解耦：剔除可延迟执行，但推压状态每帧刷新上传，
+ * 保证玩家走近/远离时草的弯曲动画连续平滑，不发生跳跃。
+ *
+ * @param playerPos 玩家世界坐标
+ * @param deltaTime 帧时间（秒）
+ */
+void GrassSystem::uploadVisibleToGpu(const glm::vec3& playerPos, float deltaTime,
+                                      const glm::vec3& moveDir, float speed) {
+    currentInstanceBuffer_ = (currentInstanceBuffer_ + 1) % INSTANCE_BUFFER_COUNT;
+    void* mappedBuf = mappedInstanceDatas_[currentInstanceBuffer_];
+    if (mappedBuf == nullptr) return;
+
+    // 推压参数（与 updatePushStates 保持一致）
+    float playerRadius = config_.playerRadius * 1.5f;
+    float radiusSq = playerRadius * playerRadius;
+    float attackSpeed = 5.0f;
+    float decayFactor = std::exp(-3.0f * deltaTime);
+    bool isMoving = speed > 0.1f;
+
+    // 统计上传总量用于超限检查
+    VkDeviceSize totalUpload = 0;
+    for (int lod = 0; lod < LOD_COUNT; lod++) {
+        totalUpload += lodVisibleInstances_[lod].size() * sizeof(GrassInstanceData);
+    }
+
+    VkDeviceSize bufferBytes = static_cast<VkDeviceSize>(instanceBufferCapacity_) *
+                                sizeof(GrassInstanceData);
+
+    // 可见草超过缓冲容量时从 LOD2 尾部丢弃
+    if (totalUpload > bufferBytes) {
+        Logger::warning("[GrassSystem] 可见草茎数超过缓冲容量 " +
+                     std::to_string(instanceBufferCapacity_));
+        while (totalUpload > bufferBytes && !lodVisibleInstances_[2].empty()) {
+            totalUpload -= sizeof(GrassInstanceData);
+            lodVisibleInstances_[2].pop_back();
+        }
+    }
+
+    // 为每根可见草刷新推压状态后上传
+    VkDeviceSize offset = 0;
+    for (int lod = 0; lod < LOD_COUNT; lod++) {
+        lodInstanceOffsets_[lod] = offset;
+        size_t count = lodVisibleInstances_[lod].size();
+        if (count > 0) {
+            GrassInstanceData* instances = lodVisibleInstances_[lod].data();
+            for (size_t i = 0; i < count; i++) {
+                auto& inst = instances[i];
+                float dx = inst.position.x - playerPos.x;
+                float dy = inst.position.y - playerPos.y;
+                float dz = inst.position.z - playerPos.z;
+                float distSq = dx * dx + dy * dy + dz * dz;
+
+                if (distSq < radiusSq) {
+                    float dist = std::sqrt(distSq);
+                    float influence = 1.0f - (dist / playerRadius);
+                    float target = influence * influence;
+
+                    // 与 updatePushStates 一致的方向权重
+                    if (isMoving) {
+                        float hDist = std::sqrt(dx * dx + dz * dz);
+                        if (hDist > 0.3f) {
+                            float dot = (dx / hDist) * moveDir.x + (dz / hDist) * moveDir.z;
+                            float frontWeight = std::pow(std::max(0.0f, dot), 0.4f);
+                            target *= 0.15f + 0.85f * frontWeight;
+                        }
+                    }
+
+                    inst.pushState = std::min(1.0f,
+                        inst.pushState + (target - inst.pushState) * attackSpeed * deltaTime);
+                } else if (inst.pushState >= 0.0001f) {
+                    inst.pushState *= decayFactor;
+                    if (inst.pushState < 0.0001f) inst.pushState = 0.0f;
+                } else {
+                    inst.pushState = 0.0f;
+                }
+            }
+            memcpy(static_cast<char*>(mappedBuf) + offset, instances, count * sizeof(GrassInstanceData));
+        }
+        offset += count * sizeof(GrassInstanceData);
     }
 }
 
@@ -554,120 +665,109 @@ void GrassSystem::update(const glm::vec3& playerPos, const Camera& camera,
                          float deltaTime) {
     if (!initialized_) return;
     time_ += deltaTime;
+
+    // 计算玩家速度（用于方向性推压：前方草被推倒，后方草回弹）
+    glm::vec3 moveDir(0.0f);
+    float speed = 0.0f;
+    if (deltaTime > 0.0f) {
+        glm::vec3 vel = (playerPos - playerPosition_) / deltaTime;
+        speed = glm::length(vel);
+        if (speed > 0.1f) {
+            moveDir = vel / speed;
+        }
+    }
     playerPosition_ = playerPos;
 
     // Phase 1: 动态区块加载/卸载
     updateChunks(playerPos);
 
-    // Phase 2: 更新草茎挤压弹簧状态（角色交互恢复动画）
-    updatePushStates(playerPos, deltaTime);
+    // Phase 2: 更新 CPU 端持久化推压状态（每帧，保证不可见的草重新可见时状态连续）
+    updatePushStates(playerPos, deltaTime, moveDir, speed);
 
-    // 若相机未明显移动，跳过 LOD 剔除（保留上一帧结果），减少每帧开销
-    glm::vec3 camPos = camera.getPosition();
-    glm::vec3 camDelta = camPos - lastCullCameraPos_;
-    float camMoveSq = camDelta.x * camDelta.x + camDelta.y * camDelta.y + camDelta.z * camDelta.z;
-    if (camMoveSq < CULL_MOVE_THRESHOLD * CULL_MOVE_THRESHOLD) {
-        // 仍需要更新已上传数据中的 playerPos（用于着色器交互形变）
-        return;
-    }
-    lastCullCameraPos_ = camPos;
+    // 使用玩家水平位移做阈值：区块加载和可见草茎变化主要由玩家移动驱动
+    glm::vec3 playerDelta = playerPos - lastCullPlayerPos_;
+    float playerMoveSq = playerDelta.x * playerDelta.x + playerDelta.z * playerDelta.z;
+    bool needFullCull = (playerMoveSq >= CULL_MOVE_THRESHOLD * CULL_MOVE_THRESHOLD);
 
-    // Phase 3: 单线程遍历区块，按 LOD 分层构建可见草茎列表
-    // 4 核 CPU 上 std::async 线程创建/切换开销 > 并行收益，故强制单线程
-    for (int lod = 0; lod < LOD_COUNT; lod++) {
-        lodVisibleInstances_[lod].clear();
-    }
-    size_t totalReserve = std::min(totalLoadedBlades_,
-                           static_cast<size_t>(config_.maxBlades));
-    lodVisibleInstances_[0].reserve(totalReserve / 2);
-    lodVisibleInstances_[1].reserve(totalReserve / 3);
-    lodVisibleInstances_[2].reserve(totalReserve / 3);
+    if (needFullCull) {
+        lastCullPlayerPos_ = playerPos;
 
-    auto& frustum = camera.getFrustum();
-    // 相机朝向 XZ 水平投影（用于区块级背面剔除）
-    glm::vec3 camFront3D = camera.getFront();
-    float frontLenSq = camFront3D.x * camFront3D.x + camFront3D.z * camFront3D.z;
-    glm::vec2 camDir2D = frontLenSq > 0.0001f
-        ? glm::vec2(camFront3D.x, camFront3D.z) * (1.0f / std::sqrt(frontLenSq))
-        : glm::vec2(0.0f, 0.0f);
-
-    float renderDistSq = config_.renderDistance * config_.renderDistance;
-    float frustumDistSq = 400.0f;
-    float densLowDist = config_.renderDistance * 0.2f;
-    float densRange = config_.renderDistance * 0.8f;
-    float lod0Sq = LOD_DIST_0 * LOD_DIST_0;
-    float chunkMaxDist = config_.renderDistance + config_.chunkSize * 0.707f;
-    float chunkMaxDistSq = chunkMaxDist * chunkMaxDist;
-    float chunkSize = config_.chunkSize;
-
-    for (const auto& pair : chunkData_) {
-        const auto& key = pair.first;
-        const auto& blades = pair.second;
-
-        // 区块中心相对相机偏移（水平 2D）
-        float cx = (static_cast<float>(key.x) + 0.5f) * chunkSize - camPos.x;
-        float cz = (static_cast<float>(key.z) + 0.5f) * chunkSize - camPos.z;
-        float chunkDistSq = cx * cx + cz * cz;
-        if (chunkDistSq > chunkMaxDistSq) continue;
-
-        // 区块级背面剔除：明显在相机后方且不太近时跳过整块
-        if (chunkDistSq > 400.0f) {
-            float chunkDist = std::sqrt(chunkDistSq);
-            float dotHoriz = (cx * camDir2D.x + cz * camDir2D.y) / chunkDist;
-            if (dotHoriz < -0.25f) continue;
-        }
-
-        for (const auto& inst : blades) {
-            float dx = inst.position.x - camPos.x;
-            float dy = inst.position.y - camPos.y;
-            float dz = inst.position.z - camPos.z;
-            float distSq = dx * dx + dy * dy + dz * dz;
-            if (distSq > renderDistSq) continue;
-            if (distSq > frustumDistSq && distSq < lod0Sq &&
-                !frustum.isSphereInside(inst.position, config_.bladeHeightMax)) continue;
-            float dist = std::sqrt(distSq);
-            float keepProb = 1.0f;
-            if (dist > densLowDist) {
-                float t = std::min((dist - densLowDist) / densRange, 1.0f);
-                keepProb = 1.0f - t * 0.9f;
-            }
-            if (glm::fract(inst.windSeed * 43758.5453f) > keepProb) continue;
-            if (dist < LOD_DIST_0) lodVisibleInstances_[0].push_back(inst);
-            else if (dist < LOD_DIST_1) lodVisibleInstances_[1].push_back(inst);
-            else if (dist < LOD_DIST_2) lodVisibleInstances_[2].push_back(inst);
-            else lodVisibleInstances_[3].push_back(inst);
-        }
-    }
-
-    // Phase 4: 上传可见实例到 GPU（双缓冲交替写入）
-    currentInstanceBuffer_ = (currentInstanceBuffer_ + 1) % INSTANCE_BUFFER_COUNT;
-    void* mappedBuf = mappedInstanceDatas_[currentInstanceBuffer_];
-    VkDeviceSize totalUpload = 0;
-    for (int lod = 0; lod < LOD_COUNT; lod++) {
-        totalUpload += lodVisibleInstances_[lod].size() * sizeof(GrassInstanceData);
-    }
-    if (totalUpload > 0 && mappedBuf != nullptr) {
-        VkDeviceSize bufferBytes = static_cast<VkDeviceSize>(instanceBufferCapacity_) *
-                                   sizeof(GrassInstanceData);
-        if (totalUpload > bufferBytes) {
-            Logger::warning("[GrassSystem] 可见草茎数超过缓冲容量 " +
-                         std::to_string(instanceBufferCapacity_));
-            while (totalUpload > bufferBytes && !lodVisibleInstances_[2].empty()) {
-                totalUpload -= sizeof(GrassInstanceData);
-                lodVisibleInstances_[2].pop_back();
-            }
-        }
-        VkDeviceSize offset = 0;
+        // Phase 3: 全量 LOD 剔除 — 每 3m 触发一次，避免每帧 O(N) 开销
         for (int lod = 0; lod < LOD_COUNT; lod++) {
-            lodInstanceOffsets_[lod] = offset;
-            size_t bytes = lodVisibleInstances_[lod].size() * sizeof(GrassInstanceData);
-            if (bytes > 0) {
-                memcpy(static_cast<char*>(mappedBuf) + offset,
-                       lodVisibleInstances_[lod].data(), bytes);
+            lodVisibleInstances_[lod].clear();
+        }
+        size_t visibleBudget = std::min(totalLoadedBlades_,
+                               static_cast<size_t>(config_.maxBlades));
+        lodVisibleInstances_[0].reserve(visibleBudget / 2);
+        lodVisibleInstances_[1].reserve(visibleBudget / 3);
+        lodVisibleInstances_[2].reserve(visibleBudget / 3);
+
+        auto& frustum = camera.getFrustum();
+        glm::vec3 camFront3D = camera.getFront();
+        float frontLenSq = camFront3D.x * camFront3D.x + camFront3D.z * camFront3D.z;
+        float invFrontLen = frontLenSq > 0.0001f ? 1.0f / std::sqrt(frontLenSq) : 0.0f;
+        glm::vec2 camDir2D = glm::vec2(camFront3D.x * invFrontLen, camFront3D.z * invFrontLen);
+
+        float renderDistSq = config_.renderDistance * config_.renderDistance;
+        float frustumDistSq = 400.0f;
+        float densLowDist = config_.renderDistance * 0.2f;
+        float densRange = config_.renderDistance * 0.8f;
+        float invDensRange = 1.0f / densRange;
+        float lod0Sq = LOD_DIST_0 * LOD_DIST_0;
+        float chunkMaxDist = config_.renderDistance + config_.chunkSize * 0.707f;
+        float chunkMaxDistSq = chunkMaxDist * chunkMaxDist;
+        float chunkSize = config_.chunkSize;
+
+        glm::vec3 camPos = camera.getPosition();
+        float camPosX = camPos.x;
+        float camPosY = camPos.y;
+        float camPosZ = camPos.z;
+
+        for (const auto& [key, blades] : chunkData_) {
+            float cx = (static_cast<float>(key.x) + 0.5f) * chunkSize - camPosX;
+            float cz = (static_cast<float>(key.z) + 0.5f) * chunkSize - camPosZ;
+            float chunkDistSq = cx * cx + cz * cz;
+            if (chunkDistSq > chunkMaxDistSq) continue;
+
+            if (chunkDistSq > 400.0f) {
+                float chunkDist = std::sqrt(chunkDistSq);
+                float dotHoriz = (cx * camDir2D.x + cz * camDir2D.y) / chunkDist;
+                if (dotHoriz < -0.25f) continue;
             }
-            offset += bytes;
+
+            for (const auto& inst : blades) {
+                float dx = inst.position.x - camPosX;
+                float dz = inst.position.z - camPosZ;
+                float distSqH = dx * dx + dz * dz;
+                if (distSqH > renderDistSq) continue;
+
+                float dy = inst.position.y - camPosY;
+                float distSq = distSqH + dy * dy;
+                if (distSq > renderDistSq) continue;
+
+                if (distSq > frustumDistSq && distSq < lod0Sq &&
+                    !frustum.isSphereInside(inst.position, config_.bladeHeightMax)) continue;
+
+                float dist = std::sqrt(distSq);
+
+                if (dist > densLowDist) {
+                    float t = (dist - densLowDist) * invDensRange;
+                    if (t > 1.0f) t = 1.0f;
+                    float skipVal = glm::fract(inst.windSeed * 43758.5453f);
+                    if (skipVal > 1.0f - t * 0.9f) continue;
+                }
+
+                if (dist < LOD_DIST_0) lodVisibleInstances_[0].push_back(inst);
+                else if (dist < LOD_DIST_1) lodVisibleInstances_[1].push_back(inst);
+                else if (dist < LOD_DIST_2) lodVisibleInstances_[2].push_back(inst);
+                else lodVisibleInstances_[3].push_back(inst);
+            }
         }
     }
+
+    // Phase 4: 每帧更新推压状态并上传到 GPU（不随 LOD 剔除门控）
+    // LOD 剔除延迟执行不影响推压动画的连续性
+    uploadVisibleToGpu(playerPos, deltaTime, moveDir, speed);
 }
 
 void GrassSystem::render(VkCommandBuffer commandBuffer, const Camera& camera) {
@@ -689,12 +789,6 @@ void GrassSystem::render(VkCommandBuffer commandBuffer, const Camera& camera) {
     pushBase.playerPosVec = glm::vec4(playerPosition_, 1.0f);
     pushBase.lightDir = glm::vec4(glm::normalize(lightDir_), lightIntensity_);
     pushBase.ambientColor = glm::vec4(ambientColor_, 0.0f);
-
-    // 绑定草地纹理描述符集（与 terrain 共享同一张草地 BaseColor 贴图）
-    if (textureDescSet_ != VK_NULL_HANDLE) {
-        vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                                pipelineLayout_, 0, 1, &textureDescSet_, 0, nullptr);
-    }
 
     // 逐 LOD 层绘制，每层传入不同 LOD 等级以精简远距离风场计算
     for (int lod = 0; lod < LOD_COUNT; lod++) {
@@ -833,8 +927,8 @@ void GrassSystem::createPipeline(VkRenderPass renderPass, VkExtent2D extent,
 
     VkPipelineLayoutCreateInfo layoutInfo{};
     layoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-    layoutInfo.setLayoutCount = (textureDescLayout_ != VK_NULL_HANDLE) ? 1 : 0;
-    layoutInfo.pSetLayouts = (textureDescLayout_ != VK_NULL_HANDLE) ? &textureDescLayout_ : nullptr;
+    layoutInfo.setLayoutCount = 0;
+    layoutInfo.pSetLayouts = nullptr;
     layoutInfo.pushConstantRangeCount = 1;
     layoutInfo.pPushConstantRanges = &pushRange;
 
