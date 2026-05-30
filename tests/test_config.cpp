@@ -51,3 +51,86 @@ TEST(ConfigTest, AssetPathConstantsValid) {
     EXPECT_NE(owengine::AssetPaths::GAME_CONFIG[0], '\0');
     EXPECT_NE(owengine::AssetPaths::SCENE_CONFIG[0], '\0');
 }
+
+// ==================== JSON 边界情况测试 ====================
+
+TEST(ConfigTest, JsonNestedObjectAccess) {
+    json j = R"({
+        "renderer": {
+            "target_fps": 144,
+            "msaa_samples": 4,
+            "sun_direction": [0.5, 0.5, 0.707]
+        }
+    })"_json;
+
+    auto& r = j["renderer"];
+    EXPECT_EQ(r["target_fps"], 144);
+    EXPECT_EQ(r["msaa_samples"], 4);
+    EXPECT_TRUE(r["sun_direction"].is_array());
+    EXPECT_FLOAT_EQ(r["sun_direction"][0], 0.5f);
+    EXPECT_FLOAT_EQ(r["sun_direction"][2], 0.707f);
+}
+
+TEST(ConfigTest, JsonDefaultValueFallback) {
+    // 当字段不存在时 value() 返回默认值
+    json j = R"({ "renderer": { "msaa_samples": 8 } })"_json;
+    int fps = j["renderer"].value("target_fps", 60);
+    EXPECT_EQ(fps, 60);
+    // 存在的字段正常读取
+    int msaa = j["renderer"].value("msaa_samples", 4);
+    EXPECT_EQ(msaa, 8);
+}
+
+TEST(ConfigTest, JsonEmptyObject) {
+    json j = json::object();
+    EXPECT_TRUE(j.is_object());
+    EXPECT_TRUE(j.empty());
+}
+
+TEST(ConfigTest, JsonArrayOfObjects) {
+    json j = R"([
+        { "id": "light1", "type": "directional", "intensity": 1.0 },
+        { "id": "light2", "type": "point", "intensity": 0.5 }
+    ])"_json;
+
+    ASSERT_TRUE(j.is_array());
+    ASSERT_EQ(j.size(), 2);
+    EXPECT_EQ(j[0]["id"], "light1");
+    EXPECT_EQ(j[1]["type"], "point");
+    EXPECT_FLOAT_EQ(j[1]["intensity"], 0.5f);
+}
+
+TEST(ConfigTest, JsonMixedTypesGraceful) {
+    // 混入 null 和 bool 不应导致解析崩溃
+    json j = R"({
+        "grass": { "density": 0.8, "enabled": true },
+        "tree": null,
+        "debug": false
+    })"_json;
+
+    EXPECT_FLOAT_EQ(j["grass"]["density"], 0.8f);
+    EXPECT_TRUE(j["grass"]["enabled"].get<bool>());
+    EXPECT_TRUE(j["tree"].is_null());
+    EXPECT_FALSE(j["debug"].get<bool>());
+}
+
+TEST(ConfigTest, JsonLargeValues) {
+    // 测试大数值的整数/浮点解析
+    json j = R"({
+        "max_blades": 1100000,
+        "render_distance": 250.0
+    })"_json;
+
+    EXPECT_EQ(j["max_blades"], 1100000);
+    EXPECT_FLOAT_EQ(j["render_distance"], 250.0f);
+}
+
+TEST(ConfigTest, JsonNegativeValues) {
+    json j = R"({
+        "height_threshold": -2.0,
+        "offset": -0.5
+    })"_json;
+
+    EXPECT_FLOAT_EQ(j["height_threshold"], -2.0f);
+    EXPECT_FLOAT_EQ(j["offset"], -0.5f);
+}
