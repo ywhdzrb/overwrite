@@ -51,6 +51,8 @@ for arg in "$@"; do
             rm -rf external
             echo -e "${YELLOW}Cleaning config files...${NC}"
             rm -f imgui.ini
+            echo -e "${YELLOW}Cleaning CI build artifacts...${NC}"
+            rm -rf build-ci
             echo -e "${YELLOW}Cleaning dashboard artifacts...${NC}"
             rm -f dashboard/dashboard.png
             echo -e "${GREEN}Clean completed!${NC}"
