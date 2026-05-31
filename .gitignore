@@ -63,3 +63,5 @@ imgui.ini
 build-ci/
 
 *.tar.xz
+
+dashboard/dashboard.png
