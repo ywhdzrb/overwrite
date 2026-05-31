@@ -47,8 +47,8 @@ for arg in "$@"; do
             rm -rf build
             echo -e "${YELLOW}Cleaning compiled shaders (.spv files)...${NC}"
             find . -name "*.spv" -type f -delete
-            echo -e "${YELLOW}Cleaning external dependencies...${NC}"
-            rm -rf external
+            echo -e "${YELLOW}Cleaning external dependencies (submodules)...${NC}"
+            git submodule deinit --all --force 2>/dev/null || true
             echo -e "${YELLOW}Cleaning config files...${NC}"
             rm -f imgui.ini
             echo -e "${YELLOW}Cleaning CI build artifacts...${NC}"
