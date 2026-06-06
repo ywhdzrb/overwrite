@@ -1,7 +1,7 @@
 #include "network/network_system.hpp"
+#include "utils/logger.hpp"
 #include <ixwebsocket/IXNetSystem.h>
 #include <ixwebsocket/IXWebSocket.h>
-#include <iostream>
 #include <queue>
 #include <mutex>
 
@@ -59,13 +59,13 @@ bool NetworkSystem::connect(const std::string& host, uint16_t port) {
                 case ix::WebSocketMessageType::Open:
                     impl_->connected = true;
                     state_ = NetworkState::Connected;
-                    std::cout << "[NetworkSystem] 已连接到服务器" << std::endl;
+                    Logger::info("[NetworkSystem] 已连接到服务器");
                     break;
 
                 case ix::WebSocketMessageType::Close:
                     impl_->connected = false;
                     state_ = NetworkState::Disconnected;
-                    std::cout << "[NetworkSystem] 已断开连接" << std::endl;
+                    Logger::info("[NetworkSystem] 已断开连接");
                     if (onDisconnected_) {
                         onDisconnected_();
                     }
@@ -75,7 +75,7 @@ bool NetworkSystem::connect(const std::string& host, uint16_t port) {
                     impl_->connected = false;
                     state_ = NetworkState::Error;
                     lastError_ = "连接错误: " + msg->errorInfo.reason;
-                    std::cerr << "[NetworkSystem] " << lastError_ << std::endl;
+                    Logger::error("[NetworkSystem] " + lastError_);
                     if (onError_) {
                         onError_(lastError_);
                     }
@@ -87,7 +87,7 @@ bool NetworkSystem::connect(const std::string& host, uint16_t port) {
                         std::lock_guard<std::mutex> lock(impl_->incomingMutex);
                         impl_->incomingMessages.push(message);
                     } catch (const json::parse_error& e) {
-                        std::cerr << "[NetworkSystem] JSON 解析错误: " << e.what() << std::endl;
+                        Logger::error(std::string("[NetworkSystem] JSON 解析错误: ") + e.what());
                     }
                     break;
             }
@@ -101,7 +101,7 @@ bool NetworkSystem::connect(const std::string& host, uint16_t port) {
     } catch (const std::exception& e) {
         state_ = NetworkState::Error;
         lastError_ = std::string("连接异常: ") + e.what();
-        std::cerr << "[NetworkSystem] " << lastError_ << std::endl;
+        Logger::error("[NetworkSystem] " + lastError_);
         return false;
     }
 }
@@ -161,7 +161,7 @@ void NetworkSystem::sendMessage(const json& message) {
     auto sendInfo = impl_->webSocket.send(message.dump());
 
     if (!sendInfo.success) {
-        std::cerr << "[NetworkSystem] 发送失败" << std::endl;
+        Logger::error("[NetworkSystem] 发送失败");
     }
 }
 
@@ -192,13 +192,13 @@ void NetworkSystem::handleMessage(const json& message) {
 
     // 只打印重要消息类型
     if (type != "state" && type != "pong") {
-        std::cout << "[NetworkSystem] 收到消息类型: " << type << std::endl;
+        Logger::info("[NetworkSystem] 收到消息类型: " + type);
     }
 
     if (type == "welcome") {
         // 连接成功，获取客户端 ID
         clientId_ = message.value("clientId", "");
-        std::cout << "[NetworkSystem] 客户端 ID: " << clientId_ << std::endl;
+        Logger::info("[NetworkSystem] 客户端 ID: " + clientId_);
 
         // 解析现有玩家列表
         if (message.contains("players") && message["players"].is_array()) {
@@ -271,7 +271,7 @@ void NetworkSystem::handleMessage(const json& message) {
                     player.active = true;
 
                     remotePlayers_[playerId] = player;
-                    std::cout << "[NetworkSystem] 从状态同步添加玩家: " << playerId << std::endl;
+                    Logger::info("[NetworkSystem] 从状态同步添加玩家: " + playerId);
                     if (onPlayerJoin_) {
                         onPlayerJoin_(player);
                     }
@@ -297,7 +297,7 @@ void NetworkSystem::handleMessage(const json& message) {
 
         if (!player.clientId.empty() && player.clientId != clientId_) {
             remotePlayers_[player.clientId] = player;
-            std::cout << "[NetworkSystem] 玩家加入: " << player.clientId << std::endl;
+            Logger::info("[NetworkSystem] 玩家加入: " + player.clientId);
             if (onPlayerJoin_) {
                 onPlayerJoin_(player);
             }
@@ -309,7 +309,7 @@ void NetworkSystem::handleMessage(const json& message) {
         if (!playerId.empty() && playerId != clientId_) {
             auto it = remotePlayers_.find(playerId);
             if (it != remotePlayers_.end()) {
-                std::cout << "[NetworkSystem] 玩家离开: " << playerId << std::endl;
+                Logger::info("[NetworkSystem] 玩家离开: " + playerId);
                 if (onPlayerLeave_) {
                     onPlayerLeave_(playerId);
                 }

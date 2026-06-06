@@ -1,8 +1,8 @@
 // 客户端 ECS 系统实现
 #include "ecs/client_systems.hpp"
+#include "utils/logger.hpp"
 #include "ecs/components.hpp"
 #include "ecs/resource_types.hpp"
-#include <iostream>
 #include <cstring>
 
 namespace owengine {
@@ -30,7 +30,7 @@ InputSystem::InputSystem(World& world, GLFWwindow* window)
     prevMouseButtonCallback_ = glfwSetMouseButtonCallback(window, mouseButtonCallback);
     prevCursorPosCallback_ = glfwSetCursorPosCallback(window, cursorPosCallback);
 
-    std::cout << "[InputSystem] 初始化完成" << std::endl;
+    Logger::info("[InputSystem] 初始化完成");
 }
 
 InputSystem::~InputSystem() {
@@ -149,7 +149,7 @@ void InputSystem::cursorPosCallback(GLFWwindow* window, double xpos, double ypos
 // ==================== CameraSystem 实现 ====================
 
 CameraSystem::CameraSystem(World& world) : world_(world) {
-    std::cout << "[CameraSystem] 初始化完成" << std::endl;
+    Logger::info("[CameraSystem] 初始化完成");
 }
 
 void CameraSystem::update(float deltaTime) {
@@ -187,7 +187,7 @@ glm::mat4 CameraSystem::getMainProjectionMatrix() const {
 
 ClientWorld::ClientWorld() : World() {
     networkSystem_ = std::make_unique<client::NetworkSystem>();
-    std::cout << "[ClientWorld] 初始化完成" << std::endl;
+    Logger::info("[ClientWorld] 初始化完成");
 }
 
 ClientWorld::~ClientWorld() {
@@ -206,8 +206,7 @@ void ClientWorld::initClientSystems(GLFWwindow* window, int viewportWidth, int v
     movementSystem_ = std::make_unique<MovementSystem>(*this);
     physicsSystem_ = std::make_unique<PhysicsSystem>(*this);
     
-    std::cout << "[ClientWorld] 客户端系统初始化完成，视口: " 
-              << viewportWidth << "x" << viewportHeight << std::endl;
+    Logger::info("[ClientWorld] 客户端系统初始化完成，视口: " + std::to_string(viewportWidth) + "x" + std::to_string(viewportHeight));
 }
 
 void ClientWorld::updateClientSystems(float deltaTime) {
@@ -267,24 +266,24 @@ bool ClientWorld::connectToServer(const std::string& host, uint16_t port) {
     
     // 设置回调
     networkSystem_->setOnConnected([this](const std::string& clientId) {
-        std::cout << "[ClientWorld] 已连接到服务器，ID: " << clientId << std::endl;
+        Logger::info("[ClientWorld] 已连接到服务器，ID: " + clientId);
     });
     
     networkSystem_->setOnDisconnected([this]() {
-        std::cout << "[ClientWorld] 已断开服务器连接" << std::endl;
+        Logger::info("[ClientWorld] 已断开服务器连接");
     });
     
     networkSystem_->setOnError([](const std::string& error) {
-        std::cerr << "[ClientWorld] 网络错误: " << error << std::endl;
+        Logger::error("[ClientWorld] 网络错误: " + error);
     });
     
     networkSystem_->setOnPlayerJoin([this](const client::RemotePlayer& player) {
-        std::cout << "[ClientWorld] 远程玩家加入: " << player.clientId << std::endl;
+        Logger::info("[ClientWorld] 远程玩家加入: " + player.clientId);
         // TODO: 创建远程玩家实体用于渲染
     });
     
     networkSystem_->setOnPlayerLeave([this](const std::string& clientId) {
-        std::cout << "[ClientWorld] 远程玩家离开: " << clientId << std::endl;
+        Logger::info("[ClientWorld] 远程玩家离开: " + clientId);
         // TODO: 移除远程玩家实体
     });
     
@@ -362,8 +361,8 @@ entt::entity ClientWorld::createClientPlayer(int viewportWidth, int viewportHeig
     // 设置为主相机
     setMainCamera(cameraEntity);
     
-    std::cout << "[ClientWorld] 客户端玩家实体创建成功（玩家实体: " << static_cast<uint32_t>(playerEntity) 
-              << ", 相机实体: " << static_cast<uint32_t>(cameraEntity) << ")" << std::endl;
+    Logger::info("[ClientWorld] 客户端玩家实体创建成功（玩家实体: " + std::to_string(static_cast<uint32_t>(playerEntity)) 
+              + ", 相机实体: " + std::to_string(static_cast<uint32_t>(cameraEntity)) + ")");
     
     return playerEntity;
 }
@@ -387,7 +386,7 @@ void ClientWorld::adjustPlayerToTerrain() {
     physics->isGrounded = true;
     physics->isJumping = false;
     
-    std::cout << "[ClientWorld] 调整玩家位置到地形高度: " << terrainHeight << std::endl;
+    Logger::info("[ClientWorld] 调整玩家位置到地形高度: " + std::to_string(terrainHeight));
 }
 
 // ==================== IGameWorld 接口实现 ====================

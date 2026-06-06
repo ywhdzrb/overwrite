@@ -1,7 +1,6 @@
 // 相机控制系统实现
 #include "ecs/camera_controller_system.hpp"
 #include "utils/logger.hpp"
-#include <iostream>
 #include <cmath>
 #include <sstream>
 #include <iomanip>
@@ -10,7 +9,7 @@ namespace owengine {
 namespace ecs {
 
 CameraControllerSystem::CameraControllerSystem(World& world) : world_(world) {
-    std::cout << "[CameraControllerSystem] 初始化完成" << std::endl;
+    Logger::info("[CameraControllerSystem] 初始化完成");
 }
 
 void CameraControllerSystem::update(float deltaTime) {
@@ -52,10 +51,10 @@ void CameraControllerSystem::update(float deltaTime) {
 void CameraControllerSystem::setMode(Mode mode) {
     if (currentMode_ != mode) {
         currentMode_ = mode;
-        std::cout << "[CameraControllerSystem] 切换到"
-                  << (mode == Mode::FirstPerson ? "第一人称" :
+        Logger::info(std::string("[CameraControllerSystem] 切换到")
+                  + (mode == Mode::FirstPerson ? "第一人称" :
                       mode == Mode::ThirdPerson ? "第三人称" : "自由视角")
-                  << "模式" << std::endl;
+                  + "模式");
     }
 }
 
