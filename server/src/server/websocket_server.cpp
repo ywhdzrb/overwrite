@@ -1,5 +1,5 @@
 #include "server/websocket_server.hpp"
-#include <iostream>
+#include "utils/logger.hpp"
 #include <sstream>
 #include <iomanip>
 #include <random>
@@ -10,7 +10,7 @@ namespace server {
 WebSocketGameServer::WebSocketGameServer(uint16_t port)
     : server_(port, "0.0.0.0"), port_(port) {
     
-    std::cout << "[WebSocketServer] 初始化完成，端口: " << port << std::endl;
+    Logger::info("[WebSocketServer] 初始化完成，端口: " + std::to_string(port));
 }
 
 WebSocketGameServer::~WebSocketGameServer() {
@@ -32,7 +32,7 @@ void WebSocketGameServer::start() {
         
         std::string clientId = generateClientId();
         
-        std::cout << "[WebSocketServer] 客户端连接: " << clientId << std::endl;
+        Logger::info("[WebSocketServer] 客户端连接: " + clientId);
         
         // 存储连接信息
         {
@@ -50,7 +50,7 @@ void WebSocketGameServer::start() {
         webSocket->setOnMessageCallback([this, clientId, webSocket](const ix::WebSocketMessagePtr& msg) {
             if (msg->type == ix::WebSocketMessageType::Open) {
                 // WebSocket 握手完成，现在可以发送欢迎消息
-                std::cout << "[WebSocketServer] WebSocket 握手完成: " << clientId << std::endl;
+                Logger::info("[WebSocketServer] WebSocket 握手完成: " + clientId);
                 
                 // 发送欢迎消息
                 json welcome = {
@@ -75,8 +75,8 @@ void WebSocketGameServer::start() {
                     }
                 }
                 
-                std::cout << "[WebSocketServer] Welcome 消息发送给 " << clientId 
-                          << ", 现有玩家数: " << existingPlayerCount << std::endl;
+                Logger::info(std::string("[WebSocketServer] Welcome 消息发送给 ") + clientId 
+                          + ", 现有玩家数: " + std::to_string(existingPlayerCount));
                 
                 webSocket->send(welcome.dump());
                 
@@ -144,12 +144,12 @@ void WebSocketGameServer::start() {
                     }
                     
                 } catch (const json::parse_error& e) {
-                    std::cerr << "[WebSocketServer] JSON 解析错误: " << e.what() << std::endl;
+                    Logger::error(std::string("[WebSocketServer] JSON 解析错误: ") + e.what());
                 } catch (const std::exception& e) {
-                    std::cerr << "[WebSocketServer] 消息处理错误: " << e.what() << std::endl;
+                    Logger::error(std::string("[WebSocketServer] 消息处理错误: ") + e.what());
                 }
             } else if (msg->type == ix::WebSocketMessageType::Close) {
-                std::cout << "[WebSocketServer] 客户端断开: " << clientId << std::endl;
+                Logger::info("[WebSocketServer] 客户端断开: " + clientId);
                 
                 // 从服务器世界移除玩家
                 world_.onPlayerDisconnect(clientId);
@@ -178,12 +178,12 @@ void WebSocketGameServer::start() {
     // 启动服务器
     bool success = server_.listenAndStart();
     if (!success) {
-        std::cerr << "[WebSocketServer] 监听失败" << std::endl;
+        Logger::error("[WebSocketServer] 监听失败");
         running_ = false;
         return;
     }
     
-    std::cout << "[WebSocketServer] 服务器启动，监听端口: " << port_ << std::endl;
+    Logger::info("[WebSocketServer] 服务器启动，监听端口: " + std::to_string(port_));
     
     // 启动服务器发现广播
     discovery_ = std::make_unique<ServerDiscoveryBroadcaster>(port_, "OverWrite Server");
@@ -214,7 +214,7 @@ void WebSocketGameServer::stop() {
     
     server_.stop();
     
-    std::cout << "[WebSocketServer] 服务器已停止" << std::endl;
+    Logger::info("[WebSocketServer] 服务器已停止");
 }
 
 void WebSocketGameServer::run() {
@@ -261,8 +261,8 @@ void WebSocketGameServer::broadcastExcept(const std::string& excludeClientId, co
     }
     
     std::string type = message.value("type", "unknown");
-    std::cout << "[WebSocketServer] 广播 " << type << " 给 " << sentCount 
-              << " 个客户端（排除 " << excludeClientId << "）" << std::endl;
+    Logger::info(std::string("[WebSocketServer] 广播 ") + type + " 给 " + std::to_string(sentCount) 
+              + " 个客户端（排除 " + excludeClientId + "）");
 }
 
 void WebSocketGameServer::broadcastState() {

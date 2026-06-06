@@ -10,7 +10,6 @@
 // 两者配合避免了 "水平移动 → Y 不变 → 物理弹回" 的锯齿形卡顿。
 #include "ecs/systems.hpp"
 #include "utils/logger.hpp"
-#include <iostream>
 #include <algorithm>
 #include <sstream>
 #include <iomanip>
@@ -21,7 +20,7 @@ namespace ecs {
 // ==================== World 实现 ====================
 
 World::World() {
-    std::cout << "[World] 初始化完成" << std::endl;
+    Logger::info("[World] 初始化完成");
 }
 
 entt::entity World::createEntity() {
@@ -67,7 +66,7 @@ entt::entity World::createPlayer() {
     
     player_ = entity;
     
-    std::cout << "[World] 玩家实体创建成功" << std::endl;
+    Logger::info("[World] 玩家实体创建成功");
     
     return entity;
 }
@@ -75,7 +74,7 @@ entt::entity World::createPlayer() {
 // ==================== MovementSystem 实现 ====================
 
 MovementSystem::MovementSystem(World& world) : world_(world) {
-    std::cout << "[MovementSystem] 初始化完成" << std::endl;
+    Logger::info("[MovementSystem] 初始化完成");
 }
 
 void MovementSystem::addCollisionBox(const glm::vec3& position, const glm::vec3& size) {
@@ -228,7 +227,7 @@ void MovementSystem::update(float deltaTime) {
 // ==================== PhysicsSystem 实现 ====================
 
 PhysicsSystem::PhysicsSystem(World& world) : world_(world) {
-    std::cout << "[PhysicsSystem] 初始化完成" << std::endl;
+    Logger::info("[PhysicsSystem] 初始化完成");
 }
 
 void PhysicsSystem::addCollisionBox(const glm::vec3& position, const glm::vec3& size) {

@@ -1,6 +1,6 @@
 #include "network/server_discovery.hpp"
+#include "utils/logger.hpp"
 #include <nlohmann/json.hpp>
-#include <iostream>
 #include <cstring>
 #include <algorithm>
 #include <ifaddrs.h>
@@ -94,7 +94,7 @@ bool ServerDiscoveryBroadcaster::start() {
     // 创建 UDP socket
     udpSocket_ = socket(AF_INET, SOCK_DGRAM, 0);
     if (udpSocket_ == INVALID_SOCKET) {
-        std::cerr << "[Discovery] 创建 UDP socket 失败" << std::endl;
+        Logger::error("[Discovery] 创建 UDP socket 失败");
         return false;
     }
     
@@ -107,7 +107,7 @@ bool ServerDiscoveryBroadcaster::start() {
                    &broadcast, sizeof(broadcast)
 #endif
                   ) == SOCKET_ERROR) {
-        std::cerr << "[Discovery] 设置广播选项失败" << std::endl;
+        Logger::error("[Discovery] 设置广播选项失败");
 #ifdef _WIN32
         closesocket(udpSocket_);
 #else
@@ -119,7 +119,7 @@ bool ServerDiscoveryBroadcaster::start() {
     running_ = true;
     broadcastThread_ = std::thread(&ServerDiscoveryBroadcaster::broadcastLoop, this);
     
-    std::cout << "[Discovery] 广播器启动，游戏端口: " << gamePort_ << std::endl;
+    Logger::info("[Discovery] 广播器启动，游戏端口: " + std::to_string(gamePort_));
     return true;
 }
 
@@ -138,7 +138,7 @@ void ServerDiscoveryBroadcaster::stop() {
         broadcastThread_.join();
     }
     
-    std::cout << "[Discovery] 广播器已停止" << std::endl;
+    Logger::info("[Discovery] 广播器已停止");
 }
 
 void ServerDiscoveryBroadcaster::broadcastLoop() {
@@ -220,7 +220,7 @@ bool ServerDiscoveryScanner::start() {
     running_ = true;
     listenThread_ = std::thread(&ServerDiscoveryScanner::listenLoop, this);
     
-    std::cout << "[Discovery] 扫描器启动，监听端口: " << DISCOVERY_PORT << std::endl;
+    Logger::info("[Discovery] 扫描器启动，监听端口: " + std::to_string(DISCOVERY_PORT));
     return true;
 }
 
@@ -240,7 +240,7 @@ void ServerDiscoveryScanner::stop() {
         listenThread_.join();
     }
     
-    std::cout << "[Discovery] 扫描器已停止" << std::endl;
+    Logger::info("[Discovery] 扫描器已停止");
 }
 
 std::vector<DiscoveredServer> ServerDiscoveryScanner::getDiscoveredServers() const {
@@ -326,8 +326,8 @@ void ServerDiscoveryScanner::handleBroadcast(const std::string& message, const s
         
         if (!found) {
             discoveredServers_.push_back(server);
-            std::cout << "[Discovery] 发现服务器: " << server.name 
-                      << " (" << server.host << ":" << server.port << ")" << std::endl;
+            Logger::info(std::string("[Discovery] 发现服务器: ") + server.name 
+                      + " (" + server.host + ":" + std::to_string(server.port) + ")");
         }
         
     } catch (const json::parse_error&) {

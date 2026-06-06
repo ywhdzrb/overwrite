@@ -1,7 +1,7 @@
 #include "server/server_world.hpp"
 #include "ecs/components.hpp"
 #include "terrain_query.hpp"
-#include <iostream>
+#include "utils/logger.hpp"
 
 namespace owengine {
 namespace server {
@@ -13,14 +13,14 @@ ServerWorld::ServerWorld()
     , lastUpdateTime_(std::chrono::high_resolution_clock::now()) {
     // 设置地形高度查询
     physicsSystem_.setTerrainQuery(TerrainQuery::getHeight);
-    std::cout << "[ServerWorld] 服务器世界初始化完成" << std::endl;
+    Logger::info("[ServerWorld] 服务器世界初始化完成");
 }
 
 entt::entity ServerWorld::onPlayerConnect(const std::string& clientId) {
     // 检查是否已存在
     auto it = connectedPlayers_.find(clientId);
     if (it != connectedPlayers_.end()) {
-        std::cout << "[ServerWorld] 玩家已存在: " << clientId << std::endl;
+        Logger::info("[ServerWorld] 玩家已存在: " + clientId);
         return it->second;
     }
     
@@ -33,8 +33,8 @@ entt::entity ServerWorld::onPlayerConnect(const std::string& clientId) {
         networkSync->isOwned = true;
     }
     
-    std::cout << "[ServerWorld] 玩家连接: " << clientId 
-              << ", 实体: " << static_cast<uint32_t>(entity) << std::endl;
+    Logger::info(std::string("[ServerWorld] 玩家连接: ") + clientId 
+              + ", 实体: " + std::to_string(static_cast<uint32_t>(entity)));
     
     return entity;
 }
@@ -42,7 +42,7 @@ entt::entity ServerWorld::onPlayerConnect(const std::string& clientId) {
 void ServerWorld::onPlayerDisconnect(const std::string& clientId) {
     auto it = connectedPlayers_.find(clientId);
     if (it == connectedPlayers_.end()) {
-        std::cout << "[ServerWorld] 玩家不存在: " << clientId << std::endl;
+        Logger::info("[ServerWorld] 玩家不存在: " + clientId);
         return;
     }
     
@@ -50,7 +50,7 @@ void ServerWorld::onPlayerDisconnect(const std::string& clientId) {
     destroyEntity(it->second);
     connectedPlayers_.erase(it);
     
-    std::cout << "[ServerWorld] 玩家断开: " << clientId << std::endl;
+    Logger::info("[ServerWorld] 玩家断开: " + clientId);
 }
 
 entt::entity ServerWorld::getPlayerByClientId(const std::string& clientId) const {
