@@ -1,6 +1,6 @@
 # AI Assistant Context - OverWrite 游戏引擎
 
-## 版本：v1.2｜适用：C++/Vulkan/ECS 引擎全场景编码
+## 版本：v1.2｜适用：C++/Vulkan/ECS 引擎全场景编码（项目版本 0.1.1-alpha）
 
 一定不要不忘记这个提示词的内容
 
@@ -53,7 +53,7 @@ overwrite/
 │   ├── models/       # glTF / OBJ 模型资源
 │   ├── textures/     # 2D纹理、立方体贴图
 │   └── fonts/        # 中文/通用字体
-├── VERSION           # 项目版本号（当前 0.1.0-alpha，供脚本/构建读取）
+├── VERSION           # 项目版本号（当前 0.1.1-alpha，供脚本/构建读取）
 ├── external/         # Git Submodule 第三方依赖
 ├── build/            # CMake 编译输出目录（自动生成，禁止手动修改）
 └── plot/             # 游戏剧情、角色设计、事件触发等

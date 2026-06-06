@@ -14,6 +14,7 @@
 #   ./build.sh run-server   # 构建并运行服务端
 #   ./build.sh all          # 构建所有目标（默认）
 #   ./build.sh test         # 构建并运行单元测试（需联网下载 GTest）
+#   ./build.sh package      # 打包为可分发 tar.xz
 #   ./build.sh dashboard    # 生成项目综合仪表盘（Python3 + matplotlib）
 
 set -e  # Exit on error
@@ -32,8 +33,127 @@ RUN_AFTER_BUILD=false
 RUN_SERVER=false
 BUILD_TARGET="all"
 BUILD_TESTS="OFF"
+MODE="build"
 
-# 解析参数
+# 版本号
+VERSION="$(cat VERSION 2>/dev/null || echo '0.1.1-alpha')"
+ORIG_DIR="$(pwd)"
+
+# ====================== 打包函数 ======================
+
+package() {
+    local pkg_dir="overwrite-${VERSION}-linux-x86_64"
+    local pkg_tarball="${pkg_dir}.tar.xz"
+
+    echo -e "${GREEN}=================================="
+    echo "Packaging ${pkg_dir}..."
+    echo "=================================="
+
+    rm -rf "${pkg_dir}" "${pkg_tarball}"
+    mkdir -p "${pkg_dir}/bin" "${pkg_dir}/lib"
+
+    echo -e "  ${CYAN} * ${NC}拷贝二进制文件..."
+    [ -f "build/OverWrite" ] && cp "build/OverWrite" "${pkg_dir}/bin/OverWrite"
+    [ -f "build/overwrite-server" ] && cp "build/overwrite-server" "${pkg_dir}/bin/overwrite-server"
+
+    echo -e "  ${CYAN} * ${NC}收集运行时库..."
+    local binaries=()
+    [ -f "build/OverWrite" ] && binaries+=("build/OverWrite")
+    [ -f "build/overwrite-server" ] && binaries+=("build/overwrite-server")
+
+    declare -A seen_lib
+    for bin in "${binaries[@]}"; do
+        while IFS= read -r line; do
+            if [[ $line =~ ^[[:space:]]*([^ ]+)' => '(/[^ ]+)' ' ]]; then
+                local lib_path="${BASH_REMATCH[2]}"
+                local lib_name="${BASH_REMATCH[1]}"
+                if [[ ! "$lib_name" =~ ^(libc\.so|libdl\.so|libm\.so|libpthread\.so|librt\.so|ld-linux|libgcc_s\.so|libstdc\+\+\.so) ]]; then
+                    if [[ -z "${seen_lib[$lib_path]}" ]]; then
+                        seen_lib[$lib_path]=1
+                        cp --parents "$lib_path" "${pkg_dir}/" 2>/dev/null || cp -L "$lib_path" "${pkg_dir}/lib/" 2>/dev/null
+                        local basename=$(basename "$lib_path")
+                        [ -f "${pkg_dir}/lib/${basename}" ] && echo "      ${lib_name}"
+                    fi
+                fi
+            fi
+        done < <(ldd "${bin}" 2>/dev/null || true)
+    done
+    if [ -d "${pkg_dir}/usr" ]; then
+        find "${pkg_dir}/usr" -type f -name "*.so*" 2>/dev/null | while read -r f; do
+            cp -n "$f" "${pkg_dir}/lib/" 2>/dev/null || true
+        done
+        rm -rf "${pkg_dir}/usr"
+    fi
+
+    echo -e "  ${CYAN} * ${NC}拷贝素材文件..."
+    if [ -d "assets" ]; then
+        cp -r assets "${pkg_dir}/assets"
+        find "${pkg_dir}/assets" \( -name "*.blend" -o -name "*.blend1" -o -name "*.psd" -o -name "*.xcf" -o -name "*.kra" -o -name "Thumbs.db" -o -name ".DS_Store" \) -exec rm -f {} + 2>/dev/null || true
+    fi
+
+    echo -e "  ${CYAN} * ${NC}拷贝配置文件..."
+    [ -d "config" ] && cp -r config "${pkg_dir}/config"
+
+    echo -e "  ${CYAN} * ${NC}拷贝已编译着色器..."
+    if ls shaders/*.spv 1>/dev/null 2>&1; then
+        mkdir -p "${pkg_dir}/shaders"
+        cp shaders/*.spv "${pkg_dir}/shaders/"
+        for src in shaders/*.frag shaders/*.vert shaders/*.comp; do
+            [ -f "$src" ] && cp "$src" "${pkg_dir}/shaders/"
+        done
+        [ -d "shaders/ffx" ] && cp -r shaders/ffx "${pkg_dir}/shaders/ffx"
+    fi
+
+    echo -e "  ${CYAN} * ${NC}拷贝版本文件..."
+    [ -f "VERSION" ] && cp VERSION "${pkg_dir}/"
+
+    echo -e "  ${CYAN} * ${NC}生成启动脚本..."
+    cat > "${pkg_dir}/run.sh" << 'RUNEOF'
+#!/bin/bash
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+export LD_LIBRARY_PATH="${SCRIPT_DIR}/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
+cd "$SCRIPT_DIR"
+exec ./bin/OverWrite "$@"
+RUNEOF
+    chmod +x "${pkg_dir}/run.sh"
+
+    cat > "${pkg_dir}/run-server.sh" << 'RUNEOF'
+#!/bin/bash
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+export LD_LIBRARY_PATH="${SCRIPT_DIR}/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
+cd "$SCRIPT_DIR"
+exec ./bin/overwrite-server "$@"
+RUNEOF
+    chmod +x "${pkg_dir}/run-server.sh"
+
+    cat > "${pkg_dir}/README.txt" << READMEEOF
+OverWrite 游戏引擎 - Linux 预编译包
+版本: ${VERSION} | 架构: x86_64
+
+系统要求: Vulkan 1.3+ 驱动, libstdc++ (gcc>=12)
+
+启动:
+  ./run.sh          # 客户端
+  ./run-server.sh   # 服务端
+
+注意: imgui.ini 等运行时文件首次运行后自动生成，不在包中。
+READMEEOF
+
+    echo -e "  ${CYAN} * ${NC}压缩为 tar.xz..."
+    tar -cJf "${pkg_tarball}" "${pkg_dir}"
+    rm -rf "${pkg_dir}"
+
+    echo ""
+    echo -e "${GREEN}=================================="
+    echo "Package created: ${pkg_tarball}"
+    echo "Size: $(ls -lh "${pkg_tarball}" | awk '{print $5}')"
+    echo "=================================="
+    echo ""
+    echo -e "使用方式:"
+    echo "  tar -xf ${pkg_tarball} && cd ${pkg_dir} && ./run.sh"
+}
+
+# ====================== 参数解析 ======================
 for arg in "$@"; do
     case $arg in
         release|Release)
@@ -77,6 +197,9 @@ for arg in "$@"; do
             echo -e "${GREEN}Dashboard generated: dashboard/dashboard.png${NC}"
             exit 0
             ;;
+        package)
+            MODE="package"
+            ;;
         all)
             BUILD_TARGET="all"
             ;;
@@ -86,14 +209,16 @@ for arg in "$@"; do
             echo "Usage: $0 [options]"
             echo ""
             echo "Options:"
-            echo "  release      构建 release 版本（默认）"
-            echo "  debug        构建 debug 版本"
-            echo "  clean        清理构建目录、着色器、依赖和仪表盘"
-            echo "  dashboard    生成项目综合仪表盘 (需 Python3 + matplotlib)"
-            echo "  run          构建并运行客户端"
-            echo "  run-server   构建并运行服务端"
-            echo "  client       仅构建客户端"
-            echo "  all          构建所有目标（默认）"
+echo "  release      构建 release 版本（默认）"
+echo "  debug        构建 debug 版本"
+echo "  clean        清理构建目录、着色器、依赖和仪表盘"
+echo "  dashboard    生成项目综合仪表盘 (需 Python3 + matplotlib)"
+echo "  run          构建并运行客户端"
+echo "  run-server   构建并运行服务端"
+echo "  client       仅构建客户端"
+echo "  package      打包为可分发 tar.xz（二进制 + 运行库 + 素材 + 配置）"
+echo "  all          构建所有目标（默认）"
+echo "  test         构建并运行单元测试"
             echo "  help         显示帮助信息"
             echo ""
             echo "Targets:"
@@ -150,7 +275,14 @@ if [ $? -eq 0 ]; then
     echo -e "  ${CYAN}OverWrite${NC}        - ${YELLOW}./build/OverWrite${NC} (客户端)"
     echo -e "  ${CYAN}overwrite-server${NC} - ${YELLOW}./build/overwrite-server${NC} (服务端)"
     echo ""
-    
+
+    # 如果指定了 package 模式，执行打包（必须在 cd build 之前调用，因为函数定义在 if 块之外）
+    if [ "$MODE" = "package" ]; then
+        cd "${ORIG_DIR:-$OLDPWD}"
+        package
+        exit 0
+    fi
+
     # 如果启用测试，运行 CTest
     if [ "$BUILD_TESTS" = "ON" ]; then
         echo -e "${GREEN}Running unit tests...${NC}"

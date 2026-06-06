@@ -47,22 +47,46 @@ sudo pacman -S vulkan-headers vulkan-tools glfw glm cmake gcc
 sudo apt install vulkan-sdk libglfw3-dev libglm-dev cmake build-essential
 ```
 
-### 构建
+### 构建 & 运行
 
 ```bash
-./build.sh
-```
-
-### 运行
-
-```bash
-./build.sh run         # 运行客户端
-./build.sh run-server  # 运行服务端
+./build.sh              # Release 构建
+./build.sh debug        # Debug 构建（Vulkan 验证层）
+./build.sh run          # 构建并运行客户端
+./build.sh run-server   # 构建并运行服务端
 ```
 
 ### 首次运行前获取资源包
 
-素材（模型、贴图等）通过 GitHub Releases 分发，首次使用需下载
+素材（模型、贴图等）通过 GitHub Releases 分发，首次使用需下载：
+
+```bash
+# 从 GitHub Releases 下载 assets tarball，解压到项目目录
+```
+
+### 打包分发
+
+```bash
+./build.sh package
+```
+
+输出 `overwrite-<VERSION>-linux-x86_64.tar.xz`, 包含二进制、运行库、素材、配置、启动脚本。解压即可运行：
+
+```bash
+tar -xf overwrite-<VERSION>-linux-x86_64.tar.xz && cd overwrite-<VERSION>-linux-x86_64 && ./run.sh
+```
+
+### 完整命令参考
+
+| 命令 | 说明 |
+|---|---|
+| `./build.sh` | Release 构建所有目标 |
+| `./build.sh debug` | Debug 构建（验证层 + 调试符号 + 警告全开） |
+| `./build.sh run` | 构建并启动客户端 |
+| `./build.sh run-server` | 构建并启动服务端 |
+| `./build.sh clean` | 清空构建目录和着色器缓存 |
+| `./build.sh package` | 打包为可分发 tar.xz |
+| `./build.sh test` | 构建并运行单元测试 |
 
 ---
 
@@ -71,16 +95,7 @@ sudo apt install vulkan-sdk libglfw3-dev libglm-dev cmake build-essential
 ### 提交推送
 
 ```bash
-./push.sh                         # 交互式输入 message → add + commit + push
-./push.sh -m "feat: 添加xxx功能"  # 直接指定 message
-./push.sh --push-only             # 仅执行 git push（跳过 add/commit）
+git add .
+git commit -m "feat: 添加xxx功能"
+git push
 ```
-
-### 打包发布
-
-```bash
-./push.sh --release               # 构建 + 打包可执行文件 + 资源
-./push.sh --release --download    # 同上，从 Release 下载最新资源包
-```
-
-发布包输出为 `overwrite-<version>-linux.tar.xz`。
