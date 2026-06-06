@@ -1,0 +1,57 @@
+# OverWrite 游戏引擎 — C++ 代码格式化配置
+# 对齐 AGENTS.md 编码规范（命名规则/代码风格/头文件保护等不在此范围）
+# 配置策略：仅控制自动格式化能处理的风格项，保持最小侵入
+
+BasedOnStyle: Google
+IndentWidth: 4
+UseTab: Never
+ColumnLimit: 140
+
+# 类/结构体/枚举 内部对齐
+AccessModifierOffset: -4
+AlignConsecutiveAssignments: false
+AlignConsecutiveDeclarations: false
+AlignAfterOpenBracket: Align
+
+# 断行规则
+BreakBeforeBraces: Custom
+BraceWrapping:
+  AfterClass: true
+  AfterStruct: true
+  AfterFunction: true
+  AfterControlStatement: Never
+  BeforeElse: false
+  BeforeCatch: false
+  SplitEmptyFunction: false
+
+# 命名空间不缩进
+NamespaceIndentation: None
+
+# 指针/引用附在类型（左侧）
+PointerAlignment: Left
+ReferenceAlignment: Left
+
+# 函数声明的返回类型独立一行（适应 long 返回类型）
+AlwaysBreakAfterReturnType: None
+
+# include 排序（标准库 → 第三方 → 项目内部）
+IncludeBlocks: Regroup
+IncludeCategories:
+  - Regex:           '<.*>'
+    Priority:        1
+  - Regex:           '<[^o].*>'   # 第三方库头文件
+    Priority:        2
+  - Regex:           '^"'
+    Priority:        3
+
+# 允许短块在一行
+AllowShortBlocksOnASingleLine: Never
+AllowShortFunctionsOnASingleLine: None
+AllowShortIfStatementsOnASingleLine: Never
+
+# 构造函数的初始化列表
+ConstructorInitializerIndentWidth: 4
+ConstructorInitializerAllOnOneLineOrOnePerLine: false
+
+# 排序 using 声明
+SortUsingDeclarations: true
