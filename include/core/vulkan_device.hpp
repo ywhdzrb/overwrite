@@ -1,7 +1,7 @@
 #pragma once
 
 /**
- * @file vulkan_device.h
+ * @file vulkan_device.hpp
  * @brief Vulkan 设备管理 — 逻辑设备封装、队列/命令池/VMA/深度资源管理
  *
  * 归属模块：core

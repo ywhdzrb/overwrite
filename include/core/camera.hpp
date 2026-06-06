@@ -1,7 +1,7 @@
 #pragma once
 
 /**
- * @file camera.h
+ * @file camera.hpp
  * @brief 相机模块 — 视角/投影矩阵计算、欧拉角/向量更新、第一/三人称/自由视角模式
  *
  * 归属模块：core

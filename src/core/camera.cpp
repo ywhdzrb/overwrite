@@ -1,9 +1,9 @@
 // 摄像机实现
 // 处理第一人称和第三人称视角的摄像机控制
 #include "core/camera.hpp"
+#include "utils/logger.hpp"
 #include <glm/gtc/type_ptr.hpp>
 #include <cmath>
-#include <iostream>
 
 namespace owengine {
 
@@ -31,10 +31,10 @@ Camera::Camera(int windowWidth, int windowHeight)
 void Camera::toggleMode() noexcept {
     if (mode_ == Mode::FirstPerson) {
         mode_ = Mode::ThirdPerson;
-        std::cout << "[Camera] 切换到第三人称模式" << std::endl;
+        Logger::info("[Camera] 切换到第三人称模式");
     } else if (mode_ == Mode::ThirdPerson) {
         mode_ = Mode::FirstPerson;
-        std::cout << "[Camera] 切换到第一人称模式" << std::endl;
+        Logger::info("[Camera] 切换到第一人称模式");
     }
 }
 
