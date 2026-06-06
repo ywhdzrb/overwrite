@@ -178,10 +178,11 @@ public:
     void cleanup();
 
 private:
-    // 上次 LOD 剔除时的相机位置与玩家位置（用于移动阈值跳过 + 增量更新）
-    glm::vec3 lastCullCameraPos_{0.0f};
-    glm::vec3 lastCullPlayerPos_{0.0f};
-    static constexpr float CULL_MOVE_THRESHOLD = 3.0f;  // 相机移动≥3m 才重新剔除（降低走路时触发频率）
+    // 上次 LOD 剔除时的玩家位置与相机朝向（用于移动/旋转阈值跳过 + 增量更新）
+    glm::vec3 lastCullPlayerPos_{99999.0f};            // 初始化为远离出生点的值，强制首次帧触发全量剔除
+    glm::vec3 lastCullCameraFront_{0.0f, 0.0f, -1.0f}; // 上次剔除时的相机朝向
+    static constexpr float CULL_MOVE_THRESHOLD = 3.0f;  // 玩家移动≥3m 重新剔除
+    static constexpr float CULL_ANGLE_THRESHOLD = 0.866f; // 相机朝向变化≥30°（cos30°=0.866）重新剔除
     // ==================== 区块键定义 ====================
 
     struct GrassChunkKey {

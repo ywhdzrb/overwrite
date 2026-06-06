@@ -684,13 +684,22 @@ void GrassSystem::update(const glm::vec3& playerPos, const Camera& camera,
     // Phase 2: 更新 CPU 端持久化推压状态（每帧，保证不可见的草重新可见时状态连续）
     updatePushStates(playerPos, deltaTime, moveDir, speed);
 
-    // 使用玩家水平位移做阈值：区块加载和可见草茎变化主要由玩家移动驱动
+    // 使用玩家水平位移 + 相机朝向变化做阈值：
+    // 移动≥3m 或旋转≥30° 触发全量剔除，兼顾性能（不每帧 O(N)）和响应性（转头见草）
     glm::vec3 playerDelta = playerPos - lastCullPlayerPos_;
     float playerMoveSq = playerDelta.x * playerDelta.x + playerDelta.z * playerDelta.z;
-    bool needFullCull = (playerMoveSq >= CULL_MOVE_THRESHOLD * CULL_MOVE_THRESHOLD);
+    bool movedFarEnough = (playerMoveSq >= CULL_MOVE_THRESHOLD * CULL_MOVE_THRESHOLD);
+
+    // 检测相机朝向变化：当前朝向与上次剔除时的朝向的点积
+    glm::vec3 currentFront = camera.getFront();
+    float frontDot = glm::dot(currentFront, lastCullCameraFront_);
+    bool turnedEnough = (frontDot < CULL_ANGLE_THRESHOLD);
+
+    bool needFullCull = (movedFarEnough || turnedEnough);
 
     if (needFullCull) {
         lastCullPlayerPos_ = playerPos;
+        lastCullCameraFront_ = currentFront;
 
         // Phase 3: 全量 LOD 剔除 — 每 3m 触发一次，避免每帧 O(N) 开销
         for (int lod = 0; lod < LOD_COUNT; lod++) {
