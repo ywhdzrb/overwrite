@@ -4,13 +4,13 @@
 #include "renderer/model.hpp"
 #include "core/vulkan_device.hpp"
 #include <tiny_obj_loader.h>
-#include <iostream>
+#include "utils/logger.hpp"
 #include <array>
 #include <unordered_map>
 
 namespace owengine {
 
-using namespace std;
+// 注意：禁止使用 using namespace std；使用 std:: 前缀
 
 // 获取顶点绑定描述
 // 定义顶点数据的输入布局
@@ -137,9 +137,7 @@ void Model::loadFromObj(const std::string& filename) {
         vertex.normal = glm::normalize(vertex.normal);
     }
 
-    std::cout << "Loaded model: " << filename << std::endl;
-    std::cout << "Vertices: " << vertices.size() << std::endl;
-    std::cout << "Indices: " << indices.size() << std::endl;
+    Logger::info("Loaded model: " + filename + "\nVertices: " + std::to_string(vertices.size()) + "\nIndices: " + std::to_string(indices.size()));
 }
 
 void Model::cleanup() {

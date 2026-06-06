@@ -1,7 +1,7 @@
 #include "renderer/text_renderer.hpp"
+#include "utils/logger.hpp"
 #include <stdexcept>
 #include <cstring>
-#include <iostream>
 
 namespace owengine {
 
@@ -314,7 +314,7 @@ void TextRenderer::create() {
     
     vkUpdateDescriptorSets(vulkanDevice->getDevice(), 1, &descriptorWrite, 0, nullptr);
     
-    std::cout << "[TextRenderer] 创建成功" << std::endl;
+    Logger::info("[TextRenderer] 创建成功");
 }
 
 void TextRenderer::render(VkCommandBuffer commandBuffer, const std::string& text, float x, float y, float scale) {

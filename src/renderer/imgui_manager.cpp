@@ -1,8 +1,8 @@
 #include "renderer/imgui_manager.hpp"
+#include "utils/logger.hpp"
 #include "imgui.h"
 #include "imgui_impl_vulkan.h"
 #include "imgui_impl_glfw.h"
-#include <iostream>
 #include <cmath>
 
 namespace owengine {
@@ -36,7 +36,7 @@ void ImGuiManager::init() {
     float scale = (xscale + yscale) / 2.0f;
     if (scale < 1.0f) scale = 1.0f;
     
-    std::cout << "[ImGuiManager] 显示缩放比例: " << scale << std::endl;
+    Logger::info("[ImGuiManager] 显示缩放比例: " + std::to_string(scale));
 
     // 设置风格
     ImGui::StyleColorsDark();
@@ -60,11 +60,11 @@ void ImGuiManager::init() {
     
     if (font) {
         io.FontDefault = font;
-        std::cout << "[ImGuiManager] 中文字体加载成功，大小: " << (18.0f * scale) << std::endl;
+        Logger::info("[ImGuiManager] 中文字体加载成功，大小: " + std::to_string(18.0f * scale));
     } else {
         // 回退到默认字体
         io.Fonts->AddFontDefault();
-        std::cout << "[ImGuiManager] 使用默认字体" << std::endl;
+        Logger::info("[ImGuiManager] 使用默认字体");
     }
 
     // 初始化 GLFW 后端
@@ -96,7 +96,7 @@ void ImGuiManager::init() {
     ImGui_ImplVulkan_CreateFontsTexture();
 
     initialized = true;
-    std::cout << "[ImGuiManager] 初始化成功，MSAA: " << msaaSamples << std::endl;
+    Logger::info("[ImGuiManager] 初始化成功，MSAA: " + std::to_string(msaaSamples));
 }
 
 void ImGuiManager::cleanup() {
