@@ -48,31 +48,31 @@ float grad(int h, float x, float y) {
 
 } // anonymous namespace
 
-TerrainRenderer::TerrainRenderer(std::shared_ptr<VulkanDevice> device)
-    : device(device),
-      chunkSize(16.0f),
-      renderRadius(10),
-      generationRadius(13),       // renderRadius + 3，提前生成边界外区块
-      maxChunksPerFrame(4),       // 每帧异步任务上限，削去区块生成峰值
-      noiseScale(0.01f),
-      heightScale(25.0f),
-      baseHeight(0.0f),
-      terrainColor(0.0f, 1.0f, 0.0f),
+TerrainRenderer::TerrainRenderer(std::shared_ptr<VulkanDevice> devicePtr)
+    : device_(std::move(devicePtr)),
+      chunkSize_(16.0f),
+      renderRadius_(10),
+      generationRadius_(13),       // renderRadius + 3，提前生成边界外区块
+      maxChunksPerFrame_(4),       // 每帧异步任务上限，削去区块生成峰值
+      noiseScale_(0.01f),
+      heightScale_(25.0f),
+      baseHeight_(0.0f),
+      terrainColor_(0.0f, 1.0f, 0.0f),
       created_(false) {
     // 初始化 Perlin 排列表（512 元素，种子 42）。
-    // 构造函数一次性初始化，之后 perm 只读不写，确保 perlinNoise() 可在异步线程中安全调用。
+    // 构造函数一次性初始化，之后 perm_ 只读不写，确保 perlinNoise() 可在异步线程中安全调用。
     static std::mt19937 rng(42);
     static std::uniform_int_distribution<int> dist(0, 255);
-    perm.resize(512);
+    perm_.resize(512);
     for (int i = 0; i < 256; ++i) {
-        perm[i] = i;
+        perm_[i] = i;
     }
     for (int i = 255; i > 0; --i) {
         int j = dist(rng) % (i + 1);
-        std::swap(perm[i], perm[j]);
+        std::swap(perm_[i], perm_[j]);
     }
     for (int i = 0; i < 256; ++i) {
-        perm[256 + i] = perm[i];
+        perm_[256 + i] = perm_[i];
     }
 }
 
@@ -86,13 +86,13 @@ void TerrainRenderer::create() {
 }
 
 void TerrainRenderer::cleanup() {
-    for (auto& pair : chunks) {
+    for (auto& pair : chunks_) {
         // Only release slot, don't destroy (pool owns buffers)
         if (pair.second.poolSlot >= 0) {
             bufferPool_[pair.second.poolSlot].inUse = false;
         }
     }
-    chunks.clear();
+    chunks_.clear();
     cleanupBufferPool();
     created_ = false;
 }
@@ -100,7 +100,7 @@ void TerrainRenderer::cleanup() {
 // 初始化缓冲池：预分配 BUFFER_POOL_SIZE 组 vertex + index 缓冲区
 void TerrainRenderer::initBufferPool() {
     bufferPool_.resize(BUFFER_POOL_SIZE);
-    VmaAllocator allocator = device->getAllocator();
+    VmaAllocator allocator = device_->getAllocator();
     for (int i = 0; i < BUFFER_POOL_SIZE; ++i) {
         auto& slot = bufferPool_[i];
 
@@ -137,7 +137,7 @@ void TerrainRenderer::initBufferPool() {
 
 // 销毁缓冲池：释放所有预先分配的缓冲区
 void TerrainRenderer::cleanupBufferPool() {
-    VmaAllocator allocator = device->getAllocator();
+    VmaAllocator allocator = device_->getAllocator();
     for (auto& slot : bufferPool_) {
         if (slot.indexBuffer != VK_NULL_HANDLE) {
             vmaDestroyBuffer(allocator, slot.indexBuffer, slot.indexBufferAllocation);
@@ -183,10 +183,10 @@ float TerrainRenderer::perlinNoise(float x, float z) const {
     float u = fade(xf);
     float v = fade(zf);
     
-    int aa = perm[perm[xi] + zi];
-    int ab = perm[perm[xi] + zi + 1];
-    int ba = perm[perm[xi + 1] + zi];
-    int bb = perm[perm[xi + 1] + zi + 1];
+    int aa = perm_[perm_[xi] + zi];
+    int ab = perm_[perm_[xi] + zi + 1];
+    int ba = perm_[perm_[xi + 1] + zi];
+    int bb = perm_[perm_[xi + 1] + zi + 1];
     
     float aaGrad = grad(aa, xf, zf);
     float abGrad = grad(ab, xf, zf - 1.0f);
@@ -216,10 +216,10 @@ float TerrainRenderer::fbm(float x, float z, int octaves) const {
 }
 
 float TerrainRenderer::getHeight(float x, float z) const {
-    float noiseX = x * noiseScale;
-    float noiseZ = z * noiseScale;
-    float height = fbm(noiseX, noiseZ, 3) * heightScale;
-    return baseHeight + height;
+    float noiseX = x * noiseScale_;
+    float noiseZ = z * noiseScale_;
+    float height = fbm(noiseX, noiseZ, 3) * heightScale_;
+    return baseHeight_ + height;
 }
 
 // 纯 CPU 网格计算（线程安全，在 std::async 后台线程中执行）
@@ -233,8 +233,8 @@ float TerrainRenderer::getHeight(float x, float z) const {
 // 无 Vulkan 调用：仅读取成员的噪声/颜色参数，返回 ChunkMesh 供主线程上传。
 ChunkMesh TerrainRenderer::computeChunkMesh(int chunkX, int chunkZ) const {
     const int segments = 16;
-    float startX = static_cast<float>(chunkX) * chunkSize;
-    float startZ = static_cast<float>(chunkZ) * chunkSize;
+    float startX = static_cast<float>(chunkX) * chunkSize_;
+    float startZ = static_cast<float>(chunkZ) * chunkSize_;
     
     ChunkMesh mesh;
     mesh.chunkX = chunkX;
@@ -243,8 +243,8 @@ ChunkMesh TerrainRenderer::computeChunkMesh(int chunkX, int chunkZ) const {
     
     for (int z = 0; z <= segments; ++z) {
         for (int x = 0; x <= segments; ++x) {
-            float worldX = startX + static_cast<float>(x) / segments * chunkSize;
-            float worldZ = startZ + static_cast<float>(z) / segments * chunkSize;
+            float worldX = startX + static_cast<float>(x) / segments * chunkSize_;
+            float worldZ = startZ + static_cast<float>(z) / segments * chunkSize_;
             
             float height = getHeight(worldX, worldZ);
             
@@ -258,7 +258,7 @@ ChunkMesh TerrainRenderer::computeChunkMesh(int chunkX, int chunkZ) const {
             float nz = (hD - hU) / (2.0f * dNoise);
             glm::vec3 normal = glm::normalize(glm::vec3(-nx, 1.0f, -nz));
             
-            float height01 = (height - baseHeight) / heightScale;
+            float height01 = (height - baseHeight_) / heightScale_;
             height01 = glm::clamp(height01 * 0.5f + 0.5f, 0.0f, 1.0f);
             // 高度多色渐变：低处褐色 → 中段绿色 → 高处黄绿色
             glm::vec3 lowColor(0.35f, 0.25f, 0.12f);    // 低处：泥土褐色
@@ -309,7 +309,7 @@ ChunkMesh TerrainRenderer::computeChunkMesh(int chunkX, int chunkZ) const {
 // 避免运行时 vkCreateBuffer/vkAllocateMemory 的 GPU 内存分配开销。
 void TerrainRenderer::uploadChunk(const ChunkMesh& mesh) {
     ChunkKey key{mesh.chunkX, mesh.chunkZ};
-    if (chunks.find(key) != chunks.end()) return;
+    if (chunks_.find(key) != chunks_.end()) return;
     
     int slot = acquirePoolSlot();
     if (slot < 0) return;  // 池耗尽，丢弃该区块
@@ -336,12 +336,12 @@ void TerrainRenderer::uploadChunk(const ChunkMesh& mesh) {
     VkDeviceSize indexBufferSize = sizeof(uint32_t) * mesh.indices.size();
     memcpy(poolSlot.indexMappedData, mesh.indices.data(), static_cast<size_t>(indexBufferSize));
     
-    chunks[key] = chunk;
+    chunks_[key] = chunk;
 }
 
 void TerrainRenderer::generateChunk(int chunkX, int chunkZ) {
     ChunkKey key{chunkX, chunkZ};
-    if (chunks.find(key) != chunks.end()) return;
+    if (chunks_.find(key) != chunks_.end()) return;
     ChunkMesh mesh = computeChunkMesh(chunkX, chunkZ);
     uploadChunk(mesh);
 }
@@ -372,8 +372,8 @@ void TerrainRenderer::cleanupChunk(TerrainChunk& chunk) {
 //   maxChunksPerFrame = 4 将单帧负载从 ~314 次同步生成降低到 4 次异步启动，
 //   多数区块在后台线程中静默完成，不会阻塞渲染帧。初始场景约需 3-4 秒渐进加载完毕。
 void TerrainRenderer::update(const glm::vec3& playerPos) {
-    int playerChunkX = static_cast<int>(std::floor(playerPos.x / chunkSize));
-    int playerChunkZ = static_cast<int>(std::floor(playerPos.z / chunkSize));
+    int playerChunkX = static_cast<int>(std::floor(playerPos.x / chunkSize_));
+    int playerChunkZ = static_cast<int>(std::floor(playerPos.z / chunkSize_));
     
     // Phase 1: Process completed async tasks
     for (auto it = pendingChunks_.begin(); it != pendingChunks_.end(); ) {
@@ -387,19 +387,19 @@ void TerrainRenderer::update(const glm::vec3& playerPos) {
     }
     
     // Phase 2: Find chunks that need generation (use generationRadius for preloading)
-    const int candidateCount = (2 * generationRadius + 1) * (2 * generationRadius + 1);
+    const int candidateCount = (2 * generationRadius_ + 1) * (2 * generationRadius_ + 1);
     std::vector<std::pair<int, int>> candidates;
     candidates.reserve(static_cast<size_t>(candidateCount));
-    for (int dz = -generationRadius; dz <= generationRadius; ++dz) {
-        for (int dx = -generationRadius; dx <= generationRadius; ++dx) {
+    for (int dz = -generationRadius_; dz <= generationRadius_; ++dz) {
+        for (int dx = -generationRadius_; dx <= generationRadius_; ++dx) {
             int chunkX = playerChunkX + dx;
             int chunkZ = playerChunkZ + dz;
             
             float dist = std::sqrt(static_cast<float>(dx * dx + dz * dz));
-            if (dist > static_cast<float>(generationRadius)) continue;
+            if (dist > static_cast<float>(generationRadius_)) continue;
             
             ChunkKey key{chunkX, chunkZ};
-            if (chunks.find(key) != chunks.end()) continue;
+            if (chunks_.find(key) != chunks_.end()) continue;
             
             // Check if already pending
             bool alreadyPending = false;
@@ -427,7 +427,7 @@ void TerrainRenderer::update(const glm::vec3& playerPos) {
     
     int launchCount = 0;
     for (const auto& [cX, cZ] : candidates) {
-        if (launchCount >= maxChunksPerFrame) break;
+        if (launchCount >= maxChunksPerFrame_) break;
         
         PendingChunk pending;
         pending.chunkX = cX;
@@ -441,21 +441,21 @@ void TerrainRenderer::update(const glm::vec3& playerPos) {
     
     // Phase 4: Remove chunks outside render radius + margin
     std::vector<ChunkKey> toRemove;
-    toRemove.reserve(chunks.size());
-    for (const auto& pair : chunks) {
+    toRemove.reserve(chunks_.size());
+    for (const auto& pair : chunks_) {
         int dx = pair.first.x - playerChunkX;
         int dz = pair.first.z - playerChunkZ;
         float dist = std::sqrt(static_cast<float>(dx * dx + dz * dz));
-        if (dist > renderRadius + 2) {
+        if (dist > renderRadius_ + 2) {
             toRemove.push_back(pair.first);
         }
     }
     
     for (const auto& key : toRemove) {
-        auto it = chunks.find(key);
-        if (it != chunks.end()) {
+        auto it = chunks_.find(key);
+        if (it != chunks_.end()) {
             cleanupChunk(it->second);
-            chunks.erase(it);
+            chunks_.erase(it);
         }
     }
 }
@@ -466,7 +466,7 @@ void TerrainRenderer::render(VkCommandBuffer commandBuffer, VkPipelineLayout pip
     pushConstants.model = glm::mat4(1.0f);
     pushConstants.view = viewMatrix;
     pushConstants.proj = projectionMatrix;
-    pushConstants.baseColor = terrainColor;
+    pushConstants.baseColor = terrainColor_;
     pushConstants.metallic = 0.0f;
     pushConstants.roughness = 0.35f;
     pushConstants.hasTexture = (terrainTexDescSet_ != VK_NULL_HANDLE) ? 1 : 0;
@@ -481,7 +481,7 @@ void TerrainRenderer::render(VkCommandBuffer commandBuffer, VkPipelineLayout pip
                                 pipelineLayout, 0, 1, &terrainTexDescSet_, 0, nullptr);
     }
     
-    for (const auto& pair : chunks) {
+    for (const auto& pair : chunks_) {
         const auto& chunk = pair.second;
         if (!chunk.isValid) continue;
         

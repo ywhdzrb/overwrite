@@ -74,7 +74,7 @@ struct ChunkMesh {
 
 class TerrainRenderer {
 public:
-    explicit TerrainRenderer(std::shared_ptr<VulkanDevice> device);
+    explicit TerrainRenderer(std::shared_ptr<VulkanDevice> devicePtr);
     ~TerrainRenderer();
 
     void create();
@@ -99,6 +99,8 @@ public:
         float roughness;
         int hasTexture;
         float _pad0;
+        float windTime;      // 累计时间（秒），与 shader.vert/frag 布局一致
+        float windStrength;  // 风场强度（地形为 0）
     };
 
 private:
@@ -151,22 +153,22 @@ private:
     std::vector<BufferPoolSlot> bufferPool_;
     int nextPoolHint_ = 0;  // acquire 的起始搜索位置
 
-    std::shared_ptr<VulkanDevice> device;
+    std::shared_ptr<VulkanDevice> device_;
     
-    std::unordered_map<ChunkKey, TerrainChunk, ChunkKeyHash> chunks;
+    std::unordered_map<ChunkKey, TerrainChunk, ChunkKeyHash> chunks_;
     
-    float chunkSize;
-    int renderRadius;            // 渲染/卸载边界（卸载范围 = renderRadius + 2）
-    int generationRadius;        // 预生成扫描半径（renderRadius + 3，提前生成边界外区块）
-    int maxChunksPerFrame;       // 每帧异步任务上限，削去区块生成峰值
-    float noiseScale;
-    float heightScale;
-    float baseHeight;
-    glm::vec3 terrainColor;
+    float chunkSize_;
+    int renderRadius_;            // 渲染/卸载边界（卸载范围 = renderRadius + 2）
+    int generationRadius_;        // 预生成扫描半径（renderRadius + 3，提前生成边界外区块）
+    int maxChunksPerFrame_;       // 每帧异步任务上限，削去区块生成峰值
+    float noiseScale_;
+    float heightScale_;
+    float baseHeight_;
+    glm::vec3 terrainColor_;
     
     bool created_;
     
-    std::vector<int> perm;       // Perlin 噪声排列表，构造函数初始化后仅读不写
+    std::vector<int> perm_;       // Perlin 噪声排列表，构造函数初始化后仅读不写
     
     // 异步生成队列：Phase 1 消费就绪项，Phase 2 用于去重
     std::vector<PendingChunk> pendingChunks_;
