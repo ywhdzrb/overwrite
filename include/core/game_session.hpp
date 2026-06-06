@@ -198,6 +198,17 @@ private:
     // 背包状态
     bool inventoryOpen_ = false;
 
+    // FPS 统计（原静态局部变量）
+    int fpsFrameCount_ = 0;
+    float fpsTimer_ = 0.0f;
+
+    // 按键状态跟踪（原静态局部变量）
+    bool prevR_ = false;
+    bool prevE_ = false;
+    bool prevEsc_ = false;
+    bool prevFHarvest_ = false;
+    bool prevHotbarKeys_[5] = {false};
+
 public:
     /** @brief 背包是否打开（供 Renderer 绘制 ImGui 窗口） */
     bool isInventoryOpen() const { return inventoryOpen_; }

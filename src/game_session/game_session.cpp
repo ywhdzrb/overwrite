@@ -21,7 +21,6 @@
 #include "ecs/ecs.hpp"
 #include "utils/logger.hpp"
 #include <future>
-#include <iostream>
 
 namespace owengine {
 
@@ -56,7 +55,7 @@ void GameSession::init(const GameSessionInitParams& params) {
     ecsClientWorld_ = std::make_unique<ecs::ClientWorld>();
     ecsClientWorld_->initClientSystems(window_, windowWidth_, windowHeight_);
     ecsClientWorld_->createClientPlayer(windowWidth_, windowHeight_);
-    std::cout << "[GameSession] ECS 系统初始化完成" << std::endl;
+    Logger::info("[GameSession] ECS 系统初始化完成");
 
     // 注入地形高度查询到 ECS 物理系统
     if (terrainHeightQuery_) {
@@ -97,14 +96,12 @@ void GameSession::update(float deltaTime) {
     if (deltaTime > ecs::MAX_DELTA_TIME) deltaTime = ecs::MAX_DELTA_TIME;
 
     // FPS 统计（粗略，用于 HUD 显示）
-    static int frameCount = 0;
-    static float fpsTimer = 0.0f;
-    frameCount++;
-    fpsTimer += deltaTime;
-    if (fpsTimer >= 1.0f) {
-        currentFPS_ = frameCount / fpsTimer;
-        frameCount = 0;
-        fpsTimer = 0.0f;
+    fpsFrameCount_++;
+    fpsTimer_ += deltaTime;
+    if (fpsTimer_ >= 1.0f) {
+        currentFPS_ = fpsFrameCount_ / fpsTimer_;
+        fpsFrameCount_ = 0;
+        fpsTimer_ = 0.0f;
         profLogicMs_ = 0.0;  // reset each second, actual value set per frame
     }
 
@@ -158,10 +155,9 @@ void GameSession::update(float deltaTime) {
 
     // === Phase 6: 飞行模式切换（R 键） ===
     {
-        static bool prevR = false;
         bool curR = glfwGetKey(window_, GLFW_KEY_R) == GLFW_PRESS;
-        if (curR && !prevR) ecsClientWorld_->setPlayerFlying(!ecsClientWorld_->isPlayerFlying());
-        prevR = curR;
+        if (curR && !prevR_) ecsClientWorld_->setPlayerFlying(!ecsClientWorld_->isPlayerFlying());
+        prevR_ = curR;
     }
     ecsClientWorld_->updateFlight(deltaTime,
         glfwGetKey(window_, GLFW_KEY_SPACE) == GLFW_PRESS,
@@ -234,9 +230,8 @@ void GameSession::update(float deltaTime) {
 
     // === Phase 10: 背包开关（E 键） ===
     {
-        static bool prevE = false;
         bool curE = glfwGetKey(window_, GLFW_KEY_E) == GLFW_PRESS;
-        if (curE && !prevE) {
+        if (curE && !prevE_) {
             inventoryOpen_ = !inventoryOpen_;
             // 打开背包时释放鼠标，关闭时恢复捕获
             bool captured = !inventoryOpen_;
@@ -251,14 +246,13 @@ void GameSession::update(float deltaTime) {
                 }
             }
         }
-        prevE = curE;
+        prevE_ = curE;
     }
 
     // === Phase 10.5: ESC 关闭所有界面 ===
     {
-        static bool prevEsc = false;
         bool curEsc = glfwGetKey(window_, GLFW_KEY_ESCAPE) == GLFW_PRESS;
-        if (curEsc && !prevEsc) {
+        if (curEsc && !prevEsc_) {
             bool anyOpen = false;
             if (inventoryOpen_) {
                 inventoryOpen_ = false;
@@ -276,7 +270,7 @@ void GameSession::update(float deltaTime) {
                 }
             }
         }
-        prevEsc = curEsc;
+        prevEsc_ = curEsc;
     }
 
     // === Phase 11: 采集交互（F 键采集，背包打开时不触发） ===
@@ -285,9 +279,8 @@ void GameSession::update(float deltaTime) {
         updateHarvestTarget();
 
         if (!inventoryOpen_) {
-            static bool prevFHarvest = false;
             bool curFHarvest = glfwGetKey(window_, GLFW_KEY_F) == GLFW_PRESS;
-            if (curFHarvest && !prevFHarvest && harvestTarget_.valid) {
+            if (curFHarvest && !prevFHarvest_ && harvestTarget_.valid) {
                 auto harvested = resourceNodeSystem_.harvest(harvestTarget_.position);
                 if (!harvested.isEmpty()) {
                     // 加入玩家背包
@@ -302,13 +295,12 @@ void GameSession::update(float deltaTime) {
                     }
                 }
             }
-            prevFHarvest = curFHarvest;
+            prevFHarvest_ = curFHarvest;
         }
     }
 
     // === Phase 12: 快捷栏选择（数字键 1-5 + 滚轮） ===
     {
-        static bool prevHotbarKeys[5] = {false};
         static const int hotbarKeys[5] = {GLFW_KEY_1, GLFW_KEY_2, GLFW_KEY_3, GLFW_KEY_4, GLFW_KEY_5};
         auto* registry = ecsClientWorld_ ? ecsClientWorld_->getRegistry() : nullptr;
         auto* inv = registry ? registry->try_get<ecs::InventoryComponent>(ecsClientWorld_->getPlayer()) : nullptr;
@@ -317,10 +309,10 @@ void GameSession::update(float deltaTime) {
             // 数字键 1-5 直接选择
             for (int i = 0; i < 5; i++) {
                 bool cur = glfwGetKey(window_, hotbarKeys[i]) == GLFW_PRESS;
-                if (cur && !prevHotbarKeys[i]) {
+                if (cur && !prevHotbarKeys_[i]) {
                     inv->selectedHotbarIndex = static_cast<uint32_t>(i);
                 }
-                prevHotbarKeys[i] = cur;
+                prevHotbarKeys_[i] = cur;
             }
 
             // 滚轮切换（仅在背包关闭时生效，避免与背包内滚动冲突）
@@ -349,11 +341,11 @@ void GameSession::handleNetworkRequests() {
     if (!ecsClientWorld_) return;
 
     if (connectRequested) {
-        std::cout << "[GameSession] 正在连接到 " << serverHost << ":" << serverPort << std::endl;
+        Logger::info("[GameSession] 正在连接到 " + std::string(serverHost) + ":" + std::to_string(serverPort));
         if (ecsClientWorld_->connectToServer(serverHost, static_cast<uint16_t>(serverPort))) {
-            std::cout << "[GameSession] 连接成功" << std::endl;
+            Logger::info("[GameSession] 连接成功");
         } else {
-            std::cerr << "[GameSession] 连接失败" << std::endl;
+            Logger::error("[GameSession] 连接失败");
         }
         connectRequested = false;
     }
@@ -361,7 +353,7 @@ void GameSession::handleNetworkRequests() {
     if (disconnectRequested) {
         ecsClientWorld_->disconnectFromServer();
         disconnectRequested = false;
-        std::cout << "[GameSession] 已断开连接" << std::endl;
+        Logger::info("[GameSession] 已断开连接");
     }
 }
 
