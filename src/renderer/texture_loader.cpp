@@ -32,7 +32,8 @@ std::shared_ptr<Texture> TextureLoader::loadTexture(const std::string& filename,
     
     // 加载图像文件（I/O 操作，锁外执行）
     int width, height, channelCount;
-    unsigned char* pixels = loadImageFile(normalizedPath, &width, &height, &channelCount, 0);
+    // 强制加载为 RGBA（4 通道），因为大部分 Vulkan 驱动不支持 VK_FORMAT_R8G8B8_SRGB
+    unsigned char* pixels = loadImageFile(normalizedPath, &width, &height, &channelCount, 4);
     
     if (pixels == nullptr) {
         Logger::error("Failed to load texture: " + normalizedPath);
@@ -236,6 +237,12 @@ unsigned char* TextureLoader::loadImageFile(const std::string& filename,
     if (pixels == nullptr) {
         Logger::error("Failed to load image file: " + filename);
         return nullptr;
+    }
+    
+    // stbi_load 的 channelCount 返回的是原始文件的通道数
+    // 当指定了 desiredChannels（非0）时，实际返回的数据有 desiredChannels 个通道
+    if (desiredChannels != 0) {
+        *channelCount = desiredChannels;
     }
     
     return pixels;
