@@ -1,7 +1,7 @@
 #pragma once
 
 /**
- * @file renderer.h
+ * @file renderer.hpp
  * @brief 纯渲染编排器 — Vulkan 管线生命周期、帧缓冲、命令缓冲录制、渲染子系统调度
  *
  * 归属模块：renderer
@@ -170,6 +170,10 @@ private:
     // ========== 帧索引 ==========
     uint32_t currentFrame_ = 0;
     bool framebufferResized_ = false;
+
+    // ========== 输入状态跟踪（原静态局部变量） ==========
+    // 背包打开/关闭首帧检测，用于在 ImGui NewFrame 前同步鼠标位置
+    bool prevInvOpen_ = false;
 
     // ========== 描述符资源 ==========
     VkDescriptorSetLayout textureDescriptorSetLayout_ = VK_NULL_HANDLE;

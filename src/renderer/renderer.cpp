@@ -12,7 +12,6 @@
 #include "utils/asset_paths.hpp"
 #include <nlohmann/json.hpp>
 #include <fstream>
-#include <iostream>
 #include <stdexcept>
 #include <set>
 #include <algorithm>
@@ -99,7 +98,7 @@ void Renderer::initVulkan() {
         msaaSamples_ = maxMsaaSamples_;
     }
     
-    std::cout << "[Renderer] 设备支持的最大 MSAA: " << maxMsaaSamples_ << std::endl;
+    Logger::info("[Renderer] 设备支持的最大 MSAA: " + std::to_string(maxMsaaSamples_));
     
     // FSR1 开启时禁用 MSAA（低分辨率无需抗锯齿，也避免 resolve 不匹配）
     if (fsrScale_ < 1.0f) {
@@ -324,7 +323,7 @@ void Renderer::initVulkan() {
 }
 
 void Renderer::mainLoop() {
-    auto lastTime_ = std::chrono::high_resolution_clock::now();
+    auto lastTime = std::chrono::high_resolution_clock::now();
     
     // 第一帧后捕获鼠标，确保窗口已经显示
     bool firstFrame = true;
@@ -342,8 +341,8 @@ void Renderer::mainLoop() {
         
         // 计算delta time
         auto currentTime = frameStartTime;
-        float deltaTime = std::chrono::duration<float>(currentTime - lastTime_).count();
-        lastTime_ = currentTime;
+        float deltaTime = std::chrono::duration<float>(currentTime - lastTime).count();
+        lastTime = currentTime;
         
         // 限制delta time以防卡顿
         if (deltaTime > ecs::MAX_DELTA_TIME) {
@@ -374,14 +373,13 @@ void Renderer::mainLoop() {
         // GLFW_CURSOR_DISABLED 模式下光标回调报告相对增量，
         // 切换到 NORMAL 后 ImGui 的 io.MousePos 可能仍有旧坐标。
         // 必须在 NewFrame() 之前设置，否则 AddMousePosEvent 会排队到下一帧。
-        static bool s_prevInvOpen = false;
-        bool invJustOpened = gameSession_ && gameSession_->isInventoryOpen() && !s_prevInvOpen;
+        bool invJustOpened = gameSession_ && gameSession_->isInventoryOpen() && !prevInvOpen_;
         if (invJustOpened) {
             double mx, my;
             glfwGetCursorPos(window_, &mx, &my);
             ImGui::GetIO().AddMousePosEvent(static_cast<float>(mx), static_cast<float>(my));
         }
-        s_prevInvOpen = gameSession_ ? gameSession_->isInventoryOpen() : false;
+        prevInvOpen_ = gameSession_ ? gameSession_->isInventoryOpen() : false;
 
         // === ImGui 新帧 + HUD ===
         imguiManager_->newFrame();
@@ -562,7 +560,7 @@ void Renderer::mainLoop() {
                 }
             }
         } else {
-            s_prevInvOpen = false;
+            prevInvOpen_ = false;
         }
 
         // === 更新游戏逻辑（委托给 GameSession） ===
@@ -589,9 +587,9 @@ void Renderer::mainLoop() {
         fpsTimer += deltaTime;
         if (fpsTimer >= 1.0f) {
             float fps = float(frameCount) / fpsTimer;
-            std::cout << "[Renderer] FPS: " << (int)fps
-                      << " D=" << (int)profDrawMs_
-                      << " G=" << (int)profGPUMs_ << "ms" << std::endl;
+            Logger::info(std::string("[Renderer] FPS: ") + std::to_string((int)fps)
+                      + " D=" + std::to_string((int)profDrawMs_)
+                      + " G=" + std::to_string((int)profGPUMs_) + "ms");
             frameCount = 0;
             fpsTimer = 0.0f;
             minFrameTime_ = 999.0f;
@@ -716,7 +714,7 @@ void Renderer::drawFrame() {
     }
 
     // === 更新昼夜循环太阳方向 ===
-    {
+    if (gameConfig_.renderer.dayNightCycle) {
         // 太阳在 XZ 平面圆形轨道上运动，Y 轴为正弦波（-1~+1）
         float angle = (dayTime_ / dayCyclePeriod_) * 2.0f * glm::pi<float>();
         glm::vec3 sunDir(
@@ -746,6 +744,23 @@ void Renderer::drawFrame() {
             grassSystem_->setGlobalLightDir(sunDir);
             grassSystem_->setLightIntensity(dayFactor);
             grassSystem_->setAmbientColor(lightManager_->getAmbient());
+        }
+    } else {
+        // 昼夜循环关闭：使用配置文件中的固定方向
+        glm::vec3 fixedDir = gameConfig_.renderer.sunDirection;
+        float dayFactor = 1.0f;
+        if (lightManager_) {
+            Light* sunLight = lightManager_->getLightByName("sun");
+            if (sunLight) {
+                sunLight->setDirection(-fixedDir);
+                sunLight->setIntensity(1.0f);
+                lightManager_->setAmbientIntensity(0.5f);
+            }
+        }
+        if (grassSystem_) {
+            grassSystem_->setGlobalLightDir(fixedDir);
+            grassSystem_->setLightIntensity(1.0f);
+            if (lightManager_) grassSystem_->setAmbientColor(lightManager_->getAmbient());
         }
     }
 
@@ -881,13 +896,13 @@ void Renderer::drawFrame() {
     VkResult submitResult = vkQueueSubmit(vulkanDevice_->getGraphicsQueue(), 1, &submitInfo, syncObjects_->getInFlightFences()[currentFrame_]);
     if (submitResult != VK_SUCCESS) {
         // 打印详细的错误码
-        std::cerr << "[Renderer] vkQueueSubmit failed with error code: " << submitResult << std::endl;
+        Logger::error("[Renderer] vkQueueSubmit failed with error code: " + std::to_string(submitResult));
         if (submitResult == VK_ERROR_DEVICE_LOST) {
-            std::cerr << "[Renderer] VK_ERROR_DEVICE_LOST - GPU device lost!" << std::endl;
+            Logger::error("[Renderer] VK_ERROR_DEVICE_LOST - GPU device lost!");
         } else if (submitResult == VK_ERROR_OUT_OF_DEVICE_MEMORY) {
-            std::cerr << "[Renderer] VK_ERROR_OUT_OF_DEVICE_MEMORY - Out of device memory!" << std::endl;
+            Logger::error("[Renderer] VK_ERROR_OUT_OF_DEVICE_MEMORY - Out of device memory!");
         } else if (submitResult == VK_ERROR_OUT_OF_HOST_MEMORY) {
-            std::cerr << "[Renderer] VK_ERROR_OUT_OF_HOST_MEMORY - Out of host memory!" << std::endl;
+            Logger::error("[Renderer] VK_ERROR_OUT_OF_HOST_MEMORY - Out of host memory!");
         }
         
         // 如果窗口正在关闭，不抛出异常，直接返回
@@ -1405,8 +1420,8 @@ SceneConfig Renderer::loadSceneConfig(const std::string& configFile) {
         }
         
         // 加载模型配置
-        if (j.contains("models_") && j["models_"].is_array()) {
-            for (const auto& item : j["models_"]) {
+        if (j.contains("models") && j["models"].is_array()) {
+            for (const auto& item : j["models"]) {
                 ModelConfig config;
                 config.id = item.value("id", "");
                 config.file = item.value("file", "");
