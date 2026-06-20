@@ -290,6 +290,10 @@ void Renderer::initVulkan() {
         grassSystem_->setGlobalLightDir(sunLight->getDirection());
     }
 
+    // 初始化体积云系统（在所有不透明渲染系统之后，GameSession之前）
+    // 云层位于 Y=80~120m 高空，透明度混合叠加
+    cloudSystem_ = std::make_unique<CloudSystem>(vulkanDevice_);
+    cloudSystem_->init(renderPass_->getRenderPass(), swapchain_->getExtent(), msaaSamples_);
 
     // 初始化 ImGui
     imguiManager_ = std::make_unique<ImGuiManager>(vulkanDevice_, swapchain_, renderPass_, window_, vulkanInstance_->getInstance(), msaaSamples_);
@@ -454,6 +458,29 @@ void Renderer::mainLoop() {
             }
         }
 
+        // === 云调试面板（F6 切换） ===
+        if (ImGui::IsKeyPressed(ImGuiKey_F6)) {
+            showCloudDebug_ = !showCloudDebug_;
+        }
+        if (showCloudDebug_ && cloudSystem_) {
+            auto cp = cloudSystem_->getDebugParams();
+            ImGui::Begin("云渲染调试", &showCloudDebug_, ImGuiWindowFlags_NoCollapse);
+            ImGui::Text("--- 密度参数 ---");
+            ImGui::SliderFloat("覆盖率", cp.coverage, 0.0f, 1.0f, "%.2f");
+            ImGui::SliderFloat("密度倍率", cp.densityMultiplier, 0.0f, 5.0f, "%.1f");
+            ImGui::SliderInt("步进次数", reinterpret_cast<int*>(cp.stepCountFloat), 16, 160);
+            ImGui::Text("--- 风动画 ---");
+            ImGui::SliderFloat("风速", cp.windSpeed, 0.0f, 2.0f, "%.2f");
+            ImGui::Text("--- 薄云层 ---");
+            ImGui::Checkbox("启用薄云", cp.thinCloudEnabled);
+            ImGui::SliderFloat("薄云高度", cp.thinCloudHeight, 120.0f, 300.0f, "%.0f");
+            ImGui::SliderFloat("薄云密度", cp.thinCloudDensity, 0.0f, 1.0f, "%.2f");
+            ImGui::Text("--- 光照 ---");
+            ImGui::SliderFloat("太阳强度", cp.sunIntensity, 0.0f, 3.0f, "%.1f");
+            ImGui::Checkbox("昼夜循环", cp.dayNightEnabled);
+            ImGui::End();
+        }
+
         // === 背包 ImGui 窗口 ===
         if (gameSession_ && gameSession_->isInventoryOpen()) {
 
@@ -573,6 +600,14 @@ void Renderer::mainLoop() {
         dayTime_ += deltaTime;
         if (dayTime_ >= dayCyclePeriod_) {
             dayTime_ -= dayCyclePeriod_;
+        }
+
+        // === 更新体积云（使用当前太阳方向） ===
+        if (cloudSystem_) {
+            Camera* cam = gameSession_ ? gameSession_->getCamera() : nullptr;
+            if (cam) {
+                cloudSystem_->update(deltaTime, *cam, gameConfig_.renderer.sunDirection);
+            }
         }
 
         // === 渲染帧 ===
@@ -729,6 +764,9 @@ void Renderer::drawFrame() {
         float elevation = sunDir.y;
         float dayFactor = glm::clamp((elevation + 0.2f) / 0.5f, 0.0f, 1.0f);
 
+        // 传递昼夜因子到体积云系统
+        if (cloudSystem_) cloudSystem_->setDayFactor(dayFactor);
+
         // 更新场景平行光方向和强度（使用 light-to-scene 方向）
         if (lightManager_) {
             Light* sunLight = lightManager_->getLightByName("sun");
@@ -749,6 +787,7 @@ void Renderer::drawFrame() {
         // 昼夜循环关闭：使用配置文件中的固定方向
         glm::vec3 fixedDir = gameConfig_.renderer.sunDirection;
         float dayFactor = 1.0f;
+        if (cloudSystem_) cloudSystem_->setDayFactor(dayFactor);
         if (lightManager_) {
             Light* sunLight = lightManager_->getLightByName("sun");
             if (sunLight) {
@@ -844,7 +883,12 @@ void Renderer::drawFrame() {
             }
         }
     }
-    
+
+    // 渲染体积云（透明度混合叠加，在所有不透明物体之后）
+    if (cloudSystem_ && cloudSystem_->isInitialized()) {
+        cloudSystem_->render(commandBuffer, *cam, gameConfig_.renderer.sunDirection);
+    }
+
     // 渲染 ImGui
     imguiManager_->render(commandBuffer);
     
@@ -1051,6 +1095,8 @@ void Renderer::cleanup() {
     stoneSystem_.reset();
     // 清理草丛系统
     grassSystem_.reset();
+    // 清理体积云系统
+    cloudSystem_.reset();
     // 清理 FSR1 管线
     fsr1Pass_.reset();
 

@@ -44,6 +44,7 @@
 #include "core/resource_manager.hpp"
 #include "core/game_config.hpp"
 #include "renderer/fsr1_pass.hpp"
+#include "renderer/cloud_system.hpp"
 
 // 前向声明：游戏会话（Renderer 不拥有游戏逻辑，仅通过指针读取渲染所需数据）
 namespace owengine { class GameSession; }
@@ -143,6 +144,9 @@ private:
     std::unique_ptr<class GrassSystem> grassSystem_;
     std::unique_ptr<class Fsr1Pass> fsr1Pass_;
 
+    // 体积云系统（在所有不透明物体之后、ImGui之前渲染）
+    std::unique_ptr<class CloudSystem> cloudSystem_;
+
     // ========== 游戏会话 ==========
     std::unique_ptr<GameSession> ownedGameSession_;  // 内部创建时持有
     GameSession* gameSession_ = nullptr;             // 始终指向活跃会话
@@ -174,6 +178,9 @@ private:
     // ========== 输入状态跟踪（原静态局部变量） ==========
     // 背包打开/关闭首帧检测，用于在 ImGui NewFrame 前同步鼠标位置
     bool prevInvOpen_ = false;
+
+    // ========== 云 ImGui 调试面板 ==========
+    bool showCloudDebug_ = false;
 
     // ========== 描述符资源 ==========
     VkDescriptorSetLayout textureDescriptorSetLayout_ = VK_NULL_HANDLE;

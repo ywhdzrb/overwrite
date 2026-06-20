@@ -42,6 +42,11 @@ inline constexpr const char* GRASS_VERT_SHADER = "shaders/grass.vert.spv";
 /** @brief 草地片段着色器 */
 inline constexpr const char* GRASS_FRAG_SHADER = "shaders/grass.frag.spv";
 
+/** @brief 体积云顶点着色器（全屏四边形） */
+inline constexpr const char* CLOUD_VERT_SHADER = "shaders/cloud.vert.spv";
+/** @brief 体积云片段着色器（Ray Marching） */
+inline constexpr const char* CLOUD_FRAG_SHADER = "shaders/cloud.frag.spv";
+
 /** @brief FSR1 EASU 计算着色器 */
 inline constexpr const char* FSR1_EASU_SHADER = "shaders/fsr1_easu.comp.spv";
 

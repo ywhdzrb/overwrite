@@ -65,3 +65,5 @@ build-ci/
 *.tar.xz
 
 dashboard.png
+
+AGENTS.md
