@@ -44,7 +44,6 @@ const float CAULI_STR     = 0.18;     // 花椰菜强度（0.18，减小颗粒�
 const float EROSION_STR   = 0.8;      // 侵蚀强度（越大边缘越破碎）
 const float HG_G          = 0.6;      // HG散射非对称因子
 const float EXTINCTION    = 0.5;      // 消光系数
-const int   LIGHT_STEPS   = 4;        // 光照步进次数（IGN抖动+输出抖动分担抗锯齿，4步足矣）
 const float LIGHT_STEP_SZ = 10.0;     // 光照单步步长（保持10m，避免单步光学厚度过大导致云体过暗）
 
 
@@ -346,10 +345,11 @@ float getCloudDensity(vec3 pos, vec3 windOffset,
  * viewHorizon 继承自主射线的值，确保云顶边界一致性。
  */
 float lightMarch(vec3 origin, vec3 sunDir, vec3 windOffset,
-                 float cloudMin, float cloudMax, float viewHorizon) {
+                 float cloudMin, float cloudMax, float viewHorizon,
+                 int lightSteps) {
     float totalDensity = 0.0;
     vec3 pos = origin;
-    for (int i = 0; i < LIGHT_STEPS; i++) {
+    for (int i = 0; i < lightSteps; i++) {
         pos += sunDir * LIGHT_STEP_SZ;
         totalDensity += getCloudDensity(pos, windOffset, cloudMin, cloudMax, viewHorizon)
                       * LIGHT_STEP_SZ;
@@ -404,7 +404,12 @@ void main() {
     vec2 windDir = vec2(cos(windAngle), sin(windAngle));
     vec3 windOffset = time * windSpeed * vec3(windDir.x, 0.0, windDir.y);
 
-    int stepCount = int(push.params.x + 0.5);
+    // ========== 5b. 从 params.x 解码主步进次数和光照步进次数 ==========
+    // params.x = stepCount + lightSteps * 0.001（见 C++ CloudSystem::render 编码）
+    float rawPC = push.params.x;
+    int stepCount = int(rawPC);
+    int lightSteps = int(round((rawPC - float(stepCount)) * 1000.0 + 0.001));
+    lightSteps = max(min(lightSteps, 8), 1);
     stepCount = max(min(stepCount, 128), 8);
     float stepSize = (tMax - tMin) / float(stepCount);
 
@@ -418,6 +423,15 @@ void main() {
 
     vec3 sunDir = normalize(push.sunDir_dayFactor.xyz);
     float dayFactor = push.sunDir_dayFactor.w;
+
+    // 隔步光照复用：每2步计算一次 lightMarch，中间步进复用上次结果
+    // 光照在云中是缓变函数，间隔~20m的两次采样差异很小，肉眼不可察觉
+    float lastLightTrans = 1.0;
+    int lightStepCounter = 0;
+
+    // 薄云层高度（params.w < 0 时禁用）
+    float thinCloudHeight = push.params.w;
+    bool thinCloudActive = thinCloudHeight > cloudMin + 20.0;
 
     // ========== 6. Ray Marching 主循环 ==========
     for (int i = 0; i < stepCount; i++) {
@@ -439,9 +453,8 @@ void main() {
         // ========== 薄云层（高空卷云） ==========
         // 在params.w设定的高度上，叠加一层稀疏的卷云-like薄云
         // 使用独立的噪声采样，不受主密度模型覆盖/侵蚀影响
-        float thinCloudHeight = push.params.w;
-        // 主云层已接近不透明时跳过薄云（减少无谓计算）
-        if (thinCloudHeight > cloudMin + 20.0 && pos.y > cloudMin && density < 0.95) {
+        // ① 提前检查垂直距离：仅当在薄云层 ±30m 范围内才计算
+        if (thinCloudActive && abs(pos.y - thinCloudHeight) < 30.0 && density < 0.95) {
             vec3 tp = pos + windOffset * 0.3;
             float tn1 = valueNoise3D(tp * 0.002 + 200.0);
             float tn2 = valueNoise3D(tp * 0.005 + 300.0);
@@ -471,8 +484,16 @@ void main() {
             float extScale = 1.0 + 0.25 * viewUp;
             float sampleTrans = exp(-density * stepSize * EXTINCTION * extScale);
 
-            // 光照步进
-            float lightTrans = lightMarch(pos, sunDir, windOffset, cloudMin, cloudMax, viewHorizon);
+            // 隔步光照复用：每2次密度采样才做一次光照步进
+            // lightStepCounter 仅在有密度的步进中递增，保证光照始终在最近的有效位置计算
+            bool doLightMarch_ = (lightStepCounter % 2 == 0);
+            if (doLightMarch_) {
+                lastLightTrans = lightMarch(pos, sunDir, windOffset,
+                                            cloudMin, cloudMax, viewHorizon,
+                                            lightSteps);
+            }
+            lightStepCounter++;
+            float lightTrans = lastLightTrans;
 
             // HG相位函数
             float cosAngle = dot(worldDir, sunDir);

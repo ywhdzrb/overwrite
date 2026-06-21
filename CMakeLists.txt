@@ -256,6 +256,7 @@ set(SHADER_SOURCES
     shaders/fsr1_rcas.comp
     shaders/cloud.vert
     shaders/cloud.frag
+    shaders/cloud_composite.frag
 )
 
 foreach(shader_file ${SHADER_SOURCES})

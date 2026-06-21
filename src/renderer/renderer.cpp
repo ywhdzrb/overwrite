@@ -292,8 +292,15 @@ void Renderer::initVulkan() {
 
     // 初始化体积云系统（在所有不透明渲染系统之后，GameSession之前）
     // 云层位于 Y=80~120m 高空，透明度混合叠加
+    // 启用半分辨率渲染（halfRes=true），先渲染到½尺寸颜色附件，再上采样合成到主场景
     cloudSystem_ = std::make_unique<CloudSystem>(vulkanDevice_);
-    cloudSystem_->init(renderPass_->getRenderPass(), swapchain_->getExtent(), msaaSamples_);
+    cloudSystem_->init(renderPass_->getRenderPass(), swapchain_->getExtent(), msaaSamples_,
+                       true, swapchain_->getImageFormat());
+
+    // 初始化云合成管线资源（半分辨率上采样用）
+    if (cloudSystem_ && cloudSystem_->isHalfResEnabled()) {
+        createCloudCompositeResources();
+    }
 
     // 初始化 ImGui
     imguiManager_ = std::make_unique<ImGuiManager>(vulkanDevice_, swapchain_, renderPass_, window_, vulkanInstance_->getInstance(), msaaSamples_);
@@ -649,6 +656,343 @@ void Renderer::mainLoop() {
     vkDeviceWaitIdle(vulkanDevice_->getDevice());
 }
 
+// ============================================================
+// 半分辨率云合成管线资源
+// ============================================================
+
+void Renderer::createCloudCompositeResources() {
+    VkDevice dev = vulkanDevice_->getDevice();
+    VkFormat swapchainFormat = swapchain_->getImageFormat();
+
+    // --- 创建合成渲染通道（与主渲染通道结构兼容：color + depth） ---
+    // 为了与 ImGui 管线兼容，必须保持相同的附件数量、格式和采样数。
+    // color: 与 swapchain 格式一致；depth: D32_SFLOAT，DONT_CARE（ImGui不写深度）
+    VkAttachmentDescription colorAtt{};
+    colorAtt.format = swapchainFormat;
+    colorAtt.samples = VK_SAMPLE_COUNT_1_BIT;
+    colorAtt.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;       // 保留已有场景内容
+    colorAtt.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    colorAtt.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    colorAtt.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    colorAtt.initialLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    colorAtt.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+
+    VkAttachmentDescription depthAtt{};
+    depthAtt.format = VK_FORMAT_D32_SFLOAT;
+    depthAtt.samples = VK_SAMPLE_COUNT_1_BIT;
+    depthAtt.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;        // 从主渲染通道加载深度缓冲实现遮挡
+    depthAtt.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    depthAtt.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    depthAtt.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    depthAtt.initialLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+    depthAtt.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
+    std::vector<VkAttachmentDescription> attachments = {colorAtt, depthAtt};
+
+    VkAttachmentReference colorRef{};
+    colorRef.attachment = 0;
+    colorRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
+    VkAttachmentReference depthRef{};
+    depthRef.attachment = 1;
+    depthRef.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
+    VkSubpassDescription subpass{};
+    subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+    subpass.colorAttachmentCount = 1;
+    subpass.pColorAttachments = &colorRef;
+    subpass.pDepthStencilAttachment = &depthRef;
+
+    VkSubpassDependency dep{};
+    dep.srcSubpass = VK_SUBPASS_EXTERNAL;
+    dep.dstSubpass = 0;
+    dep.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
+                     | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+    dep.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
+                     | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+    dep.srcAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+    dep.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT
+                      | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
+
+    VkRenderPassCreateInfo rpCi{};
+    rpCi.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+    rpCi.attachmentCount = static_cast<uint32_t>(attachments.size());
+    rpCi.pAttachments = attachments.data();
+    rpCi.subpassCount = 1;
+    rpCi.pSubpasses = &subpass;
+    rpCi.dependencyCount = 1;
+    rpCi.pDependencies = &dep;
+
+    if (vkCreateRenderPass(dev, &rpCi, nullptr, &cloudCompositeRenderPass_) != VK_SUCCESS) {
+        throw std::runtime_error("[Renderer] 创建云合成渲染通道失败");
+    }
+
+    // --- 创建合成管线布局 ---
+    VkDescriptorSetLayoutBinding samplerBinding{};
+    samplerBinding.binding = 0;
+    samplerBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    samplerBinding.descriptorCount = 1;
+    samplerBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+    samplerBinding.pImmutableSamplers = nullptr;
+
+    VkDescriptorSetLayoutCreateInfo dsLayoutCi{};
+    dsLayoutCi.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    dsLayoutCi.bindingCount = 1;
+    dsLayoutCi.pBindings = &samplerBinding;
+
+    if (vkCreateDescriptorSetLayout(dev, &dsLayoutCi, nullptr, &cloudCompositeDSLayout_) != VK_SUCCESS) {
+        throw std::runtime_error("[Renderer] 创建云合成描述符集布局失败");
+    }
+
+    VkPushConstantRange pcRange{};
+    pcRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+    pcRange.offset = 0;
+    pcRange.size = sizeof(glm::vec2) * 2;  // 最多传 2 个 vec2（UV偏移/缩放）
+
+    VkPipelineLayoutCreateInfo plCi{};
+    plCi.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+    plCi.setLayoutCount = 1;
+    plCi.pSetLayouts = &cloudCompositeDSLayout_;
+    plCi.pushConstantRangeCount = 0;  // 不强制需要 push constant
+    plCi.pPushConstantRanges = nullptr;
+
+    if (vkCreatePipelineLayout(dev, &plCi, nullptr, &cloudCompositePipelineLayout_) != VK_SUCCESS) {
+        throw std::runtime_error("[Renderer] 创建云合成管线布局失败");
+    }
+
+    // --- 创建描述符池 ---
+    VkDescriptorPoolSize poolSize{};
+    poolSize.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    poolSize.descriptorCount = 1;
+
+    VkDescriptorPoolCreateInfo dpCi{};
+    dpCi.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+    dpCi.poolSizeCount = 1;
+    dpCi.pPoolSizes = &poolSize;
+    dpCi.maxSets = 1;
+
+    if (vkCreateDescriptorPool(dev, &dpCi, nullptr, &cloudCompositeDSPool_) != VK_SUCCESS) {
+        throw std::runtime_error("[Renderer] 创建云合成描述符池失败");
+    }
+
+    // --- 分配和更新描述符集（绑定半分辨率云纹理） ---
+    VkDescriptorSetAllocateInfo dsAi{};
+    dsAi.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+    dsAi.descriptorPool = cloudCompositeDSPool_;
+    dsAi.descriptorSetCount = 1;
+    dsAi.pSetLayouts = &cloudCompositeDSLayout_;
+
+    if (vkAllocateDescriptorSets(dev, &dsAi, &cloudCompositeDS_) != VK_SUCCESS) {
+        throw std::runtime_error("[Renderer] 分配云合成描述符集失败");
+    }
+
+    // 更新描述符集：绑定半分辨率云纹理
+    VkDescriptorImageInfo cloudImageInfo{};
+    cloudImageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    cloudImageInfo.imageView = cloudSystem_->getHalfResImageView();
+    cloudImageInfo.sampler = cloudSystem_->getHalfResSampler();
+
+    VkWriteDescriptorSet writeDs{};
+    writeDs.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    writeDs.dstSet = cloudCompositeDS_;
+    writeDs.dstBinding = 0;
+    writeDs.dstArrayElement = 0;
+    writeDs.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    writeDs.descriptorCount = 1;
+    writeDs.pImageInfo = &cloudImageInfo;
+
+    vkUpdateDescriptorSets(dev, 1, &writeDs, 0, nullptr);
+
+    // --- 创建合成管线（全屏四边形，alpha混合采样云纹理） ---
+    auto loadShader = [&](const std::string& path) -> VkShaderModule {
+        std::ifstream file(path, std::ios::binary | std::ios::ate);
+        if (!file.is_open()) throw std::runtime_error("无法加载着色器: " + path);
+        size_t size = file.tellg();
+        std::vector<char> buffer(size);
+        file.seekg(0);
+        file.read(buffer.data(), size);
+        file.close();
+
+        VkShaderModuleCreateInfo ci{};
+        ci.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+        ci.codeSize = size;
+        ci.pCode = reinterpret_cast<const uint32_t*>(buffer.data());
+
+        VkShaderModule module;
+        if (vkCreateShaderModule(dev, &ci, nullptr, &module) != VK_SUCCESS) {
+            throw std::runtime_error("创建着色器模块失败: " + path);
+        }
+        return module;
+    };
+
+    VkShaderModule vertModule = loadShader("shaders/cloud.vert.spv");
+    VkShaderModule fragModule = loadShader("shaders/cloud_composite.frag.spv");
+
+    VkPipelineShaderStageCreateInfo vertStage{};
+    vertStage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    vertStage.stage = VK_SHADER_STAGE_VERTEX_BIT;
+    vertStage.module = vertModule;
+    vertStage.pName = "main";
+
+    VkPipelineShaderStageCreateInfo fragStage{};
+    fragStage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    fragStage.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+    fragStage.module = fragModule;
+    fragStage.pName = "main";
+
+    VkPipelineShaderStageCreateInfo stages[] = {vertStage, fragStage};
+
+    VkPipelineVertexInputStateCreateInfo vi{};
+    vi.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+    vi.vertexBindingDescriptionCount = 0;
+    vi.vertexAttributeDescriptionCount = 0;
+
+    VkPipelineInputAssemblyStateCreateInfo ia{};
+    ia.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+    ia.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP;
+    ia.primitiveRestartEnable = VK_FALSE;
+
+    VkExtent2D fullExt = swapchain_->getExtent();
+    VkViewport vp{};
+    vp.x = 0.0f; vp.y = 0.0f;
+    vp.width = static_cast<float>(fullExt.width);
+    vp.height = static_cast<float>(fullExt.height);
+    vp.minDepth = 0.0f; vp.maxDepth = 1.0f;
+
+    VkRect2D sc{};
+    sc.offset = {0, 0};
+    sc.extent = fullExt;
+
+    VkPipelineViewportStateCreateInfo vpState{};
+    vpState.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+    vpState.viewportCount = 1;
+    vpState.pViewports = &vp;
+    vpState.scissorCount = 1;
+    vpState.pScissors = &sc;
+
+    VkPipelineRasterizationStateCreateInfo raster{};
+    raster.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+    raster.polygonMode = VK_POLYGON_MODE_FILL;
+    raster.cullMode = VK_CULL_MODE_NONE;
+    raster.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+    raster.lineWidth = 1.0f;
+
+    VkPipelineMultisampleStateCreateInfo ms{};
+    ms.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+    ms.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+
+    // 深度测试：对深度缓冲启用 LESS 比较，使近处不透明物体遮挡云
+    VkPipelineDepthStencilStateCreateInfo ds{};
+    ds.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+    ds.depthTestEnable = VK_TRUE;
+    ds.depthWriteEnable = VK_FALSE;
+    ds.depthCompareOp = VK_COMPARE_OP_LESS;
+    ds.depthBoundsTestEnable = VK_FALSE;
+    ds.stencilTestEnable = VK_FALSE;
+
+    // Alpha 混合：src * srcAlpha + dst * (1 - srcAlpha)
+    VkPipelineColorBlendAttachmentState cbAtt{};
+    cbAtt.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
+                           VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+    cbAtt.blendEnable = VK_TRUE;
+    cbAtt.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
+    cbAtt.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+    cbAtt.colorBlendOp = VK_BLEND_OP_ADD;
+    cbAtt.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+    cbAtt.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
+    cbAtt.alphaBlendOp = VK_BLEND_OP_ADD;
+
+    VkPipelineColorBlendStateCreateInfo cb{};
+    cb.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+    cb.attachmentCount = 1;
+    cb.pAttachments = &cbAtt;
+
+    VkGraphicsPipelineCreateInfo pi{};
+    pi.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+    pi.stageCount = 2;
+    pi.pStages = stages;
+    pi.pVertexInputState = &vi;
+    pi.pInputAssemblyState = &ia;
+    pi.pViewportState = &vpState;
+    pi.pRasterizationState = &raster;
+    pi.pMultisampleState = &ms;
+    pi.pDepthStencilState = &ds;
+    pi.pColorBlendState = &cb;
+    pi.layout = cloudCompositePipelineLayout_;
+    pi.renderPass = cloudCompositeRenderPass_;
+    pi.subpass = 0;
+
+    if (vkCreateGraphicsPipelines(dev, VK_NULL_HANDLE, 1, &pi, nullptr,
+                                   &cloudCompositePipeline_) != VK_SUCCESS) {
+        throw std::runtime_error("[Renderer] 创建云合成管线失败");
+    }
+
+    vkDestroyShaderModule(dev, vertModule, nullptr);
+    vkDestroyShaderModule(dev, fragModule, nullptr);
+
+    // --- 创建合成帧缓冲（每张 swapchain 图像一个） ---
+    VkImageView depthView = vulkanDevice_->getDepthImageView();
+    size_t imageCount = swapchain_->getImageViews().size();
+    cloudCompositeFramebuffers_.resize(imageCount);
+
+    for (size_t i = 0; i < imageCount; ++i) {
+        std::vector<VkImageView> fbAttachments = {
+            swapchain_->getImageViews()[i],
+            depthView
+        };
+
+        VkFramebufferCreateInfo fbCi{};
+        fbCi.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+        fbCi.renderPass = cloudCompositeRenderPass_;
+        fbCi.attachmentCount = static_cast<uint32_t>(fbAttachments.size());
+        fbCi.pAttachments = fbAttachments.data();
+        fbCi.width = fullExt.width;
+        fbCi.height = fullExt.height;
+        fbCi.layers = 1;
+
+        if (vkCreateFramebuffer(dev, &fbCi, nullptr, &cloudCompositeFramebuffers_[i]) != VK_SUCCESS) {
+            throw std::runtime_error("[Renderer] 创建云合成帧缓冲失败");
+        }
+    }
+
+    Logger::info("[Renderer] 云合成管线资源创建完成");
+}
+
+void Renderer::cleanupCloudCompositeResources() {
+    VkDevice dev = vulkanDevice_->getDevice();
+
+    if (cloudCompositePipeline_ != VK_NULL_HANDLE) {
+        vkDestroyPipeline(dev, cloudCompositePipeline_, nullptr);
+        cloudCompositePipeline_ = VK_NULL_HANDLE;
+    }
+    if (cloudCompositePipelineLayout_ != VK_NULL_HANDLE) {
+        vkDestroyPipelineLayout(dev, cloudCompositePipelineLayout_, nullptr);
+        cloudCompositePipelineLayout_ = VK_NULL_HANDLE;
+    }
+    if (cloudCompositeDSLayout_ != VK_NULL_HANDLE) {
+        vkDestroyDescriptorSetLayout(dev, cloudCompositeDSLayout_, nullptr);
+        cloudCompositeDSLayout_ = VK_NULL_HANDLE;
+    }
+    if (cloudCompositeDSPool_ != VK_NULL_HANDLE) {
+        vkDestroyDescriptorPool(dev, cloudCompositeDSPool_, nullptr);
+        cloudCompositeDSPool_ = VK_NULL_HANDLE;
+    }
+    // 描述符集由池自动释放
+    cloudCompositeDS_ = VK_NULL_HANDLE;
+
+    for (auto fb : cloudCompositeFramebuffers_) {
+        if (fb != VK_NULL_HANDLE) {
+            vkDestroyFramebuffer(dev, fb, nullptr);
+        }
+    }
+    cloudCompositeFramebuffers_.clear();
+
+    if (cloudCompositeRenderPass_ != VK_NULL_HANDLE) {
+        vkDestroyRenderPass(dev, cloudCompositeRenderPass_, nullptr);
+        cloudCompositeRenderPass_ = VK_NULL_HANDLE;
+    }
+}
+
 void Renderer::drawFrame() {
     auto fenceT0 = std::chrono::high_resolution_clock::now();
     vkWaitForFences(vulkanDevice_->getDevice(), 1, &syncObjects_->getInFlightFences()[currentFrame_], VK_TRUE, UINT64_MAX);
@@ -884,17 +1228,78 @@ void Renderer::drawFrame() {
         }
     }
 
-    // 渲染体积云（透明度混合叠加，在所有不透明物体之后）
-    if (cloudSystem_ && cloudSystem_->isInitialized()) {
-        cloudSystem_->render(commandBuffer, *cam, gameConfig_.renderer.sunDirection);
+    // 渲染 ImGui（如果使用半分辨率云，ImGui 移到合成渲染通道；否则在主线通道）
+    // 半分辨率云路径：在主渲染通道结束后，转入专门的合成渲染通道
+    // 注意：MSAA 启用时不走半分辨率路径（合成 RP 与 ImGui 管线样本数不一致）
+    bool useHalfResCloud = cloudSystem_ && cloudSystem_->isHalfResEnabled()
+                           && msaaSamples_ <= VK_SAMPLE_COUNT_1_BIT;
+    if (useHalfResCloud) {
+        // --- 半分辨率云渲染路径 ---
+        // 步骤1：结束主渲染通道（不透明物体已完成）
+        vkCmdEndRenderPass(commandBuffer);
+
+        // 步骤2：过渡 swapchain 图像布局供后续合成
+        VkImageMemoryBarrier swapchainBarrier{};
+        swapchainBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        swapchainBarrier.image = swapchain_->getImages()[imageIndex];
+        swapchainBarrier.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+        swapchainBarrier.oldLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+        swapchainBarrier.newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+        swapchainBarrier.srcAccessMask = 0;
+        swapchainBarrier.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+        vkCmdPipelineBarrier(commandBuffer,
+                             VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+                             VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+                             0, 0, nullptr, 0, nullptr, 1, &swapchainBarrier);
+
+        // 步骤3：渲染半分辨率云（CloudSystem 内部管理自己的渲染通道和帧缓冲）
+        cloudSystem_->renderHalfRes(commandBuffer, *cam, gameConfig_.renderer.sunDirection);
+
+        // 步骤4：开始合成渲染通道（cloud upscale + ImGui）
+        VkRenderPassBeginInfo compositeRpInfo{};
+        compositeRpInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+        compositeRpInfo.renderPass = cloudCompositeRenderPass_;
+        compositeRpInfo.framebuffer = cloudCompositeFramebuffers_[imageIndex];
+        compositeRpInfo.renderArea.offset = {0, 0};
+        compositeRpInfo.renderArea.extent = swapchain_->getExtent();
+
+        std::vector<VkClearValue> compositeClear(2);
+        compositeClear[0].color = {{0.0f, 0.0f, 0.0f, 0.0f}};
+        compositeClear[1].depthStencil = {1.0f, 0};
+        compositeRpInfo.clearValueCount = static_cast<uint32_t>(compositeClear.size());
+        compositeRpInfo.pClearValues = compositeClear.data();
+
+        vkCmdBeginRenderPass(commandBuffer, &compositeRpInfo, VK_SUBPASS_CONTENTS_INLINE);
+
+        // 步骤5：合成半分辨率云 → 全分辨率场景（alpha 混合上采样）
+        vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                          cloudCompositePipeline_);
+        vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                cloudCompositePipelineLayout_, 0, 1,
+                                &cloudCompositeDS_, 0, nullptr);
+        vkCmdDraw(commandBuffer, 4, 1, 0, 0);
+
+        // 步骤6：渲染 ImGui（在已有场景和云的上层）
+        imguiManager_->render(commandBuffer);
+
+        // 步骤7：结束合成渲染通道（finalLayout = PRESENT_SRC_KHR）
+        vkCmdEndRenderPass(commandBuffer);
+    } else {
+        // --- 传统全分辨率云渲染路径（含深度测试，在主渲染通道内） ---
+        if (cloudSystem_ && cloudSystem_->isInitialized()) {
+            cloudSystem_->render(commandBuffer, *cam, gameConfig_.renderer.sunDirection);
+        }
+
+        // 渲染 ImGui
+        imguiManager_->render(commandBuffer);
+
+        // 结束主渲染通道
+        vkCmdEndRenderPass(commandBuffer);
     }
 
-    // 渲染 ImGui
-    imguiManager_->render(commandBuffer);
-    
-    vkCmdEndRenderPass(commandBuffer);
-
     // FSR1 上采样（仅 fsrScale_ < 1.0 时生效）
+    // 注意：半分辨率云 + FSR1 同时使用属于边缘场景，此时合成通道的 finalLayout 为
+    // PRESENT_SRC_KHR，FSR1 正常从 PRESENT_SRC_KHR 过渡到 GENERAL。
     if (fsr1Pass_ && fsrScale_ < 1.0f) {
         VkImageMemoryBarrier b{};
         b.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
@@ -1001,13 +1406,20 @@ void Renderer::recreateSwapchain() {
     
     vkDeviceWaitIdle(vulkanDevice_->getDevice());
     
+    // 保存云半分辨率状态（cleanup 后会被重置）
+    bool hadCloudHalfRes = cloudSystem_ && cloudSystem_->isHalfResEnabled();
+    
     // 清理MSAA颜色资源
     if (msaaSamples_ > VK_SAMPLE_COUNT_1_BIT) {
         cleanupColorResources();
     }
     
-    // 清理并重新创建深度资源
+    // 清理深度资源和云合成资源
     vulkanDevice_->cleanupDepthResources();
+    cleanupCloudCompositeResources();
+    if (hadCloudHalfRes) {
+        cloudSystem_->cleanup();  // 重新初始化时会再次 init
+    }
     
     swapchain_->recreate(window_);
     
@@ -1053,6 +1465,14 @@ void Renderer::recreateSwapchain() {
     imguiManager_.reset();
     imguiManager_ = std::make_unique<ImGuiManager>(vulkanDevice_, swapchain_, renderPass_, window_, vulkanInstance_->getInstance(), msaaSamples_);
     imguiManager_->init();
+
+    // 重新初始化云系统（包含半分辨率资源）
+    if (hadCloudHalfRes && cloudSystem_) {
+        cloudSystem_->init(renderPass_->getRenderPass(), swapchain_->getExtent(), msaaSamples_,
+                           true, swapchain_->getImageFormat());
+        // 重新创建合成管线资源
+        createCloudCompositeResources();
+    }
     
     // 记录命令缓冲（所有使用 frame buffer 0）
     VkFramebuffer fb = framebuffers_->getFramebuffers()[0];
@@ -1095,7 +1515,8 @@ void Renderer::cleanup() {
     stoneSystem_.reset();
     // 清理草丛系统
     grassSystem_.reset();
-    // 清理体积云系统
+    // 清理体积云系统和合成资源
+    cleanupCloudCompositeResources();
     cloudSystem_.reset();
     // 清理 FSR1 管线
     fsr1Pass_.reset();

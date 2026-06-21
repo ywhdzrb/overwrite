@@ -64,8 +64,13 @@ public:
      * @param renderPass 渲染通道
      * @param extent 渲染分辨率
      * @param msaaSamples MSAA采样数
+     * @param halfRes 是否启用半分辨率渲染
+     * @param colorFormat 颜色附件格式（用于半分辨率图像，默认RGBA8）
      */
-    void init(VkRenderPass renderPass, VkExtent2D extent, VkSampleCountFlagBits msaaSamples);
+    void init(VkRenderPass renderPass, VkExtent2D extent,
+              VkSampleCountFlagBits msaaSamples,
+              bool halfRes = false,
+              VkFormat colorFormat = VK_FORMAT_B8G8R8A8_UNORM);
 
     /** @brief 清理所有Vulkan资源 */
     void cleanup();
@@ -125,6 +130,35 @@ public:
     /** @brief 设置昼夜亮度因子（Renderer主循环推进昼夜时调用） */
     void setDayFactor(float factor) { dayFactor_ = glm::clamp(factor, 0.0f, 1.0f); }
 
+    // ========== 半分辨率渲染接口 ==========
+
+    /**
+     * @brief 渲染体积云到半分辨率内部帧缓冲
+     * @param commandBuffer Vulkan命令缓冲
+     * @param camera 摄像机
+     * @param sunDirection 太阳方向
+     *
+     * 将云渲染到自有的半分辨率颜色附件，随后供 Renderer 上采样合成。
+     * 半分辨率管线不含深度测试，因为云单独渲染时不需遮挡剔除。
+     */
+    void renderHalfRes(VkCommandBuffer commandBuffer, const Camera& camera,
+                       const glm::vec3& sunDirection);
+
+    /** @brief 是否启用了半分辨率云渲染 */
+    bool isHalfResEnabled() const { return halfResEnabled_; }
+
+    /** @brief 获取半分辨率云图像视图（供合成管线采样） */
+    VkImageView getHalfResImageView() const { return halfResImageView_; }
+
+    /** @brief 获取半分辨率云纹理采样器（双线性） */
+    VkSampler getHalfResSampler() const { return halfResSampler_; }
+
+    /** @brief 获取半分辨率图像尺寸 */
+    VkExtent2D getHalfResExtent() const { return halfResExtent_; }
+
+    /** @brief 获取半分辨率渲染通道（供合成管线视口设置参考） */
+    VkRenderPass getHalfResRenderPass() const { return halfResRenderPass_; }
+
 private:
     // ========== 内部数据结构 ==========
 
@@ -154,6 +188,11 @@ private:
                         VkSampleCountFlagBits msaaSamples);
     void createDescriptorSets();
 
+    // ========== 半分辨率初始化 ==========
+    void initHalfRes(VkFormat colorFormat);
+    void cleanupHalfRes();
+    VkPipeline createHalfResPipeline(VkRenderPass renderPass);
+
     // ========== 噪声生成 ==========
     /**
      * @brief 生成4通道3D Worley噪声纹理（CPU端）
@@ -168,13 +207,8 @@ private:
                                             const int cellCounts[4]);
 
     // ========== LOD管理 ==========
-    enum class LOD { Detail, Medium, Far };
-
-    /** @brief 根据距离评估当前LOD级别 */
-    LOD evaluateLOD(const Camera& camera) const;
-
-    /** @brief 根据LOD设置步进次数 */
-    void applyLODParams(LOD lod);
+    /** @brief 连续LOD混合：根据视线距离平滑插值步进次数 */
+    void computeLOD(const Camera& camera);
 
     // ========== 成员变量 ==========
     std::shared_ptr<VulkanDevice> device_;
@@ -219,12 +253,32 @@ private:
     float thinCloudDensity_ = 0.3f;             // 薄云密度乘数 [0,1]
     bool  thinCloudEnabled_ = false;            // 是否启用薄云层（默认关，地面视角体验有限）
 
-    // --- LOD ---
-    LOD currentLOD_ = LOD::Detail;
-    int stepCount_ = 64;
+    // --- LOD（连续混合：步进次数在48/24/12之间平滑插值） ---
+    float stepCount_ = 48.0f;          // 密度步进次数（float支持连续LOD混合）
+    int lightSteps_ = 4;               // 光照步进次数（混合后取整：Detail=4, Medium=3, Far=2）
 
     // --- 屏幕参数 ---
     VkExtent2D screenExtent_{};
+
+    // ========== 半分辨率渲染资源 ==========
+    bool halfResEnabled_ = false;
+    float halfResScale_ = 0.5f;                 // 半分辨率缩放因子
+    VkFormat halfResFormat_{VK_FORMAT_B8G8R8A8_UNORM};
+    VkExtent2D halfResExtent_{};
+
+    // 半分辨率颜色附件
+    VkImage halfResImage_ = VK_NULL_HANDLE;
+    VmaAllocation halfResImageAllocation_ = VK_NULL_HANDLE;
+    VkImageView halfResImageView_ = VK_NULL_HANDLE;
+    VkSampler halfResSampler_ = VK_NULL_HANDLE; // 双线性上采样采样器
+
+    // 半分辨率渲染通道和帧缓冲
+    VkRenderPass halfResRenderPass_ = VK_NULL_HANDLE;
+    VkFramebuffer halfResFramebuffer_ = VK_NULL_HANDLE;
+
+    // 半分辨率管线（无深度测试，颜色附件无深度）
+    VkPipelineLayout halfResPipelineLayout_ = VK_NULL_HANDLE;
+    VkPipeline halfResPipeline_ = VK_NULL_HANDLE;
 };
 
 } // namespace owengine

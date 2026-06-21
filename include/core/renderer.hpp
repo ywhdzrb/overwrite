@@ -90,6 +90,10 @@ private:
     void cleanupColorResources();
     void setMsaaSamples(VkSampleCountFlagBits samples);
 
+    // ========== 半分辨率云合成 ==========
+    void createCloudCompositeResources();
+    void cleanupCloudCompositeResources();
+
     std::vector<ModelConfig> loadModelConfig(const std::string& configFile);
     void loadModelsFromConfig(const std::vector<ModelConfig>& configs);
     VkDescriptorSet createModelDescriptorSet(GLTFModel* model, const std::string& modelId, VkDescriptorPool pool = VK_NULL_HANDLE);
@@ -146,6 +150,15 @@ private:
 
     // 体积云系统（在所有不透明物体之后、ImGui之前渲染）
     std::unique_ptr<class CloudSystem> cloudSystem_;
+
+    // 半分辨率云合成管线资源
+    VkRenderPass cloudCompositeRenderPass_ = VK_NULL_HANDLE;
+    std::vector<VkFramebuffer> cloudCompositeFramebuffers_;
+    VkPipelineLayout cloudCompositePipelineLayout_ = VK_NULL_HANDLE;
+    VkPipeline cloudCompositePipeline_ = VK_NULL_HANDLE;
+    VkDescriptorSetLayout cloudCompositeDSLayout_ = VK_NULL_HANDLE;
+    VkDescriptorPool cloudCompositeDSPool_ = VK_NULL_HANDLE;
+    VkDescriptorSet cloudCompositeDS_ = VK_NULL_HANDLE;
 
     // ========== 游戏会话 ==========
     std::unique_ptr<GameSession> ownedGameSession_;  // 内部创建时持有
