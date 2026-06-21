@@ -116,8 +116,8 @@ void CloudSystem::update(float deltaTime, const Camera& camera,
                          const glm::vec3& sunDirection) {
     if (!initialized_) return;
 
-    // 累积全局时间（用于纹理滚动模拟风）
-    time_ += deltaTime * 0.1f;
+    // 累积全局时间（驱动风动画，实时速率让云运动清晰可见）
+    time_ += deltaTime;
 
     // 记录太阳方向
     lastSunDir_ = sunDirection;

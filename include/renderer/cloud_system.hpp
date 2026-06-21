@@ -207,7 +207,7 @@ private:
     glm::vec3 lastSunDir_{0.25f, 0.55f, 0.50f}; // 上一帧太阳方向
 
     // --- 风参数（由Renderer全局风场驱动） ---
-    float windSpeed_ = 0.3f;                    // 风速 m/s
+    float windSpeed_ = 20.0f;                   // 风速 m/s（从0.3→20，云运动肉眼可见）
     float windDirection_ = 0.0f;                // 风向角度（度，0=+X轴）
 
     // --- 昼夜循环 ---
