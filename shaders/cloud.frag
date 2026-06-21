@@ -376,7 +376,7 @@ void main() {
     // viewHorizon = 0: 视线垂直（看向天顶或地面）
     // viewHorizon = 1: 视线水平（看向地平线）
     // 水平视线时，云顶部渐出区间自动扩大，消除地平线接缝
-    float viewHorizon = 1.0 - abs(normalize(worldDir).y);
+    float viewHorizon = 1.0 - abs(worldDir.y);
 
     // ========== 3. 云层包围盒求交 ==========
     float cloudMin = push.cameraPos_cloudMin.w;
@@ -483,7 +483,7 @@ void main() {
 
         if (density > 0.001) {
             // 体积深度感：视线仰角调制消光系数
-            float viewUp = dot(normalize(worldDir), vec3(0.0, 1.0, 0.0));
+            float viewUp = dot(worldDir, vec3(0.0, 1.0, 0.0));
             float extScale = 1.0 + 0.25 * viewUp;
             float sampleTrans = exp(-density * stepSize * EXTINCTION * extScale);
 

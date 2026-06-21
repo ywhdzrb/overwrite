@@ -206,15 +206,15 @@ void StoneSystem::cleanup() {
     loadedChunks_.clear();
 }
 
-std::vector<StoneSystem::StoneInstanceInfo> StoneSystem::getStoneInstances() const {
-    std::vector<StoneInstanceInfo> result;
-    result.reserve(stones_.size());
+const std::vector<StoneSystem::StoneInstanceInfo>& StoneSystem::getStoneInstances() const {
+    instanceCache_.clear();
+    instanceCache_.reserve(stones_.size());
     for (int i = 0; i < static_cast<int>(stones_.size()); ++i) {
         const auto& stone = stones_[i];
         if (stone.id.empty() || !stone.active) continue;
-        result.push_back({stone.position, stone.scale, i});
+        instanceCache_.push_back({stone.position, stone.scale, i});
     }
-    return result;
+    return instanceCache_;
 }
 
 void StoneSystem::setStoneActive(int slotIndex, bool active) {

@@ -208,15 +208,15 @@ void TreeSystem::cleanup() {
     loadedChunks_.clear();
 }
 
-std::vector<TreeSystem::TreeInstanceInfo> TreeSystem::getTreeInstances() const {
-    std::vector<TreeInstanceInfo> result;
-    result.reserve(trees_.size());
+const std::vector<TreeSystem::TreeInstanceInfo>& TreeSystem::getTreeInstances() const {
+    instanceCache_.clear();
+    instanceCache_.reserve(trees_.size());
     for (int i = 0; i < static_cast<int>(trees_.size()); ++i) {
         const auto& tree = trees_[i];
         if (tree.id.empty() || !tree.active) continue;
-        result.push_back({tree.position, tree.scale, i});
+        instanceCache_.push_back({tree.position, tree.scale, i});
     }
-    return result;
+    return instanceCache_;
 }
 
 void TreeSystem::setTreeActive(int slotIndex, bool active) {

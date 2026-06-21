@@ -35,7 +35,7 @@ void ResourceNodeSystem::reconcile() {
 
     // 扫描 TreeSystem 当前所有活跃实例，为新增的创建资源节点
     if (treeSystem_) {
-        auto instances = treeSystem_->getTreeInstances();
+        const auto& instances = treeSystem_->getTreeInstances();
         for (const auto& info : instances) {
             ResourceNode* existing = findNodeBySource(ResourceSourceType::Tree, info.slotIndex);
             if (existing && existing->remainingHarvests > 0) {
@@ -59,7 +59,7 @@ void ResourceNodeSystem::reconcile() {
 
     // 扫描 StoneSystem 当前所有活跃实例
     if (stoneSystem_) {
-        auto instances = stoneSystem_->getStoneInstances();
+        const auto& instances = stoneSystem_->getStoneInstances();
         for (const auto& info : instances) {
             ResourceNode* existing = findNodeBySource(ResourceSourceType::Stone, info.slotIndex);
             if (existing && existing->remainingHarvests > 0) {
@@ -142,7 +142,7 @@ void ResourceNodeSystem::clear() {
 }
 
 void ResourceNodeSystem::populateFromTrees(TreeSystem* treeSystem) {
-    auto treeInstances = treeSystem->getTreeInstances();
+    const auto& treeInstances = treeSystem->getTreeInstances();
     nodes_.reserve(nodes_.size() + treeInstances.size());
 
     for (const auto& info : treeInstances) {
@@ -158,7 +158,7 @@ void ResourceNodeSystem::populateFromTrees(TreeSystem* treeSystem) {
 }
 
 void ResourceNodeSystem::populateFromStones(StoneSystem* stoneSystem) {
-    auto stoneInstances = stoneSystem->getStoneInstances();
+    const auto& stoneInstances = stoneSystem->getStoneInstances();
     nodes_.reserve(nodes_.size() + stoneInstances.size());
 
     for (const auto& info : stoneInstances) {

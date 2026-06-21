@@ -104,8 +104,9 @@ public:
 
     /**
      * @brief 获取所有石头实例的详细信息（含槽位索引）
+     * @return 石头实例信息列表的 const 引用（避免拷贝）
      */
-    std::vector<StoneInstanceInfo> getStoneInstances() const;
+    const std::vector<StoneInstanceInfo>& getStoneInstances() const;
 
     /**
      * @brief 设置石头实例的可见状态（采集耗尽后隐藏，重生后恢复）
@@ -145,6 +146,9 @@ private:
     std::unordered_set<StoneChunkKey, StoneChunkKeyHash> loadedChunks_;
     std::vector<LoadedStone> stones_;
     std::function<float(float, float)> heightSampler_;
+
+    /// 石头实例信息的缓存，避免每次调用 getStoneInstances 时重复分配 vector
+    mutable std::vector<StoneInstanceInfo> instanceCache_;
 };
 
 } // namespace owengine

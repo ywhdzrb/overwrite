@@ -70,50 +70,56 @@ int main(int argc, char* argv[]) {
     
     owengine::Logger::info("服务器已启动，按 Ctrl+C 停止...");
     
-    // 时间管理
+    // 时间管理 — 固定时间步长累加器模式
+    const float fixedDeltaTime = 1.0f / static_cast<float>(tickRate);
     auto lastTime = std::chrono::high_resolution_clock::now();
-    const auto tickDuration = std::chrono::microseconds(1000000 / tickRate);
+    float accumulator = 0.0f;
     const auto stateBroadcastInterval = std::chrono::milliseconds(20);  // 50Hz 状态同步
     auto lastStateBroadcast = lastTime;
-    
+
     // 统计
     int frameCount = 0;
     auto statsTime = lastTime;
-    
+
     // 主循环
     while (g_running) {
         auto currentTime = std::chrono::high_resolution_clock::now();
-        float deltaTime = std::chrono::duration<float>(currentTime - lastTime).count();
+        float frameTime = std::chrono::duration<float>(currentTime - lastTime).count();
         lastTime = currentTime;
-        
-        // 限制 deltaTime 防止大跳跃
-        deltaTime = std::min(deltaTime, owengine::ecs::MAX_DELTA_TIME);
-        
-        // 更新游戏世界
-        server.getWorld().update(deltaTime);
-        
+
+        // 防止死亡螺旋：单帧超过 0.1s 则丢弃多余时间
+        frameTime = std::min(frameTime, 0.1f);
+
+        accumulator += frameTime;
+
+        // 固定步长消费累加器
+        while (accumulator >= fixedDeltaTime) {
+            server.getWorld().update(fixedDeltaTime);
+            accumulator -= fixedDeltaTime;
+        }
+
         // 定期广播玩家状态
         if (currentTime - lastStateBroadcast >= stateBroadcastInterval) {
             server.broadcastState();
             lastStateBroadcast = currentTime;
         }
-        
+
         // 统计信息
         frameCount++;
         if (currentTime - statsTime >= std::chrono::seconds(1)) {
             // 每秒打印一次状态
-            // std::cout << "[Stats] FPS: " << frameCount 
+            // std::cout << "[Stats] FPS: " << frameCount
             //           << ", Players: " << server.getConnectionCount() << std::endl;
             frameCount = 0;
             statsTime = currentTime;
         }
-        
-        // 睡眠以保持稳定的 tick rate
-        auto sleepUntil = lastTime + tickDuration;
+
+        // 睡眠至下一个固定步长时间点
+        auto sleepUntil = lastTime + std::chrono::duration<float>(fixedDeltaTime);
         auto sleepDuration = std::chrono::duration_cast<std::chrono::microseconds>(
             sleepUntil - std::chrono::high_resolution_clock::now()
         );
-        
+
         if (sleepDuration.count() > 0) {
             std::this_thread::sleep_for(sleepDuration);
         }

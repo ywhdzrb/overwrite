@@ -107,9 +107,9 @@ public:
 
     /**
      * @brief 获取所有树木实例的详细信息（含槽位索引）
-     * @return 树木实例信息列表
+     * @return 树木实例信息列表的 const 引用（避免拷贝）
      */
-    std::vector<TreeInstanceInfo> getTreeInstances() const;
+    const std::vector<TreeInstanceInfo>& getTreeInstances() const;
 
     /**
      * @brief 设置树木实例的可见状态（采集耗尽后隐藏，重生后恢复）
@@ -149,6 +149,9 @@ private:
     std::unordered_set<TreeChunkKey, TreeChunkKeyHash> loadedChunks_;
     std::vector<LoadedTree> trees_;
     std::function<float(float, float)> heightSampler_;
+
+    /// 树木实例信息的缓存，避免每次调用 getTreeInstances 时重复分配 vector
+    mutable std::vector<TreeInstanceInfo> instanceCache_;
 };
 
 } // namespace owengine
