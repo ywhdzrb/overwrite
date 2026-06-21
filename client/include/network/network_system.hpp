@@ -116,6 +116,14 @@ private:
     
     // 插值
     float interpolationSpeed_{10.0f};
+
+    // RTT 延迟测量
+    float currentRttMs_{0.0f};                 // 最新 RTT（毫秒）
+    float smoothedRttMs_{0.0f};                // 指数平滑后的 RTT
+    std::chrono::high_resolution_clock::time_point lastPingTime_;  // 上次 ping 时间
+    static constexpr float PING_INTERVAL_SEC = 1.0f;  // 每秒发一次 ping
+    static constexpr float MIN_INTERPOLATION_SPEED = 2.0f;
+    static constexpr float MAX_INTERPOLATION_SPEED = 20.0f;
     
     // 回调
     OnConnectedCallback onConnected_;

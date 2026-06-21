@@ -24,7 +24,8 @@ public:
 };
 
 NetworkSystem::NetworkSystem()
-    : impl_(std::make_unique<Impl>()) {
+    : impl_(std::make_unique<Impl>())
+    , lastPingTime_(std::chrono::high_resolution_clock::now()) {
     // ix::initNetSystem 在每个进程只需调用一次（Windows WSAStartup，Linux 无操作）
     static bool netInitDone = false;
     if (!netInitDone) {
@@ -172,10 +173,16 @@ void NetworkSystem::sendMessage(const json& message) {
 }
 
 void NetworkSystem::update(float deltaTime) {
-    // 处理接收到的消息
     processMessages();
 
-    // 插值远程玩家
+    // 自动发送 ping（每秒一次）
+    auto now = std::chrono::high_resolution_clock::now();
+    float elapsed = std::chrono::duration<float>(now - lastPingTime_).count();
+    if (elapsed >= PING_INTERVAL_SEC) {
+        sendPing();
+        lastPingTime_ = now;
+    }
+
     interpolateRemotePlayers(deltaTime);
 }
 
@@ -324,36 +331,60 @@ void NetworkSystem::handleMessage(const json& message) {
         }
 
     } else if (type == "pong") {
-        // 心跳响应，可用于计算延迟
+        // 计算 RTT：当前时间 - 消息中的时间戳
+        auto now = std::chrono::high_resolution_clock::now();
+        double msgTime = message.value("time", 0.0);
+        if (msgTime > 0.0) {
+            auto msgDur = std::chrono::duration<double>(msgTime);
+            double rttMs = (std::chrono::duration<double>(now.time_since_epoch()) - msgDur).count() * 1000.0;
+            if (rttMs > 0.0 && rttMs < 5000.0) {  // 过滤异常值
+                currentRttMs_ = static_cast<float>(rttMs);
+                // 指数平滑
+                if (smoothedRttMs_ < 0.5f) {
+                    smoothedRttMs_ = currentRttMs_;
+                } else {
+                    smoothedRttMs_ = smoothedRttMs_ * 0.7f + currentRttMs_ * 0.3f;
+                }
+            }
+        }
     }
 }
 
 void NetworkSystem::interpolateRemotePlayers(float deltaTime) {
+    // 根据平滑 RTT 动态调整插值速度
+    // 高延迟 → 慢速平滑（减少抖动），低延迟 → 快速追赶
+    float adaptiveSpeed = interpolationSpeed_;
+    if (smoothedRttMs_ > 0.5f) {
+        // RTT < 50ms: 快速(10x), RTT > 300ms: 慢速(3x)
+        float t = std::min(smoothedRttMs_ / 300.0f, 1.0f);
+        adaptiveSpeed = interpolationSpeed_ * (1.0f - t * 0.7f);
+        adaptiveSpeed = std::max(MIN_INTERPOLATION_SPEED, std::min(MAX_INTERPOLATION_SPEED, adaptiveSpeed));
+    }
+
     for (auto& [clientId, player] : remotePlayers_) {
         if (!player.active) continue;
 
         // 保存上一帧位置
         player.lastPosition = player.position;
 
-        // 位置插值
+        // 位置插值（使用自适应速度）
         player.position = glm::mix(player.position, player.targetPosition,
-                                   std::min(1.0f, interpolationSpeed_ * deltaTime));
+                                   std::min(1.0f, adaptiveSpeed * deltaTime));
 
         // 角度插值
         float yawDiff = player.targetYaw - player.yaw;
-        // 处理角度跨越 -180/180
         while (yawDiff > 180.0f) yawDiff -= 360.0f;
         while (yawDiff < -180.0f) yawDiff += 360.0f;
-        player.yaw += yawDiff * std::min(1.0f, interpolationSpeed_ * deltaTime);
+        player.yaw += yawDiff * std::min(1.0f, adaptiveSpeed * deltaTime);
 
-        player.pitch += (player.targetPitch - player.pitch) * std::min(1.0f, interpolationSpeed_ * deltaTime);
+        player.pitch += (player.targetPitch - player.pitch) * std::min(1.0f, adaptiveSpeed * deltaTime);
 
-        // 检测是否在移动，并计算移动方向
+        // 检测是否在移动
         glm::vec3 moveDir = player.position - player.lastPosition;
         float moveDistance = glm::length(moveDir);
         player.isMoving = moveDistance > 0.001f;
 
-        // 跳跃状态：使用服务器同步的状态，或者通过 Y 坐标变化趋势判断
+        // 跳跃状态
         float yVelocity = player.position.y - player.lastPosition.y;
         if (std::abs(yVelocity) > 0.01f) {
             player.isJumping = true;
@@ -362,11 +393,9 @@ void NetworkSystem::interpolateRemotePlayers(float deltaTime) {
         }
 
         if (player.isMoving) {
-            // 计算移动方向的角度
             moveDir.y = 0.0f;
             if (glm::length(moveDir) > 0.0001f) {
                 moveDir = glm::normalize(moveDir);
-                // 注意：模型的前方是 -Z，所以用 -moveDir
                 player.moveYaw = glm::degrees(atan2(-moveDir.x, -moveDir.z));
             }
         }

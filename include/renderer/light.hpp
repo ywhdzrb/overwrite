@@ -329,6 +329,7 @@ struct ShaderLight {
 /**
  * @brief 着色器光源数据数组
  */
-using ShaderLightArray = std::array<ShaderLight, 16>;
+inline constexpr size_t MAX_SHADER_LIGHTS = 64;
+using ShaderLightArray = std::array<ShaderLight, MAX_SHADER_LIGHTS>;
 
 } // namespace owengine

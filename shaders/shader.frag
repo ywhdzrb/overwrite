@@ -44,15 +44,11 @@ struct Light {
     float _pad6;            // 填充
 };
 
-// 光源Uniform Buffer (set = 1, binding = 0)
-layout(set = 1, binding = 0, std140) uniform LightUniformBuffer {
-    Light lights[16];       // 最多16个光源
-    int lightCount;         // 启用的光源数量
-    int _pad1;              // 填充
-    int _pad2;              // 填充
-    int _pad3;              // 填充
-    vec3 ambientColor;      // 环境光颜色
-    float _pad4;            // 填充
+// 光源 Storage Buffer (set = 1, binding = 0) — 支持动态光源数
+layout(set = 1, binding = 0, std430) buffer LightBuffer {
+    Light lights[64];       // 最大 64 个光源（SSBO 动态上采样）
+    vec3 ambientColor;      // 环境光颜色，offset=6144
+    int lightCount;         // 启用的光源数量，offset=6156
 } lightBuffer;
 
 // Push Constants

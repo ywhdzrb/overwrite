@@ -240,6 +240,7 @@ void VulkanInstance::createLogicalDevice() {
     
     VkPhysicalDeviceFeatures deviceFeatures{};
     deviceFeatures.samplerAnisotropy = VK_TRUE;  // 启用各向异性过滤
+    deviceFeatures.fragmentStoresAndAtomics = VK_TRUE;  // 片段着色器 SSBO 访问（光源动态数组）
     
     VkDeviceCreateInfo createInfo{};
     createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;

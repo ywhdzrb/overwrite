@@ -142,7 +142,7 @@ public:
      * @brief 获取最大光源数量
      * @return 最大光源数量
      */
-    static constexpr int getMaxLights() { return 16; }
+    static constexpr int getMaxLights() { return static_cast<int>(MAX_SHADER_LIGHTS); }
 
     // ==================== 实用方法 ====================
 

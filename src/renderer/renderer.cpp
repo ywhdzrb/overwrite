@@ -1686,7 +1686,7 @@ void Renderer::createDescriptorSetLayouts() {
     // 光源 uniform buffer
     VkDescriptorSetLayoutBinding lightBinding{};
     lightBinding.binding = 0;
-    lightBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    lightBinding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
     lightBinding.descriptorCount = 1;
     lightBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
     lightBinding.pImmutableSamplers = nullptr;
@@ -1711,8 +1711,8 @@ void Renderer::createDescriptorPool(uint32_t maxSets, uint32_t descriptorCount) 
     poolSizes[0].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
     poolSizes[0].descriptorCount = descriptorCount;
     
-    // 光源 uniform buffer
-    poolSizes[1].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    // 光源 storage buffer
+    poolSizes[1].type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
     poolSizes[1].descriptorCount = 1;
 
     VkDescriptorPoolCreateInfo poolInfo{};
@@ -1782,21 +1782,21 @@ void Renderer::createDescriptorSets() {
         Logger::info("Default texture descriptor set allocated");
     }
 
-    // 2. 创建光源 uniform buffer（std140 布局）
-    // 计算正确的 buffer 大小
-    size_t lightsSize = sizeof(ShaderLight) * 16;  // 16 个光源 = 1536 bytes
-    size_t lightCountSize = sizeof(int);  // 4 bytes
-    size_t padding1Size = 12;  // 12 bytes padding (16字节对齐)
-    size_t ambientSize = sizeof(glm::vec3);  // 12 bytes
-    size_t padding2Size = 4;  // 4 bytes padding (16字节对齐)
-    VkDeviceSize bufferSize = lightsSize + lightCountSize + padding1Size + ambientSize + padding2Size;  // 1568 bytes
+    // 2. 创建光源 storage buffer（std430 布局，支持动态光源数）
+    // 布局: lights[64] + ambientColor(vec3) + lightCount(int)
+    constexpr size_t MAX_LIGHTS = MAX_SHADER_LIGHTS;
+    size_t lightsSize = sizeof(ShaderLight) * MAX_LIGHTS;  // 64 个光源
+    size_t ambientSize = sizeof(glm::vec3);                 // 12 bytes
+    size_t lightCountSize = sizeof(int);                    // 4 bytes
+    VkDeviceSize bufferSize = lightsSize + ambientSize + lightCountSize;
     
-    Logger::info("Creating light uniform buffer: size=" + std::to_string(bufferSize));
+    Logger::info("Creating light storage buffer: size=" + std::to_string(bufferSize)
+                 + " (" + std::to_string(MAX_LIGHTS) + " lights)");
     
     VkBufferCreateInfo bufferInfo{};
     bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
     bufferInfo.size = bufferSize;
-    bufferInfo.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+    bufferInfo.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
     bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
     VmaAllocationCreateInfo allocInfo{};
@@ -1832,7 +1832,7 @@ void Renderer::createDescriptorSets() {
     lightDescriptorWrite.dstSet = lightDescriptorSet_;
     lightDescriptorWrite.dstBinding = 0;
     lightDescriptorWrite.dstArrayElement = 0;
-    lightDescriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    lightDescriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
     lightDescriptorWrite.descriptorCount = 1;
     lightDescriptorWrite.pBufferInfo = &bufferInfo2;
 
@@ -1848,29 +1848,18 @@ void Renderer::updateLightUniformBuffer() {
     int lightCount = lightManager_->getEnabledLightCount();
     glm::vec3 ambientColor = lightManager_->getAmbient();
 
-    // 计算正确的 buffer 大小（std140 布局）
-    // ShaderLight 现在是 96 字节 (16 * 6)
-    size_t lightsSize = sizeof(ShaderLight) * 16;  // 16 个光源 = 1536 bytes
-    size_t lightCountSize = sizeof(int);  // 4 bytes
-    size_t padding1Size = 12;  // 12 bytes padding (16字节对齐)
-    size_t ambientSize = sizeof(glm::vec3);  // 12 bytes
-    size_t padding2Size = 4;  // 4 bytes padding (16字节对齐)
-    size_t totalSize = lightsSize + lightCountSize + padding1Size + ambientSize + padding2Size;  // 1568 bytes
+    // std430 SSBO 布局: lights[] + ambientColor(vec3) + lightCount(int)
+    constexpr size_t MAX_LIGHTS = MAX_SHADER_LIGHTS;
+    size_t lightsSize = sizeof(ShaderLight) * MAX_LIGHTS;  // 64 个光源
+    size_t ambientSize = sizeof(glm::vec3);                 // 12 bytes
+    size_t lightCountSize = sizeof(int);                    // 4 bytes
 
     // 使用持久映射指针
     void* data = lightUniformBufferMapped_;
 
     memcpy(data, lights.data(), lightsSize);
-    memcpy(static_cast<char*>(data) + lightsSize, &lightCount, lightCountSize);
-
-    // 添加 12 字节 padding
-    memset(static_cast<char*>(data) + lightsSize + lightCountSize, 0, padding1Size);
-
-    // 复制环境光颜色
-    memcpy(static_cast<char*>(data) + lightsSize + lightCountSize + padding1Size, &ambientColor, ambientSize);
-
-    // 添加 4 字节 padding
-    memset(static_cast<char*>(data) + lightsSize + lightCountSize + padding1Size + ambientSize, 0, padding2Size);
+    memcpy(static_cast<char*>(data) + lightsSize, &ambientColor, ambientSize);
+    memcpy(static_cast<char*>(data) + lightsSize + ambientSize, &lightCount, lightCountSize);
 }
 
 // ==================== 场景配置加载 ====================
