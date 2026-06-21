@@ -4,6 +4,7 @@
 #include <fstream>
 #include <iostream>
 #include <cstdlib>
+#include "utils/logger.hpp"
 
 namespace owengine {
 
@@ -38,7 +39,7 @@ bool ShaderCompiler::compileToSpirV(const std::string& sourceFile, const std::st
     int result = std::system(command.c_str());
     
     if (result != 0) {
-        std::cerr << "Shader compilation failed with code: " << result << std::endl;
+        Logger::error("Shader compilation failed with code: " + std::to_string(result));
         return false;
     }
     

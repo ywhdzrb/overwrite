@@ -15,6 +15,7 @@
 #include "core/camera.hpp"
 #include "utils/logger.hpp"
 #include "utils/asset_paths.hpp"
+#include "utils/vk_result.hpp"
 #include <cmath>
 #include <cstring>
 #include <fstream>
@@ -324,9 +325,10 @@ void CloudSystem::initHalfRes(VkFormat colorFormat) {
     VmaAllocationCreateInfo allocInfo{};
     allocInfo.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
 
-    if (vmaCreateImage(alloc, &imgInfo, &allocInfo,
-                       &halfResImage_, &halfResImageAllocation_, nullptr) != VK_SUCCESS) {
-        throw std::runtime_error("[CloudSystem] 创建半分辨率图像失败");
+    VkResult _vrImg = vmaCreateImage(alloc, &imgInfo, &allocInfo,
+                                      &halfResImage_, &halfResImageAllocation_, nullptr);
+    if (_vrImg != VK_SUCCESS) {
+        throw std::runtime_error(std::string("[CloudSystem] 创建半分辨率图像失败 ") + vkResultToString(_vrImg));
     }
 
     // --- 创建图像视图 ---
@@ -337,8 +339,9 @@ void CloudSystem::initHalfRes(VkFormat colorFormat) {
     viewInfo.format = halfResFormat_;
     viewInfo.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
 
-    if (vkCreateImageView(dev, &viewInfo, nullptr, &halfResImageView_) != VK_SUCCESS) {
-        throw std::runtime_error("[CloudSystem] 创建半分辨率图像视图失败");
+    VkResult _vrView = vkCreateImageView(dev, &viewInfo, nullptr, &halfResImageView_);
+    if (_vrView != VK_SUCCESS) {
+        throw std::runtime_error(std::string("[CloudSystem] 创建半分辨率图像视图失败 ") + vkResultToString(_vrView));
     }
 
     // --- 创建双线性上采样采样器 ---
@@ -354,8 +357,9 @@ void CloudSystem::initHalfRes(VkFormat colorFormat) {
     samplerInfo.maxLod = 0.0f;
     samplerInfo.compareOp = VK_COMPARE_OP_NEVER;
 
-    if (vkCreateSampler(dev, &samplerInfo, nullptr, &halfResSampler_) != VK_SUCCESS) {
-        throw std::runtime_error("[CloudSystem] 创建半分辨率采样器失败");
+    VkResult _vrSampler = vkCreateSampler(dev, &samplerInfo, nullptr, &halfResSampler_);
+    if (_vrSampler != VK_SUCCESS) {
+        throw std::runtime_error(std::string("[CloudSystem] 创建半分辨率采样器失败 ") + vkResultToString(_vrSampler));
     }
 
     // --- 创建半分辨率渲染通道（仅颜色附件，无深度） ---
@@ -398,8 +402,9 @@ void CloudSystem::initHalfRes(VkFormat colorFormat) {
     rpCi.dependencyCount = 1;
     rpCi.pDependencies = &dep;
 
-    if (vkCreateRenderPass(dev, &rpCi, nullptr, &halfResRenderPass_) != VK_SUCCESS) {
-        throw std::runtime_error("[CloudSystem] 创建半分辨率渲染通道失败");
+    VkResult _vrRP = vkCreateRenderPass(dev, &rpCi, nullptr, &halfResRenderPass_);
+    if (_vrRP != VK_SUCCESS) {
+        throw std::runtime_error(std::string("[CloudSystem] 创建半分辨率渲染通道失败 ") + vkResultToString(_vrRP));
     }
 
     // --- 创建半分辨率帧缓冲 ---
@@ -412,8 +417,9 @@ void CloudSystem::initHalfRes(VkFormat colorFormat) {
     fbCi.height = halfResExtent_.height;
     fbCi.layers = 1;
 
-    if (vkCreateFramebuffer(dev, &fbCi, nullptr, &halfResFramebuffer_) != VK_SUCCESS) {
-        throw std::runtime_error("[CloudSystem] 创建半分辨率帧缓冲失败");
+    VkResult _vrFB = vkCreateFramebuffer(dev, &fbCi, nullptr, &halfResFramebuffer_);
+    if (_vrFB != VK_SUCCESS) {
+        throw std::runtime_error(std::string("[CloudSystem] 创建半分辨率帧缓冲失败 ") + vkResultToString(_vrFB));
     }
 
     // --- 创建半分辨率管线（无深度测试） ---
@@ -449,8 +455,9 @@ VkPipeline CloudSystem::createHalfResPipeline(VkRenderPass renderPass) {
             ci.codeSize = size;
             ci.pCode = reinterpret_cast<const uint32_t*>(buffer.data());
             VkShaderModule module;
-            if (vkCreateShaderModule(dev, &ci, nullptr, &module) != VK_SUCCESS) {
-                throw std::runtime_error("[CloudSystem] 创建着色器模块失败: " + path);
+            VkResult _vrModule = vkCreateShaderModule(dev, &ci, nullptr, &module);
+            if (_vrModule != VK_SUCCESS) {
+                throw std::runtime_error(std::string("[CloudSystem] 创建着色器模块失败: ") + path + " " + vkResultToString(_vrModule));
             }
             return module;
         };
@@ -572,9 +579,10 @@ VkPipeline CloudSystem::createHalfResPipeline(VkRenderPass renderPass) {
     pipelineInfo.basePipelineIndex = -1;
 
     VkPipeline pipeline;
-    if (vkCreateGraphicsPipelines(dev, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr,
-                                   &pipeline) != VK_SUCCESS) {
-        throw std::runtime_error("[CloudSystem] 创建半分辨率管线失败");
+    VkResult _vrPipe = vkCreateGraphicsPipelines(dev, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr,
+                                                  &pipeline);
+    if (_vrPipe != VK_SUCCESS) {
+        throw std::runtime_error(std::string("[CloudSystem] 创建半分辨率管线失败 ") + vkResultToString(_vrPipe));
     }
 
     // 清理着色器模块（仅在不使用 ShaderManager 缓存时销毁）
@@ -643,9 +651,10 @@ void CloudSystem::createDescriptorSetLayout() {
     layoutInfo.bindingCount = 1;
     layoutInfo.pBindings = &noiseBinding;
 
-    if (vkCreateDescriptorSetLayout(device_->getDevice(), &layoutInfo, nullptr,
-                                    &descriptorSetLayout_) != VK_SUCCESS) {
-        throw std::runtime_error("[CloudSystem] 创建描述符集布局失败");
+    VkResult _vr = vkCreateDescriptorSetLayout(device_->getDevice(), &layoutInfo, nullptr,
+                                                &descriptorSetLayout_);
+    if (_vr != VK_SUCCESS) {
+        throw std::runtime_error(std::string("[CloudSystem] 创建描述符集布局失败 ") + vkResultToString(_vr));
     }
 }
 
@@ -665,9 +674,10 @@ void CloudSystem::createDescriptorPool() {
     poolInfo.pPoolSizes = &poolSize;
     poolInfo.maxSets = 1;
 
-    if (vkCreateDescriptorPool(device_->getDevice(), &poolInfo, nullptr,
-                                &descriptorPool_) != VK_SUCCESS) {
-        throw std::runtime_error("[CloudSystem] 创建描述符池失败");
+    VkResult _vr = vkCreateDescriptorPool(device_->getDevice(), &poolInfo, nullptr,
+                                           &descriptorPool_);
+    if (_vr != VK_SUCCESS) {
+        throw std::runtime_error(std::string("[CloudSystem] 创建描述符池失败 ") + vkResultToString(_vr));
     }
 }
 
@@ -704,9 +714,10 @@ void CloudSystem::createNoiseTexture() {
     VmaAllocationCreateInfo allocInfo{};
     allocInfo.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
 
-    if (vmaCreateImage(device_->getAllocator(), &imageInfo, &allocInfo,
-                        &noiseImage_, &noiseImageAllocation_, nullptr) != VK_SUCCESS) {
-        throw std::runtime_error("[CloudSystem] 创建噪声纹理图像失败");
+    VkResult _vrNImg = vmaCreateImage(device_->getAllocator(), &imageInfo, &allocInfo,
+                                       &noiseImage_, &noiseImageAllocation_, nullptr);
+    if (_vrNImg != VK_SUCCESS) {
+        throw std::runtime_error(std::string("[CloudSystem] 创建噪声纹理图像失败 ") + vkResultToString(_vrNImg));
     }
 
     // 步骤3：上传数据
@@ -727,9 +738,10 @@ void CloudSystem::createNoiseTexture() {
     VkBuffer stagingBuffer;
     VmaAllocation stagingAllocation;
     VmaAllocationInfo stagingAllocOut;
-    if (vmaCreateBuffer(device_->getAllocator(), &stagingBufferInfo, &stagingAllocInfo,
-                        &stagingBuffer, &stagingAllocation, &stagingAllocOut) != VK_SUCCESS) {
-        throw std::runtime_error("[CloudSystem] 创建暂存缓冲区失败");
+    VkResult _vrNBuffer = vmaCreateBuffer(device_->getAllocator(), &stagingBufferInfo, &stagingAllocInfo,
+                                           &stagingBuffer, &stagingAllocation, &stagingAllocOut);
+    if (_vrNBuffer != VK_SUCCESS) {
+        throw std::runtime_error(std::string("[CloudSystem] 创建暂存缓冲区失败 ") + vkResultToString(_vrNBuffer));
     }
 
     memcpy(stagingAllocOut.pMappedData, noiseData.data(), static_cast<size_t>(imageSize));
@@ -803,9 +815,10 @@ void CloudSystem::createNoiseTexture() {
     viewInfo.subresourceRange.baseArrayLayer = 0;
     viewInfo.subresourceRange.layerCount = 1;
 
-    if (vkCreateImageView(device_->getDevice(), &viewInfo, nullptr,
-                           &noiseImageView_) != VK_SUCCESS) {
-        throw std::runtime_error("[CloudSystem] 创建噪声纹理图像视图失败");
+    VkResult _vrNView = vkCreateImageView(device_->getDevice(), &viewInfo, nullptr,
+                                           &noiseImageView_);
+    if (_vrNView != VK_SUCCESS) {
+        throw std::runtime_error(std::string("[CloudSystem] 创建噪声纹理图像视图失败 ") + vkResultToString(_vrNView));
     }
 
     // 步骤5：创建采样器
@@ -826,9 +839,10 @@ void CloudSystem::createNoiseTexture() {
     samplerInfo.minLod = 0.0f;
     samplerInfo.maxLod = 0.0f;
 
-    if (vkCreateSampler(device_->getDevice(), &samplerInfo, nullptr,
-                        &noiseSampler_) != VK_SUCCESS) {
-        throw std::runtime_error("[CloudSystem] 创建噪声纹理采样器失败");
+    VkResult _vrNSampler = vkCreateSampler(device_->getDevice(), &samplerInfo, nullptr,
+                                            &noiseSampler_);
+    if (_vrNSampler != VK_SUCCESS) {
+        throw std::runtime_error(std::string("[CloudSystem] 创建噪声纹理采样器失败 ") + vkResultToString(_vrNSampler));
     }
 
     Logger::info("[CloudSystem] 4通道Worley噪声纹理已生成: " +
@@ -948,8 +962,9 @@ void CloudSystem::createPipeline(VkRenderPass renderPass, VkExtent2D extent,
     pipelineLayoutInfo.pushConstantRangeCount = 1;
     pipelineLayoutInfo.pPushConstantRanges = &pushConstantRange;
 
-    if (vkCreatePipelineLayout(dev, &pipelineLayoutInfo, nullptr, &pipelineLayout_) != VK_SUCCESS) {
-        throw std::runtime_error("[CloudSystem] 创建管线布局失败");
+    VkResult _vr = vkCreatePipelineLayout(dev, &pipelineLayoutInfo, nullptr, &pipelineLayout_);
+    if (_vr != VK_SUCCESS) {
+        throw std::runtime_error(std::string("[CloudSystem] 创建管线布局失败 ") + vkResultToString(_vr));
     }
 
     // 步骤2：加载着色器SPIR-V
@@ -978,8 +993,9 @@ void CloudSystem::createPipeline(VkRenderPass renderPass, VkExtent2D extent,
             createInfo.codeSize = code.size();
             createInfo.pCode = reinterpret_cast<const uint32_t*>(code.data());
             VkShaderModule module;
-            if (vkCreateShaderModule(dev, &createInfo, nullptr, &module) != VK_SUCCESS) {
-                throw std::runtime_error("[CloudSystem] 创建着色器模块失败");
+            VkResult _vrModule = vkCreateShaderModule(dev, &createInfo, nullptr, &module);
+            if (_vrModule != VK_SUCCESS) {
+                throw std::runtime_error(std::string("[CloudSystem] 创建着色器模块失败 ") + vkResultToString(_vrModule));
             }
             return module;
         };
@@ -1101,9 +1117,10 @@ void CloudSystem::createPipeline(VkRenderPass renderPass, VkExtent2D extent,
     pipelineInfo.basePipelineHandle = VK_NULL_HANDLE;
     pipelineInfo.basePipelineIndex = -1;
 
-    if (vkCreateGraphicsPipelines(dev, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr,
-                                   &pipeline_) != VK_SUCCESS) {
-        throw std::runtime_error("[CloudSystem] 创建图形管线失败");
+    VkResult _vrPipe = vkCreateGraphicsPipelines(dev, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr,
+                                                  &pipeline_);
+    if (_vrPipe != VK_SUCCESS) {
+        throw std::runtime_error(std::string("[CloudSystem] 创建图形管线失败 ") + vkResultToString(_vrPipe));
     }
 
     // 清理着色器模块（仅在不使用 ShaderManager 缓存时销毁）
@@ -1127,9 +1144,10 @@ void CloudSystem::createDescriptorSets() {
     allocInfo.descriptorSetCount = 1;
     allocInfo.pSetLayouts = &descriptorSetLayout_;
 
-    if (vkAllocateDescriptorSets(device_->getDevice(), &allocInfo,
-                                  &descriptorSet_) != VK_SUCCESS) {
-        throw std::runtime_error("[CloudSystem] 分配描述符集失败");
+    VkResult _vr = vkAllocateDescriptorSets(device_->getDevice(), &allocInfo,
+                                             &descriptorSet_);
+    if (_vr != VK_SUCCESS) {
+        throw std::runtime_error(std::string("[CloudSystem] 分配描述符集失败 ") + vkResultToString(_vr));
     }
 
     // 更新描述符集（Binding 0: 噪声纹理）

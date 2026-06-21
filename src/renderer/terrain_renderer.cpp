@@ -8,6 +8,7 @@
 #include <random>
 #include <algorithm>
 #include <chrono>
+#include "utils/vk_result.hpp"
 
  // 地形渲染器实现 — 过程化 Perlin 噪声 + 异步区块生成管线
 //
@@ -114,8 +115,9 @@ void TerrainRenderer::initBufferPool() {
         allocInfo.usage = VMA_MEMORY_USAGE_AUTO_PREFER_HOST;
         allocInfo.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
         VmaAllocationInfo allocOut;
-        if (vmaCreateBuffer(allocator, &vbInfo, &allocInfo, &slot.vertexBuffer, &slot.vertexBufferAllocation, &allocOut) != VK_SUCCESS) {
-            throw std::runtime_error("failed to create pooled vertex buffer!");
+        VkResult _vrVB = vmaCreateBuffer(allocator, &vbInfo, &allocInfo, &slot.vertexBuffer, &slot.vertexBufferAllocation, &allocOut);
+        if (_vrVB != VK_SUCCESS) {
+            throw std::runtime_error(std::string("failed to create pooled vertex buffer! ") + vkResultToString(_vrVB));
         }
         slot.vertexMappedData = allocOut.pMappedData;
 
@@ -125,8 +127,9 @@ void TerrainRenderer::initBufferPool() {
         ibInfo.usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
         ibInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
-        if (vmaCreateBuffer(allocator, &ibInfo, &allocInfo, &slot.indexBuffer, &slot.indexBufferAllocation, &allocOut) != VK_SUCCESS) {
-            throw std::runtime_error("failed to create pooled index buffer!");
+        VkResult _vrIB = vmaCreateBuffer(allocator, &ibInfo, &allocInfo, &slot.indexBuffer, &slot.indexBufferAllocation, &allocOut);
+        if (_vrIB != VK_SUCCESS) {
+            throw std::runtime_error(std::string("failed to create pooled index buffer! ") + vkResultToString(_vrIB));
         }
         slot.indexMappedData = allocOut.pMappedData;
 

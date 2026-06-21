@@ -1,5 +1,6 @@
 #include "renderer/text_renderer.hpp"
 #include "utils/logger.hpp"
+#include "utils/vk_result.hpp"
 #include <stdexcept>
 #include <cstring>
 
@@ -164,8 +165,9 @@ void TextRenderer::create() {
     VmaAllocationCreateInfo imgAllocInfo = {};
     imgAllocInfo.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
     
-    if (vmaCreateImage(vulkanDevice->getAllocator(), &imageInfo, &imgAllocInfo, &textureImage, &textureImageAllocation, nullptr) != VK_SUCCESS) {
-        throw std::runtime_error("failed to create texture image!");
+    VkResult _vrImg = vmaCreateImage(vulkanDevice->getAllocator(), &imageInfo, &imgAllocInfo, &textureImage, &textureImageAllocation, nullptr);
+    if (_vrImg != VK_SUCCESS) {
+        throw std::runtime_error(std::string("failed to create texture image! ") + vkResultToString(_vrImg));
     }
     
     // 过渡图像布局并复制数据
@@ -228,8 +230,9 @@ void TextRenderer::create() {
     viewInfo.subresourceRange.baseArrayLayer = 0;
     viewInfo.subresourceRange.layerCount = 1;
     
-    if (vkCreateImageView(vulkanDevice->getDevice(), &viewInfo, nullptr, &textureImageView) != VK_SUCCESS) {
-        throw std::runtime_error("failed to create texture image view!");
+    VkResult _vrView = vkCreateImageView(vulkanDevice->getDevice(), &viewInfo, nullptr, &textureImageView);
+    if (_vrView != VK_SUCCESS) {
+        throw std::runtime_error(std::string("failed to create texture image view! ") + vkResultToString(_vrView));
     }
     
     // 创建纹理采样器
@@ -251,8 +254,9 @@ void TextRenderer::create() {
     samplerInfo.minLod = 0.0f;
     samplerInfo.maxLod = 0.0f;
     
-    if (vkCreateSampler(vulkanDevice->getDevice(), &samplerInfo, nullptr, &textureSampler) != VK_SUCCESS) {
-        throw std::runtime_error("failed to create texture sampler!");
+    VkResult _vrSampler = vkCreateSampler(vulkanDevice->getDevice(), &samplerInfo, nullptr, &textureSampler);
+    if (_vrSampler != VK_SUCCESS) {
+        throw std::runtime_error(std::string("failed to create texture sampler! ") + vkResultToString(_vrSampler));
     }
     
     // 创建描述符集布局
@@ -268,8 +272,9 @@ void TextRenderer::create() {
     layoutInfo.bindingCount = 1;
     layoutInfo.pBindings = &samplerLayoutBinding;
     
-    if (vkCreateDescriptorSetLayout(vulkanDevice->getDevice(), &layoutInfo, nullptr, &descriptorSetLayout) != VK_SUCCESS) {
-        throw std::runtime_error("failed to create descriptor set layout!");
+    VkResult _vrDSL = vkCreateDescriptorSetLayout(vulkanDevice->getDevice(), &layoutInfo, nullptr, &descriptorSetLayout);
+    if (_vrDSL != VK_SUCCESS) {
+        throw std::runtime_error(std::string("failed to create descriptor set layout! ") + vkResultToString(_vrDSL));
     }
     
     // 创建描述符池
@@ -283,8 +288,9 @@ void TextRenderer::create() {
     poolInfo.pPoolSizes = &poolSize;
     poolInfo.maxSets = 1;
     
-    if (vkCreateDescriptorPool(vulkanDevice->getDevice(), &poolInfo, nullptr, &descriptorPool) != VK_SUCCESS) {
-        throw std::runtime_error("failed to create descriptor pool!");
+    VkResult _vrDSP = vkCreateDescriptorPool(vulkanDevice->getDevice(), &poolInfo, nullptr, &descriptorPool);
+    if (_vrDSP != VK_SUCCESS) {
+        throw std::runtime_error(std::string("failed to create descriptor pool! ") + vkResultToString(_vrDSP));
     }
     
     // 创建描述符集
@@ -294,8 +300,9 @@ void TextRenderer::create() {
     allocInfoSet.descriptorSetCount = 1;
     allocInfoSet.pSetLayouts = &descriptorSetLayout;
     
-    if (vkAllocateDescriptorSets(vulkanDevice->getDevice(), &allocInfoSet, &descriptorSet) != VK_SUCCESS) {
-        throw std::runtime_error("failed to allocate descriptor sets!");
+    VkResult _vrDS = vkAllocateDescriptorSets(vulkanDevice->getDevice(), &allocInfoSet, &descriptorSet);
+    if (_vrDS != VK_SUCCESS) {
+        throw std::runtime_error(std::string("failed to allocate descriptor sets! ") + vkResultToString(_vrDS));
     }
     
     VkDescriptorImageInfo descImageInfo{};
@@ -361,8 +368,9 @@ void TextRenderer::createBuffer(VkDeviceSize size, VkBufferUsageFlags usage,
     bufferInfo.usage = usage;
     bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
     
-    if (vmaCreateBuffer(vulkanDevice->getAllocator(), &bufferInfo, &allocInfo, &buffer, &allocation, nullptr) != VK_SUCCESS) {
-        throw std::runtime_error("failed to create buffer!");
+    VkResult _vrBuf = vmaCreateBuffer(vulkanDevice->getAllocator(), &bufferInfo, &allocInfo, &buffer, &allocation, nullptr);
+    if (_vrBuf != VK_SUCCESS) {
+        throw std::runtime_error(std::string("failed to create buffer! ") + vkResultToString(_vrBuf));
     }
 }
 

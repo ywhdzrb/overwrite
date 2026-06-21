@@ -56,7 +56,7 @@ public:
      */
     bool isUsingTexture() const { return useTexture; }
 
-protected:
+public:
     struct PushConstants {
         glm::mat4 model;
         glm::mat4 view;
@@ -70,6 +70,7 @@ protected:
         float windStrength;  // 风场强度（0=无风）
     };
 
+protected:
     std::shared_ptr<VulkanDevice> device;
     std::shared_ptr<TextureLoader> textureLoader;
     std::unique_ptr<Model> model;

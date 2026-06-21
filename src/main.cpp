@@ -119,7 +119,6 @@ int main() {
         owengine::Logger::info("Application closed successfully");
     } catch (const std::exception& e) {
         owengine::Logger::error(std::string("Error: ") + e.what());
-        std::cerr << "Error: " << e.what() << std::endl;
         return EXIT_FAILURE;
     }
 

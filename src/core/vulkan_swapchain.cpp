@@ -5,6 +5,7 @@
 #include <GLFW/glfw3.h>
 #include <iostream>
 #include <stdexcept>
+#include "utils/vk_result.hpp"
 #include <algorithm>
 #include <limits>
 
@@ -69,8 +70,9 @@ void VulkanSwapchain::create() {
     createInfo.clipped = VK_TRUE;
     createInfo.oldSwapchain = VK_NULL_HANDLE;
 
-    if (vkCreateSwapchainKHR(device_->getDevice(), &createInfo, nullptr, &swapchain_) != VK_SUCCESS) {
-        throw std::runtime_error("failed to create swap chain!");
+    VkResult _vr = vkCreateSwapchainKHR(device_->getDevice(), &createInfo, nullptr, &swapchain_);
+    if (_vr != VK_SUCCESS) {
+        throw std::runtime_error(std::string("failed to create swap chain! ") + vkResultToString(_vr));
     }
 
     vkGetSwapchainImagesKHR(device_->getDevice(), swapchain_, &imageCount, nullptr);
@@ -102,8 +104,9 @@ void VulkanSwapchain::createImageViews() {
         createInfo.subresourceRange.baseArrayLayer = 0;
         createInfo.subresourceRange.layerCount = 1;
 
-        if (vkCreateImageView(device_->getDevice(), &createInfo, nullptr, &swapchainImageViews_[i]) != VK_SUCCESS) {
-            throw std::runtime_error("failed to create image views!");
+        VkResult _vr = vkCreateImageView(device_->getDevice(), &createInfo, nullptr, &swapchainImageViews_[i]);
+        if (_vr != VK_SUCCESS) {
+            throw std::runtime_error(std::string("failed to create image views! ") + vkResultToString(_vr));
         }
     }
 }

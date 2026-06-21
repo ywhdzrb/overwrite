@@ -2,6 +2,7 @@
 // 负责管理Vulkan设备、队列、命令池以及图像操作
 #include "core/vulkan_device.hpp"
 #include "utils/logger.hpp"
+#include "utils/vk_result.hpp"
 
 #include <algorithm>
 #include <iostream>
@@ -32,8 +33,9 @@ VulkanDevice::VulkanDevice(VkInstance instance, VkPhysicalDevice physicalDevice,
     allocatorInfo.device = device_;
     allocatorInfo.instance = instance;
 
-    if (vmaCreateAllocator(&allocatorInfo, &allocator_) != VK_SUCCESS) {
-        throw std::runtime_error("failed to create VMA allocator!");
+    VkResult _vr = vmaCreateAllocator(&allocatorInfo, &allocator_);
+    if (_vr != VK_SUCCESS) {
+        throw std::runtime_error(std::string("failed to create VMA allocator! ") + vkResultToString(_vr));
     }
 }
 
@@ -61,8 +63,9 @@ void VulkanDevice::createCommandPool() {
     poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
     poolInfo.queueFamilyIndex = graphicsQueueFamily_;
 
-    if (vkCreateCommandPool(device_, &poolInfo, nullptr, &commandPool_) != VK_SUCCESS) {
-        throw std::runtime_error("failed to create command pool!");
+    VkResult _vr = vkCreateCommandPool(device_, &poolInfo, nullptr, &commandPool_);
+    if (_vr != VK_SUCCESS) {
+        throw std::runtime_error(std::string("failed to create command pool! ") + vkResultToString(_vr));
     }
 }
 
@@ -198,7 +201,7 @@ void VulkanDevice::endSingleTimeCommands(VkCommandBuffer commandBuffer) const {
             std::lock_guard<std::mutex> lock(queueMutex_);
             VkResult idleResult = vkQueueWaitIdle(graphicsQueue_);
             if (idleResult != VK_SUCCESS) {
-                std::cerr << "[VulkanDevice] 紧急回退 vkQueueWaitIdle 失败: " << idleResult << std::endl;
+                Logger::error("[VulkanDevice] 紧急回退 vkQueueWaitIdle 失败: " + vkResultToString(idleResult));
             }
         }
     }
@@ -307,8 +310,9 @@ void VulkanDevice::createDepthResources(VkExtent2D extent, VkSampleCountFlagBits
     allocInfo.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
     allocInfo.flags = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT;
     
-    if (vmaCreateImage(allocator_, &imageInfo, &allocInfo, &depthImage_, &depthImageAllocation_, nullptr) != VK_SUCCESS) {
-        throw std::runtime_error("failed to create depth image with VMA!");
+    VkResult _vr2 = vmaCreateImage(allocator_, &imageInfo, &allocInfo, &depthImage_, &depthImageAllocation_, nullptr);
+    if (_vr2 != VK_SUCCESS) {
+        throw std::runtime_error(std::string("failed to create depth image with VMA! ") + vkResultToString(_vr2));
     }
     
     // 创建深度图像视图
@@ -323,8 +327,9 @@ void VulkanDevice::createDepthResources(VkExtent2D extent, VkSampleCountFlagBits
     viewInfo.subresourceRange.baseArrayLayer = 0;
     viewInfo.subresourceRange.layerCount = 1;
     
-    if (vkCreateImageView(device_, &viewInfo, nullptr, &depthImageView_) != VK_SUCCESS) {
-        throw std::runtime_error("failed to create depth image view!");
+    VkResult _vr3 = vkCreateImageView(device_, &viewInfo, nullptr, &depthImageView_);
+    if (_vr3 != VK_SUCCESS) {
+        throw std::runtime_error(std::string("failed to create depth image view! ") + vkResultToString(_vr3));
     }
     
     // 转换深度图像布局

@@ -5,6 +5,7 @@
 #include <stdexcept>
 #include <cstring>
 #include <iostream>
+#include "utils/vk_result.hpp"
 
 namespace owengine {
 
@@ -66,8 +67,9 @@ void FloorRenderer::createVertexBuffer() {
     allocInfo.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
     
     VmaAllocationInfo allocInfoOut;
-    if (vmaCreateBuffer(device->getAllocator(), &bufferInfo, &allocInfo, &vertexBuffer, &vertexBufferAllocation, &allocInfoOut) != VK_SUCCESS) {
-        throw std::runtime_error("failed to create vertex buffer!");
+    VkResult _vr = vmaCreateBuffer(device->getAllocator(), &bufferInfo, &allocInfo, &vertexBuffer, &vertexBufferAllocation, &allocInfoOut);
+    if (_vr != VK_SUCCESS) {
+        throw std::runtime_error(std::string("failed to create vertex buffer! ") + vkResultToString(_vr));
     }
     
     // 通过已映射指针直接复制数据
@@ -97,8 +99,9 @@ void FloorRenderer::createIndexBuffer() {
     allocInfo.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
     
     VmaAllocationInfo allocInfoOut;
-    if (vmaCreateBuffer(device->getAllocator(), &bufferInfo, &allocInfo, &indexBuffer, &indexBufferAllocation, &allocInfoOut) != VK_SUCCESS) {
-        throw std::runtime_error("failed to create index buffer!");
+    VkResult _vr = vmaCreateBuffer(device->getAllocator(), &bufferInfo, &allocInfo, &indexBuffer, &indexBufferAllocation, &allocInfoOut);
+    if (_vr != VK_SUCCESS) {
+        throw std::runtime_error(std::string("failed to create index buffer! ") + vkResultToString(_vr));
     }
     
     // 通过已映射指针直接复制数据

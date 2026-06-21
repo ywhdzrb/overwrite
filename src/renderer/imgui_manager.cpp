@@ -4,6 +4,7 @@
 #include "imgui_impl_vulkan.h"
 #include "imgui_impl_glfw.h"
 #include <cmath>
+#include "utils/vk_result.hpp"
 
 namespace owengine {
 
@@ -136,8 +137,9 @@ void ImGuiManager::createDescriptorPool() {
     pool_info.poolSizeCount = static_cast<uint32_t>(IM_ARRAYSIZE(pool_sizes));
     pool_info.pPoolSizes = pool_sizes;
 
-    if (vkCreateDescriptorPool(vulkanDevice->getDevice(), &pool_info, nullptr, &descriptorPool) != VK_SUCCESS) {
-        throw std::runtime_error("Failed to create descriptor pool for ImGui");
+    VkResult _vr = vkCreateDescriptorPool(vulkanDevice->getDevice(), &pool_info, nullptr, &descriptorPool);
+    if (_vr != VK_SUCCESS) {
+        throw std::runtime_error(std::string("Failed to create descriptor pool for ImGui ") + vkResultToString(_vr));
     }
 }
 

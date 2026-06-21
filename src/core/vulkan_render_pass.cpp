@@ -3,6 +3,7 @@
 #include "core/vulkan_render_pass.hpp"
 #include "core/vulkan_device.hpp"
 #include <stdexcept>
+#include "utils/vk_result.hpp"
 
 namespace owengine {
 
@@ -97,8 +98,9 @@ void VulkanRenderPass::create() {
         renderPassInfo.dependencyCount = 1;
         renderPassInfo.pDependencies = &dependency;
 
-        if (vkCreateRenderPass(device_->getDevice(), &renderPassInfo, nullptr, &renderPass_) != VK_SUCCESS) {
-            throw std::runtime_error("failed to create render pass!");
+        VkResult _vr = vkCreateRenderPass(device_->getDevice(), &renderPassInfo, nullptr, &renderPass_);
+        if (_vr != VK_SUCCESS) {
+            throw std::runtime_error(std::string("failed to create render pass! ") + vkResultToString(_vr));
         }
     } else {
         // 不使用MSAA时，创建一个直接呈现的颜色附件
@@ -147,8 +149,9 @@ void VulkanRenderPass::create() {
         renderPassInfo.dependencyCount = 1;
         renderPassInfo.pDependencies = &dependency;
 
-        if (vkCreateRenderPass(device_->getDevice(), &renderPassInfo, nullptr, &renderPass_) != VK_SUCCESS) {
-            throw std::runtime_error("failed to create render pass!");
+        VkResult _vr = vkCreateRenderPass(device_->getDevice(), &renderPassInfo, nullptr, &renderPass_);
+        if (_vr != VK_SUCCESS) {
+            throw std::runtime_error(std::string("failed to create render pass! ") + vkResultToString(_vr));
         }
     }
 }

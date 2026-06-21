@@ -2,6 +2,7 @@
 #include "core/vulkan_sync.hpp"
 #include "core/vulkan_device.hpp"
 #include <stdexcept>
+#include "utils/vk_result.hpp"
 
 namespace owengine {
 
@@ -27,10 +28,17 @@ void VulkanSync::create(size_t maxFramesInFlight) {
     fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
 
     for (size_t i = 0; i < maxFramesInFlight_; i++) {
-        if (vkCreateSemaphore(device_->getDevice(), &semaphoreInfo, nullptr, &imageAvailableSemaphores_[i]) != VK_SUCCESS ||
-            vkCreateSemaphore(device_->getDevice(), &semaphoreInfo, nullptr, &renderFinishedSemaphores_[i]) != VK_SUCCESS ||
-            vkCreateFence(device_->getDevice(), &fenceInfo, nullptr, &inFlightFences_[i]) != VK_SUCCESS) {
-            throw std::runtime_error("failed to create synchronization objects for a frame!");
+        VkResult _vr1 = vkCreateSemaphore(device_->getDevice(), &semaphoreInfo, nullptr, &imageAvailableSemaphores_[i]);
+        if (_vr1 != VK_SUCCESS) {
+            throw std::runtime_error(std::string("failed to create image available semaphore! ") + vkResultToString(_vr1));
+        }
+        VkResult _vr2 = vkCreateSemaphore(device_->getDevice(), &semaphoreInfo, nullptr, &renderFinishedSemaphores_[i]);
+        if (_vr2 != VK_SUCCESS) {
+            throw std::runtime_error(std::string("failed to create render finished semaphore! ") + vkResultToString(_vr2));
+        }
+        VkResult _vr3 = vkCreateFence(device_->getDevice(), &fenceInfo, nullptr, &inFlightFences_[i]);
+        if (_vr3 != VK_SUCCESS) {
+            throw std::runtime_error(std::string("failed to create in-flight fence! ") + vkResultToString(_vr3));
         }
     }
 }

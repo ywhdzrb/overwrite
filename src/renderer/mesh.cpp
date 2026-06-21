@@ -2,6 +2,7 @@
 // 负责创建和管理顶点/索引缓冲区
 #include "renderer/mesh.hpp"
 #include "core/vulkan_device.hpp"
+#include "utils/vk_result.hpp"
 #include <stdexcept>
 #include <cstring>
 
@@ -41,8 +42,9 @@ void Mesh::createVertexBuffer(const std::vector<Vertex>& vertices) {
     allocInfo.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
     
     VmaAllocationInfo allocInfoOut;
-    if (vmaCreateBuffer(device->getAllocator(), &bufferInfo, &allocInfo, &stagingBuffer, &stagingAllocation, &allocInfoOut) != VK_SUCCESS) {
-        throw std::runtime_error("failed to create vertex buffer!");
+    VkResult _vr = vmaCreateBuffer(device->getAllocator(), &bufferInfo, &allocInfo, &stagingBuffer, &stagingAllocation, &allocInfoOut);
+    if (_vr != VK_SUCCESS) {
+        throw std::runtime_error(std::string("failed to create vertex buffer! ") + vkResultToString(_vr));
     }
     
     // 复制顶点数据到暂存缓冲区
@@ -54,8 +56,9 @@ void Mesh::createVertexBuffer(const std::vector<Vertex>& vertices) {
     allocInfo.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
     allocInfo.flags = 0;
     
-    if (vmaCreateBuffer(device->getAllocator(), &bufferInfo, &allocInfo, &vertexBuffer, &vertexBufferAllocation, nullptr) != VK_SUCCESS) {
-        throw std::runtime_error("failed to create vertex buffer!");
+    _vr = vmaCreateBuffer(device->getAllocator(), &bufferInfo, &allocInfo, &vertexBuffer, &vertexBufferAllocation, nullptr);
+    if (_vr != VK_SUCCESS) {
+        throw std::runtime_error(std::string("failed to create vertex buffer! ") + vkResultToString(_vr));
     }
     
     // 通过命令缓冲区将数据从暂存缓冲区复制到设备本地缓冲区
@@ -87,8 +90,9 @@ void Mesh::createIndexBuffer(const std::vector<uint32_t>& indices) {
     allocInfo.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
     
     VmaAllocationInfo allocInfoOut;
-    if (vmaCreateBuffer(device->getAllocator(), &bufferInfo, &allocInfo, &stagingBuffer, &stagingAllocation, &allocInfoOut) != VK_SUCCESS) {
-        throw std::runtime_error("failed to create index buffer!");
+    VkResult _vr = vmaCreateBuffer(device->getAllocator(), &bufferInfo, &allocInfo, &stagingBuffer, &stagingAllocation, &allocInfoOut);
+    if (_vr != VK_SUCCESS) {
+        throw std::runtime_error(std::string("failed to create index buffer! ") + vkResultToString(_vr));
     }
     
     // 复制索引数据到暂存缓冲区
@@ -100,8 +104,9 @@ void Mesh::createIndexBuffer(const std::vector<uint32_t>& indices) {
     allocInfo.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
     allocInfo.flags = 0;
     
-    if (vmaCreateBuffer(device->getAllocator(), &bufferInfo, &allocInfo, &indexBuffer, &indexBufferAllocation, nullptr) != VK_SUCCESS) {
-        throw std::runtime_error("failed to create index buffer!");
+    _vr = vmaCreateBuffer(device->getAllocator(), &bufferInfo, &allocInfo, &indexBuffer, &indexBufferAllocation, nullptr);
+    if (_vr != VK_SUCCESS) {
+        throw std::runtime_error(std::string("failed to create index buffer! ") + vkResultToString(_vr));
     }
     
     // 通过命令缓冲区将数据从暂存缓冲区复制到设备本地缓冲区

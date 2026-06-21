@@ -24,6 +24,7 @@
 #include "renderer/grass_system.hpp"
 #include "core/game_config.hpp"
 #include "ecs/ecs.hpp"
+#include "utils/vk_result.hpp"
 
 namespace owengine {
 
@@ -733,8 +734,9 @@ void Renderer::createCloudCompositeResources() {
     rpCi.dependencyCount = 1;
     rpCi.pDependencies = &dep;
 
-    if (vkCreateRenderPass(dev, &rpCi, nullptr, &cloudCompositeRenderPass_) != VK_SUCCESS) {
-        throw std::runtime_error("[Renderer] 创建云合成渲染通道失败");
+    VkResult _vrRP = vkCreateRenderPass(dev, &rpCi, nullptr, &cloudCompositeRenderPass_);
+    if (_vrRP != VK_SUCCESS) {
+        throw std::runtime_error(std::string("[Renderer] 创建云合成渲染通道失败 ") + vkResultToString(_vrRP));
     }
 
     // --- 创建合成管线布局 ---
@@ -750,8 +752,9 @@ void Renderer::createCloudCompositeResources() {
     dsLayoutCi.bindingCount = 1;
     dsLayoutCi.pBindings = &samplerBinding;
 
-    if (vkCreateDescriptorSetLayout(dev, &dsLayoutCi, nullptr, &cloudCompositeDSLayout_) != VK_SUCCESS) {
-        throw std::runtime_error("[Renderer] 创建云合成描述符集布局失败");
+    VkResult _vrDSL = vkCreateDescriptorSetLayout(dev, &dsLayoutCi, nullptr, &cloudCompositeDSLayout_);
+    if (_vrDSL != VK_SUCCESS) {
+        throw std::runtime_error(std::string("[Renderer] 创建云合成描述符集布局失败 ") + vkResultToString(_vrDSL));
     }
 
     VkPushConstantRange pcRange{};
@@ -766,8 +769,9 @@ void Renderer::createCloudCompositeResources() {
     plCi.pushConstantRangeCount = 0;  // 不强制需要 push constant
     plCi.pPushConstantRanges = nullptr;
 
-    if (vkCreatePipelineLayout(dev, &plCi, nullptr, &cloudCompositePipelineLayout_) != VK_SUCCESS) {
-        throw std::runtime_error("[Renderer] 创建云合成管线布局失败");
+    VkResult _vrPL = vkCreatePipelineLayout(dev, &plCi, nullptr, &cloudCompositePipelineLayout_);
+    if (_vrPL != VK_SUCCESS) {
+        throw std::runtime_error(std::string("[Renderer] 创建云合成管线布局失败 ") + vkResultToString(_vrPL));
     }
 
     // --- 创建描述符池 ---
@@ -781,8 +785,9 @@ void Renderer::createCloudCompositeResources() {
     dpCi.pPoolSizes = &poolSize;
     dpCi.maxSets = 1;
 
-    if (vkCreateDescriptorPool(dev, &dpCi, nullptr, &cloudCompositeDSPool_) != VK_SUCCESS) {
-        throw std::runtime_error("[Renderer] 创建云合成描述符池失败");
+    VkResult _vrDSP = vkCreateDescriptorPool(dev, &dpCi, nullptr, &cloudCompositeDSPool_);
+    if (_vrDSP != VK_SUCCESS) {
+        throw std::runtime_error(std::string("[Renderer] 创建云合成描述符池失败 ") + vkResultToString(_vrDSP));
     }
 
     // --- 分配和更新描述符集（绑定半分辨率云纹理） ---
@@ -792,8 +797,9 @@ void Renderer::createCloudCompositeResources() {
     dsAi.descriptorSetCount = 1;
     dsAi.pSetLayouts = &cloudCompositeDSLayout_;
 
-    if (vkAllocateDescriptorSets(dev, &dsAi, &cloudCompositeDS_) != VK_SUCCESS) {
-        throw std::runtime_error("[Renderer] 分配云合成描述符集失败");
+    VkResult _vrDSA = vkAllocateDescriptorSets(dev, &dsAi, &cloudCompositeDS_);
+    if (_vrDSA != VK_SUCCESS) {
+        throw std::runtime_error(std::string("[Renderer] 分配云合成描述符集失败 ") + vkResultToString(_vrDSA));
     }
 
     // 更新描述符集：绑定半分辨率云纹理
@@ -911,9 +917,10 @@ void Renderer::createCloudCompositeResources() {
     pi.renderPass = cloudCompositeRenderPass_;
     pi.subpass = 0;
 
-    if (vkCreateGraphicsPipelines(dev, VK_NULL_HANDLE, 1, &pi, nullptr,
-                                   &cloudCompositePipeline_) != VK_SUCCESS) {
-        throw std::runtime_error("[Renderer] 创建云合成管线失败");
+    VkResult _vrGP = vkCreateGraphicsPipelines(dev, VK_NULL_HANDLE, 1, &pi, nullptr,
+                                              &cloudCompositePipeline_);
+    if (_vrGP != VK_SUCCESS) {
+        throw std::runtime_error(std::string("[Renderer] 创建云合成管线失败 ") + vkResultToString(_vrGP));
     }
 
     // 注意：ShaderManager 拥有这些模块的声明周期，不在本地销毁
@@ -938,8 +945,9 @@ void Renderer::createCloudCompositeResources() {
         fbCi.height = fullExt.height;
         fbCi.layers = 1;
 
-        if (vkCreateFramebuffer(dev, &fbCi, nullptr, &cloudCompositeFramebuffers_[i]) != VK_SUCCESS) {
-            throw std::runtime_error("[Renderer] 创建云合成帧缓冲失败");
+        VkResult _vrFB = vkCreateFramebuffer(dev, &fbCi, nullptr, &cloudCompositeFramebuffers_[i]);
+        if (_vrFB != VK_SUCCESS) {
+            throw std::runtime_error(std::string("[Renderer] 创建云合成帧缓冲失败 ") + vkResultToString(_vrFB));
         }
     }
 
@@ -1004,7 +1012,7 @@ void Renderer::drawFrame() {
         if (glfwWindowShouldClose(window_)) {
             return;
         }
-        throw std::runtime_error("failed to acquire swap chain image!");
+        throw std::runtime_error(std::string("failed to acquire swap chain image! ") + vkResultToString(result));
     }
     
     vkResetFences(vulkanDevice_->getDevice(), 1, &syncObjects_->getInFlightFences()[currentFrame_]);
@@ -1024,8 +1032,9 @@ void Renderer::drawFrame() {
     beginInfo.flags = 0;
     beginInfo.pInheritanceInfo = nullptr;
     
-    if (vkBeginCommandBuffer(commandBuffer, &beginInfo) != VK_SUCCESS) {
-        throw std::runtime_error("failed to begin recording command buffer!");
+    VkResult _vrBegin = vkBeginCommandBuffer(commandBuffer, &beginInfo);
+    if (_vrBegin != VK_SUCCESS) {
+        throw std::runtime_error(std::string("failed to begin recording command buffer! ") + vkResultToString(_vrBegin));
     }
     
     VkRenderPassBeginInfo renderPass_Info{};
@@ -1332,8 +1341,9 @@ void Renderer::drawFrame() {
                              VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0, nullptr, 0, nullptr, 1, &b);
     }
 
-    if (vkEndCommandBuffer(commandBuffer) != VK_SUCCESS) {
-        throw std::runtime_error("failed to record command buffer!");
+    VkResult _vrEnd = vkEndCommandBuffer(commandBuffer);
+    if (_vrEnd != VK_SUCCESS) {
+        throw std::runtime_error(std::string("failed to record command buffer! ") + vkResultToString(_vrEnd));
     }
     
     VkSubmitInfo submitInfo{};
@@ -1372,7 +1382,7 @@ void Renderer::drawFrame() {
             vkQueueSubmit(vulkanDevice_->getGraphicsQueue(), 1, &emptySubmit, syncObjects_->getInFlightFences()[currentFrame_]);
             return;
         }
-        throw std::runtime_error("failed to submit draw command buffer!");
+        throw std::runtime_error(std::string("failed to submit draw command buffer! ") + vkResultToString(submitResult));
     }
     
     VkPresentInfoKHR presentInfo{};
@@ -1399,7 +1409,7 @@ void Renderer::drawFrame() {
         if (glfwWindowShouldClose(window_)) {
             return;
         }
-        throw std::runtime_error("failed to present swap chain image!");
+        throw std::runtime_error(std::string("failed to present swap chain image! ") + vkResultToString(result));
     }
     
     currentFrame_ = (currentFrame_ + 1) % syncObjects_->getMaxFramesInFlight();
@@ -1597,8 +1607,9 @@ void Renderer::createColorResources() {
     
     VmaAllocationCreateInfo allocInfo{};
     allocInfo.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
-    if (vmaCreateImage(vulkanDevice_->getAllocator(), &imageInfo, &allocInfo, &colorImage_, &colorImageAllocation_, nullptr) != VK_SUCCESS) {
-        throw std::runtime_error("failed to create color image!");
+    VkResult _vrCImg = vmaCreateImage(vulkanDevice_->getAllocator(), &imageInfo, &allocInfo, &colorImage_, &colorImageAllocation_, nullptr);
+    if (_vrCImg != VK_SUCCESS) {
+        throw std::runtime_error(std::string("failed to create color image! ") + vkResultToString(_vrCImg));
     }
     
     VkImageViewCreateInfo imageViewInfo{};
@@ -1612,8 +1623,9 @@ void Renderer::createColorResources() {
     imageViewInfo.subresourceRange.baseArrayLayer = 0;
     imageViewInfo.subresourceRange.layerCount = 1;
     
-    if (vkCreateImageView(vulkanDevice_->getDevice(), &imageViewInfo, nullptr, &colorImageView_) != VK_SUCCESS) {
-        throw std::runtime_error("failed to create color image view!");
+    VkResult _vrCView = vkCreateImageView(vulkanDevice_->getDevice(), &imageViewInfo, nullptr, &colorImageView_);
+    if (_vrCView != VK_SUCCESS) {
+        throw std::runtime_error(std::string("failed to create color image view! ") + vkResultToString(_vrCView));
     }
     
     // 注意：MSAA颜色附件不需要单独的布局转换，渲染通道会自动处理
@@ -1653,8 +1665,9 @@ void Renderer::createDescriptorSetLayouts() {
     textureLayoutInfo.bindingCount = static_cast<uint32_t>(textureBindings.size());
     textureLayoutInfo.pBindings = textureBindings.data();
 
-    if (vkCreateDescriptorSetLayout(vulkanDevice_->getDevice(), &textureLayoutInfo, nullptr, &textureDescriptorSetLayout_) != VK_SUCCESS) {
-        throw std::runtime_error("failed to create texture descriptor set layout!");
+    VkResult _vrTxt = vkCreateDescriptorSetLayout(vulkanDevice_->getDevice(), &textureLayoutInfo, nullptr, &textureDescriptorSetLayout_);
+    if (_vrTxt != VK_SUCCESS) {
+        throw std::runtime_error(std::string("failed to create texture descriptor set layout! ") + vkResultToString(_vrTxt));
     }
 
     // 2. 创建光源描述符集布局 (set = 1, binding = 0)
@@ -1673,8 +1686,9 @@ void Renderer::createDescriptorSetLayouts() {
     lightLayoutInfo.bindingCount = static_cast<uint32_t>(lightBindings.size());
     lightLayoutInfo.pBindings = lightBindings.data();
 
-    if (vkCreateDescriptorSetLayout(vulkanDevice_->getDevice(), &lightLayoutInfo, nullptr, &lightDescriptorSetLayout_) != VK_SUCCESS) {
-        throw std::runtime_error("failed to create light descriptor set layout!");
+    VkResult _vrLit = vkCreateDescriptorSetLayout(vulkanDevice_->getDevice(), &lightLayoutInfo, nullptr, &lightDescriptorSetLayout_);
+    if (_vrLit != VK_SUCCESS) {
+        throw std::runtime_error(std::string("failed to create light descriptor set layout! ") + vkResultToString(_vrLit));
     }
 }
 
@@ -1696,8 +1710,9 @@ void Renderer::createDescriptorPool(uint32_t maxSets, uint32_t descriptorCount) 
     poolInfo.pPoolSizes = poolSizes.data();
     poolInfo.maxSets = maxSets;
 
-    if (vkCreateDescriptorPool(vulkanDevice_->getDevice(), &poolInfo, nullptr, &descriptorPool_) != VK_SUCCESS) {
-        throw std::runtime_error("failed to create descriptor pool!");
+    VkResult _vr = vkCreateDescriptorPool(vulkanDevice_->getDevice(), &poolInfo, nullptr, &descriptorPool_);
+    if (_vr != VK_SUCCESS) {
+        throw std::runtime_error(std::string("failed to create descriptor pool! ") + vkResultToString(_vr));
     }
 }
 
@@ -1748,8 +1763,9 @@ void Renderer::createDescriptorSets() {
         textureAllocInfo.descriptorSetCount = 1;
         textureAllocInfo.pSetLayouts = &textureDescriptorSetLayout_;
 
-        if (vkAllocateDescriptorSets(vulkanDevice_->getDevice(), &textureAllocInfo, &textureDescriptorSet_) != VK_SUCCESS) {
-            throw std::runtime_error("failed to allocate default texture descriptor set!");
+        VkResult _vrTxtDS = vkAllocateDescriptorSets(vulkanDevice_->getDevice(), &textureAllocInfo, &textureDescriptorSet_);
+        if (_vrTxtDS != VK_SUCCESS) {
+            throw std::runtime_error(std::string("failed to allocate default texture descriptor set! ") + vkResultToString(_vrTxtDS));
         }
         Logger::info("Default texture descriptor set allocated");
     }
@@ -1775,8 +1791,9 @@ void Renderer::createDescriptorSets() {
     allocInfo.usage = VMA_MEMORY_USAGE_AUTO_PREFER_HOST;
     allocInfo.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
     VmaAllocationInfo allocOut;
-    if (vmaCreateBuffer(vulkanDevice_->getAllocator(), &bufferInfo, &allocInfo, &lightUniformBuffer_, &lightUniformBufferAllocation_, &allocOut) != VK_SUCCESS) {
-        throw std::runtime_error("failed to create light uniform buffer!");
+    VkResult _vrUBuf = vmaCreateBuffer(vulkanDevice_->getAllocator(), &bufferInfo, &allocInfo, &lightUniformBuffer_, &lightUniformBufferAllocation_, &allocOut);
+    if (_vrUBuf != VK_SUCCESS) {
+        throw std::runtime_error(std::string("failed to create light uniform buffer! ") + vkResultToString(_vrUBuf));
     }
     lightUniformBufferMapped_ = allocOut.pMappedData;
 
@@ -1787,8 +1804,9 @@ void Renderer::createDescriptorSets() {
     lightAllocInfo.descriptorSetCount = 1;
     lightAllocInfo.pSetLayouts = &lightDescriptorSetLayout_;
 
-    if (vkAllocateDescriptorSets(vulkanDevice_->getDevice(), &lightAllocInfo, &lightDescriptorSet_) != VK_SUCCESS) {
-        throw std::runtime_error("failed to allocate light descriptor set!");
+    VkResult _vrLitDS = vkAllocateDescriptorSets(vulkanDevice_->getDevice(), &lightAllocInfo, &lightDescriptorSet_);
+    if (_vrLitDS != VK_SUCCESS) {
+        throw std::runtime_error(std::string("failed to allocate light descriptor set! ") + vkResultToString(_vrLitDS));
     }
 
     // 更新光源描述符集

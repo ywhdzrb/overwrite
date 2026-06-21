@@ -151,25 +151,20 @@ public:
     template<typename... Args>
     [[nodiscard]] T* acquire(Args&&... args) {
         size_t idx;
-        bool needsGrow = false;
         {
+            // 单锁内完成检查+扩容，消除 TOCTOU 竞态
             std::lock_guard<std::mutex> lock(mtx_);
             if (!freeIndices_.empty()) {
                 idx = freeIndices_.back();
                 freeIndices_.pop_back();
             } else if (growable_) {
                 idx = slots_.size();
-                needsGrow = true;
+                expand(idx + std::max<size_t>(idx / 2, 16));
+                idx = freeIndices_.back();
+                freeIndices_.pop_back();
             } else {
                 return nullptr;
             }
-        }
-        if (needsGrow) {
-            std::lock_guard<std::mutex> lock(mtx_);
-            idx = slots_.size();
-            expand(idx + std::max<size_t>(idx / 2, 16));
-            idx = freeIndices_.back();
-            freeIndices_.pop_back();
         }
         auto& slot = slots_[idx];
         slot.alive = true;

@@ -7,6 +7,8 @@
 #include <stdexcept>
 #include <array>
 #include <glm/glm.hpp>
+#include "renderer/model_renderer.hpp"
+#include "utils/vk_result.hpp"
 
 namespace owengine {
 
@@ -208,12 +210,7 @@ void VulkanPipeline::create() {
     if (isSkybox) {
         pushConstantRange.size = sizeof(glm::mat4) * 2;  // view + projection (天空盒)
     } else {
-        // PushConstants结构体大小计算：
-        // model(mat4) + view(mat4) + proj(mat4) + baseColor(vec3) + metallic(float) + roughness(float) + hasTexture(int) + _pad0(float) + windTime(float) + windStrength(float)
-        // = 64*3 + 12 + 4 + 4 + 4 + 4 + 4 + 4
-        // = 192 + 12 + 24
-        // = 228 bytes
-        pushConstantRange.size = 228;
+        pushConstantRange.size = sizeof(ModelRenderer::PushConstants);
     }
 
     VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
@@ -226,8 +223,9 @@ void VulkanPipeline::create() {
     pipelineLayoutInfo.pushConstantRangeCount = 1;
     pipelineLayoutInfo.pPushConstantRanges = &pushConstantRange;
 
-    if (vkCreatePipelineLayout(device_->getDevice(), &pipelineLayoutInfo, nullptr, &pipelineLayout_) != VK_SUCCESS) {
-        throw std::runtime_error("failed to create pipeline layout!");
+    VkResult _vr1 = vkCreatePipelineLayout(device_->getDevice(), &pipelineLayoutInfo, nullptr, &pipelineLayout_);
+    if (_vr1 != VK_SUCCESS) {
+        throw std::runtime_error(std::string("failed to create pipeline layout! ") + vkResultToString(_vr1));
     }
 
     VkGraphicsPipelineCreateInfo pipelineInfo{};
@@ -248,8 +246,9 @@ void VulkanPipeline::create() {
     pipelineInfo.basePipelineHandle = VK_NULL_HANDLE;
     pipelineInfo.basePipelineIndex = -1;
 
-    if (vkCreateGraphicsPipelines(device_->getDevice(), VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &graphicsPipeline_) != VK_SUCCESS) {
-        throw std::runtime_error("failed to create graphics pipeline!");
+    VkResult _vr2 = vkCreateGraphicsPipelines(device_->getDevice(), VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &graphicsPipeline_);
+    if (_vr2 != VK_SUCCESS) {
+        throw std::runtime_error(std::string("failed to create graphics pipeline! ") + vkResultToString(_vr2));
     }
 
     vkDestroyShaderModule(device_->getDevice(), fragShaderModule, nullptr);
@@ -272,8 +271,9 @@ VkShaderModule VulkanPipeline::createShaderModule(const std::vector<char>& code)
     createInfo.pCode = reinterpret_cast<const uint32_t*>(code.data());
 
     VkShaderModule shaderModule;
-    if (vkCreateShaderModule(device_->getDevice(), &createInfo, nullptr, &shaderModule) != VK_SUCCESS) {
-        throw std::runtime_error("failed to create shader module!");
+    VkResult _vr = vkCreateShaderModule(device_->getDevice(), &createInfo, nullptr, &shaderModule);
+    if (_vr != VK_SUCCESS) {
+        throw std::runtime_error(std::string("failed to create shader module! ") + vkResultToString(_vr));
     }
 
     return shaderModule;

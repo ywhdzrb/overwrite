@@ -3,6 +3,7 @@
 #include "core/vulkan_framebuffer.hpp"
 #include "core/vulkan_device.hpp"
 #include <stdexcept>
+#include "utils/vk_result.hpp"
 
 namespace owengine {
 
@@ -42,8 +43,9 @@ void VulkanFramebuffer::create(const std::vector<VkImageView>& swapchainImageVie
         framebufferInfo.height = swapchainExtent.height;
         framebufferInfo.layers = 1;
         
-        if (vkCreateFramebuffer(device_->getDevice(), &framebufferInfo, nullptr, &swapchainFramebuffers_[i]) != VK_SUCCESS) {
-            throw std::runtime_error("failed to create framebuffer!");
+        VkResult _vr = vkCreateFramebuffer(device_->getDevice(), &framebufferInfo, nullptr, &swapchainFramebuffers_[i]);
+        if (_vr != VK_SUCCESS) {
+            throw std::runtime_error(std::string("failed to create framebuffer! ") + vkResultToString(_vr));
         }
     }
 }

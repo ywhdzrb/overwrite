@@ -3,6 +3,7 @@
 #include "core/vulkan_command_buffer.hpp"
 #include "core/vulkan_device.hpp"
 #include <stdexcept>
+#include "utils/vk_result.hpp"
 
 namespace owengine {
 
@@ -29,8 +30,9 @@ void VulkanCommandBuffer::create(size_t imageCount) {
     allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
     allocInfo.commandBufferCount = (uint32_t) commandBuffers.size();
     
-    if (vkAllocateCommandBuffers(device->getDevice(), &allocInfo, commandBuffers.data()) != VK_SUCCESS) {
-        throw std::runtime_error("failed to allocate command buffers!");
+    VkResult _vr = vkAllocateCommandBuffers(device->getDevice(), &allocInfo, commandBuffers.data());
+    if (_vr != VK_SUCCESS) {
+        throw std::runtime_error(std::string("failed to allocate command buffers! ") + vkResultToString(_vr));
     }
 }
 
@@ -48,8 +50,9 @@ void VulkanCommandBuffer::record(size_t imageIndex, VkFramebuffer framebuffer, V
     beginInfo.flags = 0;
     beginInfo.pInheritanceInfo = nullptr;
     
-    if (vkBeginCommandBuffer(commandBuffers[imageIndex], &beginInfo) != VK_SUCCESS) {
-        throw std::runtime_error("failed to begin recording command buffer!");
+    VkResult _vr1 = vkBeginCommandBuffer(commandBuffers[imageIndex], &beginInfo);
+    if (_vr1 != VK_SUCCESS) {
+        throw std::runtime_error(std::string("failed to begin recording command buffer! ") + vkResultToString(_vr1));
     }
     
     VkRenderPassBeginInfo renderPassInfo{};
@@ -84,8 +87,9 @@ void VulkanCommandBuffer::record(size_t imageIndex, VkFramebuffer framebuffer, V
     
     vkCmdEndRenderPass(commandBuffers[imageIndex]);
     
-    if (vkEndCommandBuffer(commandBuffers[imageIndex]) != VK_SUCCESS) {
-        throw std::runtime_error("failed to record command buffer!");
+    VkResult _vr2 = vkEndCommandBuffer(commandBuffers[imageIndex]);
+    if (_vr2 != VK_SUCCESS) {
+        throw std::runtime_error(std::string("failed to record command buffer! ") + vkResultToString(_vr2));
     }
 }
 

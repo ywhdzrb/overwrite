@@ -2,6 +2,7 @@
 // 使用程序化片段着色器生成天空背景，无需外部纹理
 #include "renderer/skybox_renderer.hpp"
 #include "core/vulkan_device.hpp"
+#include "utils/vk_result.hpp"
 #include <stdexcept>
 #include <cstring>
 
@@ -39,8 +40,9 @@ void SkyboxRenderer::create() {
     pipelineLayoutInfo.pushConstantRangeCount = 1;
     pipelineLayoutInfo.pPushConstantRanges = &pushConstantRange;
 
-    if (vkCreatePipelineLayout(device->getDevice(), &pipelineLayoutInfo, nullptr, &pipelineLayout) != VK_SUCCESS) {
-        throw std::runtime_error("failed to create pipeline layout!");
+    VkResult _vr = vkCreatePipelineLayout(device->getDevice(), &pipelineLayoutInfo, nullptr, &pipelineLayout);
+    if (_vr != VK_SUCCESS) {
+        throw std::runtime_error(std::string("failed to create pipeline layout! ") + vkResultToString(_vr));
     }
 }
 
@@ -99,8 +101,9 @@ void SkyboxRenderer::createVertexBuffer() {
     allocInfo.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
 
     VmaAllocationInfo allocInfoOut;
-    if (vmaCreateBuffer(device->getAllocator(), &bufferInfo, &allocInfo, &vertexBuffer, &vertexBufferAllocation, &allocInfoOut) != VK_SUCCESS) {
-        throw std::runtime_error("failed to create vertex buffer!");
+    VkResult _vr = vmaCreateBuffer(device->getAllocator(), &bufferInfo, &allocInfo, &vertexBuffer, &vertexBufferAllocation, &allocInfoOut);
+    if (_vr != VK_SUCCESS) {
+        throw std::runtime_error(std::string("failed to create vertex buffer! ") + vkResultToString(_vr));
     }
 
     memcpy(allocInfoOut.pMappedData, vertices.data(), (size_t) bufferSize);
@@ -132,8 +135,9 @@ void SkyboxRenderer::createIndexBuffer() {
     allocInfo.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
 
     VmaAllocationInfo allocInfoOut;
-    if (vmaCreateBuffer(device->getAllocator(), &bufferInfo, &allocInfo, &indexBuffer, &indexBufferAllocation, &allocInfoOut) != VK_SUCCESS) {
-        throw std::runtime_error("failed to create index buffer!");
+    VkResult _vr = vmaCreateBuffer(device->getAllocator(), &bufferInfo, &allocInfo, &indexBuffer, &indexBufferAllocation, &allocInfoOut);
+    if (_vr != VK_SUCCESS) {
+        throw std::runtime_error(std::string("failed to create index buffer! ") + vkResultToString(_vr));
     }
 
     memcpy(allocInfoOut.pMappedData, indices.data(), (size_t) bufferSize);

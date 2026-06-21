@@ -3,6 +3,7 @@
 #include "core/vulkan_device.hpp"
 #include "core/vulkan_command_buffer.hpp"
 #include "utils/logger.hpp"
+#include "utils/vk_result.hpp"
 #include <stdexcept>
 #include <cstring>
 #include <cmath>
@@ -70,8 +71,9 @@ void Texture::createFromData(const unsigned char* pixels, size_t imageSize, int 
     stagingAllocInfo.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
     
     VmaAllocationInfo stagingAllocInfoOut;
-    if (vmaCreateBuffer(device->getAllocator(), &bufferInfo, &stagingAllocInfo, &stagingBuffer, &stagingAllocation, &stagingAllocInfoOut) != VK_SUCCESS) {
-        throw std::runtime_error("Texture: Failed to create staging buffer");
+    VkResult _vr = vmaCreateBuffer(device->getAllocator(), &bufferInfo, &stagingAllocInfo, &stagingBuffer, &stagingAllocation, &stagingAllocInfoOut);
+    if (_vr != VK_SUCCESS) {
+        throw std::runtime_error(std::string("Texture: Failed to create staging buffer ") + vkResultToString(_vr));
     }
     
     memcpy(stagingAllocInfoOut.pMappedData, pixels, static_cast<size_t>(bufferSize));
@@ -245,8 +247,9 @@ void Texture::createImage(VkImageTiling tiling,
     VmaAllocationCreateInfo allocInfo = {};
     allocInfo.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
     
-    if (vmaCreateImage(device->getAllocator(), &imageInfo, &allocInfo, &textureImage, &textureImageAllocation, nullptr) != VK_SUCCESS) {
-        throw std::runtime_error("Texture: Failed to create image");
+    VkResult _vr = vmaCreateImage(device->getAllocator(), &imageInfo, &allocInfo, &textureImage, &textureImageAllocation, nullptr);
+    if (_vr != VK_SUCCESS) {
+        throw std::runtime_error(std::string("Texture: Failed to create image ") + vkResultToString(_vr));
     }
 }
 
@@ -262,8 +265,9 @@ void Texture::createImageView() {
     viewInfo.subresourceRange.baseArrayLayer = 0;
     viewInfo.subresourceRange.layerCount = 1;
     
-    if (vkCreateImageView(device->getDevice(), &viewInfo, nullptr, &textureImageView) != VK_SUCCESS) {
-        throw std::runtime_error("Texture: Failed to create image view");
+    VkResult _vr = vkCreateImageView(device->getDevice(), &viewInfo, nullptr, &textureImageView);
+    if (_vr != VK_SUCCESS) {
+        throw std::runtime_error(std::string("Texture: Failed to create image view ") + vkResultToString(_vr));
     }
 }
 
@@ -300,8 +304,9 @@ void Texture::createSampler() {
     samplerInfo.minLod = 0.0f;
     samplerInfo.maxLod = static_cast<float>(mipLevels);
     
-    if (vkCreateSampler(device->getDevice(), &samplerInfo, nullptr, &textureSampler) != VK_SUCCESS) {
-        throw std::runtime_error("Texture: Failed to create texture sampler");
+    VkResult _vr = vkCreateSampler(device->getDevice(), &samplerInfo, nullptr, &textureSampler);
+    if (_vr != VK_SUCCESS) {
+        throw std::runtime_error(std::string("Texture: Failed to create texture sampler ") + vkResultToString(_vr));
     }
 }
 

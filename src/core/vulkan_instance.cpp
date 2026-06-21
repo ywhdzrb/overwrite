@@ -11,6 +11,7 @@
 
 #include <GLFW/glfw3.h>
 #include "utils/logger.hpp"
+#include "utils/vk_result.hpp"
 
 namespace owengine {
 
@@ -158,8 +159,9 @@ void VulkanInstance::createInstance() {
     }
     
     // 创建Vulkan实例
-    if (vkCreateInstance(&createInfo, nullptr, &instance_) != VK_SUCCESS) {
-        throw std::runtime_error("failed to create instance!");
+    VkResult _vr = vkCreateInstance(&createInfo, nullptr, &instance_);
+    if (_vr != VK_SUCCESS) {
+        throw std::runtime_error(std::string("failed to create instance! ") + vkResultToString(_vr));
     }
 }
 
@@ -171,16 +173,18 @@ void VulkanInstance::setupDebugMessenger() {
     populateDebugMessengerCreateInfo(createInfo);
     
     // 创建调试信使
-    if (createDebugUtilsMessengerEXT(instance_, &createInfo, nullptr, &debugMessenger_) != VK_SUCCESS) {
-        throw std::runtime_error("failed to set up debug messenger!");
+    VkResult _vr = createDebugUtilsMessengerEXT(instance_, &createInfo, nullptr, &debugMessenger_);
+    if (_vr != VK_SUCCESS) {
+        throw std::runtime_error(std::string("failed to set up debug messenger! ") + vkResultToString(_vr));
     }
 }
 
 // 创建窗口表面
 // 为GLFW窗口创建Vulkan表面，用于渲染输出
 void VulkanInstance::createSurface(GLFWwindow* window) {
-    if (glfwCreateWindowSurface(instance_, window, nullptr, &surface_) != VK_SUCCESS) {
-        throw std::runtime_error("failed to create window surface!");
+    VkResult _vr = glfwCreateWindowSurface(instance_, window, nullptr, &surface_);
+    if (_vr != VK_SUCCESS) {
+        throw std::runtime_error(std::string("failed to create window surface! ") + vkResultToString(_vr));
     }
 }
 
@@ -257,8 +261,9 @@ void VulkanInstance::createLogicalDevice() {
         createInfo.enabledLayerCount = 0;
     }
     
-    if (vkCreateDevice(physicalDevice_, &createInfo, nullptr, &device_) != VK_SUCCESS) {
-        throw std::runtime_error("failed to create logical device!");
+    VkResult _vr = vkCreateDevice(physicalDevice_, &createInfo, nullptr, &device_);
+    if (_vr != VK_SUCCESS) {
+        throw std::runtime_error(std::string("failed to create logical device! ") + vkResultToString(_vr));
     }
     
     vkGetDeviceQueue(device_, queueFamilyIndices_.graphicsFamily.value(), 0, &graphicsQueue_);
