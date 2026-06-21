@@ -18,7 +18,7 @@ font_manager.fontManager.addfont(FONT_PATH)
 plt.rcParams["font.sans-serif"] = ["Source Han Sans CN"]
 plt.rcParams["axes.unicode_minus"] = False
 
-OUT = ".sisyphus"
+OUT = "dashboard"
 os.makedirs(OUT, exist_ok=True)
 
 def run(cmd):
