@@ -496,6 +496,15 @@ void Renderer::mainLoop() {
             ImGui::Text("--- 光照 ---");
             ImGui::SliderFloat("太阳强度", cp.sunIntensity, 0.0f, 3.0f, "%.1f");
             ImGui::Checkbox("昼夜循环", cp.dayNightEnabled);
+            ImGui::Separator();
+            ImGui::Text("--- 配置持久化 ---");
+            if (ImGui::Button("保存配置")) {
+                cloudSystem_->saveConfig();
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("加载配置")) {
+                cloudSystem_->loadConfig();
+            }
             ImGui::End();
         }
 

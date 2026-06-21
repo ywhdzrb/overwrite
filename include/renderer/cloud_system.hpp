@@ -20,11 +20,15 @@
 #include <memory>
 #include <vector>
 #include <random>
+#include <string>
 
 // 第三方库
 #include <vulkan/vulkan.h>
 #include <vk_mem_alloc.h>
 #include <glm/glm.hpp>
+
+// 项目内部头文件
+#include "utils/asset_paths.hpp"
 
 namespace owengine {
 
@@ -92,6 +96,11 @@ public:
      * @param sunDirection 太阳方向
      */
     void render(VkCommandBuffer commandBuffer, const Camera& camera, const glm::vec3& sunDirection);
+
+    /** @brief 保存云参数到JSON配置文件 */
+    bool saveConfig(const std::string& path = AssetPaths::CLOUD_CONFIG) const;
+    /** @brief 从JSON配置文件加载云参数 */
+    bool loadConfig(const std::string& path = AssetPaths::CLOUD_CONFIG);
 
     /** @brief 检查是否已初始化 */
     bool isInitialized() const { return initialized_; }

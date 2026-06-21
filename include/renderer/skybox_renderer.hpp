@@ -43,6 +43,7 @@ public:
         glm::mat4 proj;   // 投影矩阵（顶点着色器）
         glm::vec4 sunDir; // 太阳方向（片段着色器），w 保留
     };
+    static_assert(sizeof(PushConstants) == 144, "SkyboxRenderer::PushConstants must be 144 bytes");
 
     VkPipelineLayout getPipelineLayout() const { return pipelineLayout; }
 

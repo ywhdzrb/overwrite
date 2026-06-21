@@ -9,6 +9,7 @@
 #include <glm/glm.hpp>
 #include "renderer/model_renderer.hpp"
 #include "utils/vk_result.hpp"
+#include "utils/logger.hpp"
 
 namespace owengine {
 
@@ -211,6 +212,18 @@ void VulkanPipeline::create() {
         pushConstantRange.size = sizeof(glm::mat4) * 2;  // view + projection (天空盒)
     } else {
         pushConstantRange.size = sizeof(ModelRenderer::PushConstants);
+    }
+
+    // 获取设备 maxPushConstantsSize 限制
+    VkPhysicalDeviceProperties _pcProps;
+    vkGetPhysicalDeviceProperties(device_->getPhysicalDevice(), &_pcProps);
+    uint32_t _pcLimit = _pcProps.limits.maxPushConstantsSize;
+
+    if (pushConstantRange.size > _pcLimit) {
+        Logger::warning("[VulkanPipeline] PushConstants size " + std::to_string(pushConstantRange.size)
+                        + " exceeds device limit of " + std::to_string(_pcLimit)
+                        + ". Clamping to limit - expect rendering issues.");
+        pushConstantRange.size = _pcLimit;
     }
 
     VkPipelineLayoutCreateInfo pipelineLayoutInfo{};

@@ -102,6 +102,7 @@ public:
         float windTime;      // 累计时间（秒），与 shader.vert/frag 布局一致
         float windStrength;  // 风场强度（地形为 0）
     };
+    static_assert(sizeof(PushConstants) == 228, "TerrainRenderer::PushConstants must be 228 bytes");
 
 private:
     struct ChunkKey {

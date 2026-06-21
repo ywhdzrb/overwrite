@@ -69,5 +69,7 @@ inline constexpr const char* STONE_MODEL = "assets/models/stone.gltf";
 inline constexpr const char* SCENE_CONFIG = "config/scene.json";
 /** @brief 游戏全局配置文件 */
 inline constexpr const char* GAME_CONFIG = "config/game_config.json";
+/** @brief 体积云参数配置文件 */
+inline constexpr const char* CLOUD_CONFIG = "config/cloud_config.json";
 
 } // namespace owengine::AssetPaths

@@ -69,6 +69,7 @@ public:
         float windTime;      // 累计时间（秒），用于风场动画
         float windStrength;  // 风场强度（0=无风）
     };
+    static_assert(sizeof(PushConstants) == 228, "ModelRenderer::PushConstants must be 228 bytes");
 
 protected:
     std::shared_ptr<VulkanDevice> device;

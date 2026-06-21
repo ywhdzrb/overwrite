@@ -150,6 +150,7 @@ file(GLOB_RECURSE OVERWRITE_SHARED_SOURCES CONFIGURE_DEPENDS
     ${CMAKE_CURRENT_SOURCE_DIR}/src/utils/logger.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/utils/error_handler.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/core/lifecycle_manager.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/core/memory_manager.cpp
 )
 add_library(OverWriteShared STATIC ${OVERWRITE_SHARED_SOURCES})
 

@@ -50,6 +50,7 @@ struct PushBlock {
     glm::vec4 lightDir;        // 160-175 光照方向(xyz)+漫反射强度(w)
     glm::vec4 ambientColor;    // 176-191 xyz=环境光颜色(与terrain一致) w=未用
 };
+static_assert(sizeof(PushBlock) == 192, "Grass PushBlock must be 192 bytes");
 
 } // anonymous namespace
 

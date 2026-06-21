@@ -306,7 +306,8 @@ void GLTFModel::renderNode(VkCommandBuffer commandBuffer,
                 float windTime;
                 float windStrength;  // x=time, y=windStrength
             };
-            
+            assert(sizeof(PushConstants) == 228 && "glTF PushConstants must be 228 bytes");
+
             PushConstants pushConstants{};
             pushConstants.model = nodeMatrix;
             pushConstants.view = viewMatrix;

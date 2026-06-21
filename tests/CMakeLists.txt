@@ -48,6 +48,13 @@ target_link_libraries(test_thread_pool GTest::gtest_main Threads::Threads)
 target_include_directories(test_thread_pool PRIVATE ${CMAKE_SOURCE_DIR}/include)
 add_test(NAME ThreadPool COMMAND test_thread_pool)
 
+# 测试：内存管理器（ObjectPool / AllocStats / PtrRegistry / MemoryManager）
+# memory_manager.cpp 已加入 OverWriteShared 库
+add_executable(test_memory_manager test_memory_manager.cpp)
+target_link_libraries(test_memory_manager GTest::gtest_main Threads::Threads OverWriteShared)
+target_include_directories(test_memory_manager PRIVATE ${CMAKE_SOURCE_DIR}/include)
+add_test(NAME MemoryManager COMMAND test_memory_manager)
+
 # 测试：ECS 组件数据默认值
 add_executable(test_ecs_components test_ecs_components.cpp)
 target_link_libraries(test_ecs_components GTest::gtest_main OverWriteShared)

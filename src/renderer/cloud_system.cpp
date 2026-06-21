@@ -19,10 +19,12 @@
 #include <cmath>
 #include <cstring>
 #include <fstream>
+#include <fstream>
 #include <algorithm>
 #include <limits>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
+#include <nlohmann/json.hpp>
 
 namespace owengine {
 
@@ -70,6 +72,9 @@ void CloudSystem::init(VkRenderPass renderPass, VkExtent2D extent,
         halfResEnabled_ = true;
         initHalfRes(colorFormat);
     }
+
+    // 加载云参数配置（如果存在）
+    loadConfig();
 
     initialized_ = true;
     Logger::info("[CloudSystem] 体积云系统初始化完成, 步进=" +
@@ -955,6 +960,17 @@ void CloudSystem::createPipeline(VkRenderPass renderPass, VkExtent2D extent,
     pushConstantRange.offset = 0;
     pushConstantRange.size = sizeof(PushConstants);
 
+    // 运行时检查 maxPushConstantsSize 是否足够
+    VkPhysicalDeviceProperties _cloudPcProps;
+    vkGetPhysicalDeviceProperties(device_->getPhysicalDevice(), &_cloudPcProps);
+    uint32_t _cloudPcLimit = _cloudPcProps.limits.maxPushConstantsSize;
+    if (sizeof(PushConstants) > _cloudPcLimit) {
+        throw std::runtime_error(std::string("[CloudSystem] PushConstants size ")
+                                 + std::to_string(sizeof(PushConstants))
+                                 + " exceeds device maxPushConstantsSize="
+                                 + std::to_string(_cloudPcLimit));
+    }
+
     VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
     pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
     pipelineLayoutInfo.setLayoutCount = 1;
@@ -1217,6 +1233,69 @@ void CloudSystem::computeLOD(const Camera& camera) {
                  + static_cast<float>(kMediumLight) * mediumW
                  + static_cast<float>(kFarLight) * farW;
     lightSteps_ = static_cast<int>(std::round(lightF));
+}
+
+// ============================================================
+// 配置持久化（saveConfig / loadConfig）
+// ============================================================
+
+bool CloudSystem::saveConfig(const std::string& path) const {
+    nlohmann::json j;
+    j["cloudCoverage"] = cloudCoverage_;
+    j["cloudDensityMultiplier"] = cloudDensityMultiplier_;
+    j["stepCount"] = static_cast<int>(stepCount_ + 0.5f);
+    j["windSpeed"] = windSpeed_;
+    j["thinCloudHeight"] = thinCloudHeight_;
+    j["thinCloudDensity"] = thinCloudDensity_;
+    j["sunIntensity"] = sunIntensity_;
+    j["dayNightEnabled"] = dayNightEnabled_;
+    j["thinCloudEnabled"] = thinCloudEnabled_;
+    j["jitterAmplitude"] = jitterAmplitude_;
+    j["cauliStrength"] = cauliStrength_;
+    j["thresholdDitherAmp"] = thresholdDitherAmp_;
+    j["lightSteps"] = lightSteps_;
+
+    std::ofstream file(path);
+    if (!file.is_open()) {
+        Logger::error("[CloudSystem] 无法写入配置文件: " + path);
+        return false;
+    }
+    file << j.dump(2);
+    Logger::info("[CloudSystem] 云参数已保存: " + path);
+    return true;
+}
+
+bool CloudSystem::loadConfig(const std::string& path) {
+    std::ifstream file(path);
+    if (!file.is_open()) {
+        Logger::warning("[CloudSystem] 未找到配置文件，使用默认参数: " + path);
+        return false;
+    }
+
+    try {
+        nlohmann::json j;
+        file >> j;
+
+        if (j.contains("cloudCoverage")) cloudCoverage_ = j["cloudCoverage"].get<float>();
+        if (j.contains("cloudDensityMultiplier")) cloudDensityMultiplier_ = j["cloudDensityMultiplier"].get<float>();
+        if (j.contains("stepCount")) stepCount_ = static_cast<float>(j["stepCount"].get<int>());
+        if (j.contains("windSpeed")) windSpeed_ = j["windSpeed"].get<float>();
+        if (j.contains("thinCloudHeight")) thinCloudHeight_ = j["thinCloudHeight"].get<float>();
+        if (j.contains("thinCloudDensity")) thinCloudDensity_ = j["thinCloudDensity"].get<float>();
+        if (j.contains("sunIntensity")) sunIntensity_ = j["sunIntensity"].get<float>();
+        if (j.contains("dayNightEnabled")) dayNightEnabled_ = j["dayNightEnabled"].get<bool>();
+        if (j.contains("thinCloudEnabled")) thinCloudEnabled_ = j["thinCloudEnabled"].get<bool>();
+        if (j.contains("jitterAmplitude")) jitterAmplitude_ = j["jitterAmplitude"].get<float>();
+        if (j.contains("cauliStrength")) cauliStrength_ = j["cauliStrength"].get<float>();
+        if (j.contains("thresholdDitherAmp")) thresholdDitherAmp_ = j["thresholdDitherAmp"].get<float>();
+        if (j.contains("lightSteps")) lightSteps_ = j["lightSteps"].get<int>();
+
+        Logger::info("[CloudSystem] 云参数已加载: " + path);
+        return true;
+    } catch (const std::exception& e) {
+        Logger::error("[CloudSystem] 解析配置文件失败: " + std::string(e.what()));
+        return false;
+    }
 }
 
 } // namespace owengine

@@ -34,6 +34,7 @@ public:
         int hasTexture;
         float _pad0;  // 填充到16字节对齐
     };
+    static_assert(sizeof(PushConstants) == 220, "FloorRenderer::PushConstants must be 220 bytes");
 
 private:
     void createVertexBuffer();
