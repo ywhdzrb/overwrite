@@ -132,7 +132,7 @@ private:
     float fsrScale_ = 0.67f;
 
     // ========== 帧时间（渲染侧） ==========
-    double profDrawMs_ = 0.0, profGPUMs_ = 0.0;
+    double profDrawMs_ = 0.0, profFenceWaitMs_ = 0.0;
 
     // ========== Vulkan 核心 ==========
     std::shared_ptr<VulkanInstance> vulkanInstance_;

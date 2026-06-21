@@ -4,6 +4,7 @@
 #include <glm/gtc/quaternion.hpp>
 #include <string>
 #include <cstdint>
+#include <algorithm>
 
 namespace owengine {
 namespace ecs {

@@ -403,8 +403,8 @@ void Renderer::mainLoop() {
         if (gameSession_) {
             ImGui::Begin("HUD", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings);
             ImGui::Text("FPS: %.1f", gameSession_->getCurrentFPS());
-            ImGui::Text("Logic:%.1f Draw:%.1f GPU:%.1f ms",
-                        gameSession_->getProfLogicMs(), profDrawMs_, profGPUMs_);
+            ImGui::Text("Logic:%.1f Draw:%.1f Fence:%.1f ms",
+                        gameSession_->getProfLogicMs(), profDrawMs_, profFenceWaitMs_);
             if (auto* ecs = gameSession_->getECSWorld()) {
                 glm::vec3 pos = ecs->getPlayerPosition();
                 ImGui::Text("Pos: %.1f, %.1f, %.1f", pos.x, pos.y, pos.z);
@@ -637,7 +637,7 @@ void Renderer::mainLoop() {
             float fps = float(frameCount) / fpsTimer;
             Logger::info(std::string("[Renderer] FPS: ") + std::to_string((int)fps)
                       + " D=" + std::to_string((int)profDrawMs_)
-                      + " G=" + std::to_string((int)profGPUMs_) + "ms");
+                      + " G=" + std::to_string((int)profFenceWaitMs_) + "ms");
             frameCount = 0;
             fpsTimer = 0.0f;
             minFrameTime_ = 999.0f;
@@ -980,7 +980,7 @@ void Renderer::cleanupCloudCompositeResources() {
 void Renderer::drawFrame() {
     auto fenceT0 = std::chrono::high_resolution_clock::now();
     vkWaitForFences(vulkanDevice_->getDevice(), 1, &syncObjects_->getInFlightFences()[currentFrame_], VK_TRUE, UINT64_MAX);
-    profGPUMs_ = std::chrono::duration<double, std::milli>(std::chrono::high_resolution_clock::now() - fenceT0).count();
+    profFenceWaitMs_ = std::chrono::duration<double, std::milli>(std::chrono::high_resolution_clock::now() - fenceT0).count();
     
     uint32_t imageIndex;
     VkResult result = vkAcquireNextImageKHR(

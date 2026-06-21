@@ -20,17 +20,17 @@ public:
     void create(size_t maxFramesInFlight);
     void cleanup();
     
-    const std::vector<VkSemaphore>& getImageAvailableSemaphores() const { return imageAvailableSemaphores; }
-    const std::vector<VkSemaphore>& getRenderFinishedSemaphores() const { return renderFinishedSemaphores; }
-    const std::vector<VkFence>& getInFlightFences() const { return inFlightFences; }
-    size_t getMaxFramesInFlight() const { return maxFramesInFlight; }
+    [[nodiscard]] const std::vector<VkSemaphore>& getImageAvailableSemaphores() const noexcept { return imageAvailableSemaphores_; }
+    [[nodiscard]] const std::vector<VkSemaphore>& getRenderFinishedSemaphores() const noexcept { return renderFinishedSemaphores_; }
+    [[nodiscard]] const std::vector<VkFence>& getInFlightFences() const noexcept { return inFlightFences_; }
+    [[nodiscard]] size_t getMaxFramesInFlight() const noexcept { return maxFramesInFlight_; }
 
 private:
-    std::shared_ptr<VulkanDevice> device;
-    std::vector<VkSemaphore> imageAvailableSemaphores;
-    std::vector<VkSemaphore> renderFinishedSemaphores;
-    std::vector<VkFence> inFlightFences;
-    size_t maxFramesInFlight;
+    std::shared_ptr<VulkanDevice> device_;
+    std::vector<VkSemaphore> imageAvailableSemaphores_;
+    std::vector<VkSemaphore> renderFinishedSemaphores_;
+    std::vector<VkFence> inFlightFences_;
+    size_t maxFramesInFlight_;
 };
 
 } // namespace owengine

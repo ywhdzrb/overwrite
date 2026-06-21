@@ -7,6 +7,7 @@
 #include <stdexcept>
 #include <algorithm>
 #include <cmath>
+#include <vector>
 
 namespace owengine {
 
@@ -133,30 +134,15 @@ std::shared_ptr<Texture> TextureLoader::createEmptyTexture(uint32_t width,
     // 创建空图像数据（白色）
     int channelCount = (format == VK_FORMAT_R8G8B8_SRGB || format == VK_FORMAT_R8G8B8A8_SRGB) ? 4 : 1;
     size_t imageSize = width * height * channelCount;
-    unsigned char* emptyData = new unsigned char[imageSize];
-    
-    // 填充白色
-    for (size_t i = 0; i < imageSize; i += channelCount) {
-        if (channelCount >= 3) {
-            emptyData[i] = 255;     // R
-            emptyData[i + 1] = 255; // G
-            emptyData[i + 2] = 255; // B
-        }
-        if (channelCount == 4) {
-            emptyData[i + 3] = 255; // A
-        }
-    }
+    std::vector<unsigned char> emptyData(imageSize, 255);
     
     // 从数据创建纹理
     try {
-        texture->createFromData(emptyData, imageSize, channelCount);
+        texture->createFromData(emptyData.data(), imageSize, channelCount);
     } catch (const std::exception& e) {
         Logger::error("Failed to create empty texture: " + std::string(e.what()));
-        delete[] emptyData;
         return nullptr;
     }
-    
-    delete[] emptyData;
     
     Logger::info("Empty texture created successfully (" + 
                 std::to_string(width) + "x" + std::to_string(height) + ")");

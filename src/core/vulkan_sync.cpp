@@ -1,61 +1,56 @@
-// Vulkan同步对象管理实现
-// 负责创建和管理信号量和栅栏，用于帧同步
+// Vulkan同步对象实现
 #include "core/vulkan_sync.hpp"
 #include "core/vulkan_device.hpp"
 #include <stdexcept>
 
 namespace owengine {
 
-// VulkanSync构造函数
 VulkanSync::VulkanSync(std::shared_ptr<VulkanDevice> device)
-    : device(device) {
+    : device_(device) {
 }
 
-// VulkanSync析构函数
 VulkanSync::~VulkanSync() {
     cleanup();
 }
 
-// 创建同步对象
-// 为每帧创建信号量和栅栏
 void VulkanSync::create(size_t maxFramesInFlight) {
-    this->maxFramesInFlight = maxFramesInFlight;
-    
-    imageAvailableSemaphores.resize(maxFramesInFlight);
-    renderFinishedSemaphores.resize(maxFramesInFlight);
-    inFlightFences.resize(maxFramesInFlight);
-    
+    maxFramesInFlight_ = maxFramesInFlight;
+    imageAvailableSemaphores_.resize(maxFramesInFlight_);
+    renderFinishedSemaphores_.resize(maxFramesInFlight_);
+    inFlightFences_.resize(maxFramesInFlight_);
+
     VkSemaphoreCreateInfo semaphoreInfo{};
     semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
-    
+
     VkFenceCreateInfo fenceInfo{};
     fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
     fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
-    
-    for (size_t i = 0; i < maxFramesInFlight; i++) {
-        if (vkCreateSemaphore(device->getDevice(), &semaphoreInfo, nullptr, &imageAvailableSemaphores[i]) != VK_SUCCESS ||
-            vkCreateSemaphore(device->getDevice(), &semaphoreInfo, nullptr, &renderFinishedSemaphores[i]) != VK_SUCCESS ||
-            vkCreateFence(device->getDevice(), &fenceInfo, nullptr, &inFlightFences[i]) != VK_SUCCESS) {
+
+    for (size_t i = 0; i < maxFramesInFlight_; i++) {
+        if (vkCreateSemaphore(device_->getDevice(), &semaphoreInfo, nullptr, &imageAvailableSemaphores_[i]) != VK_SUCCESS ||
+            vkCreateSemaphore(device_->getDevice(), &semaphoreInfo, nullptr, &renderFinishedSemaphores_[i]) != VK_SUCCESS ||
+            vkCreateFence(device_->getDevice(), &fenceInfo, nullptr, &inFlightFences_[i]) != VK_SUCCESS) {
             throw std::runtime_error("failed to create synchronization objects for a frame!");
         }
     }
 }
 
 void VulkanSync::cleanup() {
-    for (size_t i = 0; i < maxFramesInFlight; i++) {
-        if (imageAvailableSemaphores[i] != VK_NULL_HANDLE) {
-            vkDestroySemaphore(device->getDevice(), imageAvailableSemaphores[i], nullptr);
+    for (size_t i = 0; i < maxFramesInFlight_; i++) {
+        if (imageAvailableSemaphores_[i] != VK_NULL_HANDLE) {
+            vkDestroySemaphore(device_->getDevice(), imageAvailableSemaphores_[i], nullptr);
         }
-        if (renderFinishedSemaphores[i] != VK_NULL_HANDLE) {
-            vkDestroySemaphore(device->getDevice(), renderFinishedSemaphores[i], nullptr);
+        if (renderFinishedSemaphores_[i] != VK_NULL_HANDLE) {
+            vkDestroySemaphore(device_->getDevice(), renderFinishedSemaphores_[i], nullptr);
         }
-        if (inFlightFences[i] != VK_NULL_HANDLE) {
-            vkDestroyFence(device->getDevice(), inFlightFences[i], nullptr);
+        if (inFlightFences_[i] != VK_NULL_HANDLE) {
+            vkDestroyFence(device_->getDevice(), inFlightFences_[i], nullptr);
         }
     }
-    imageAvailableSemaphores.clear();
-    renderFinishedSemaphores.clear();
-    inFlightFences.clear();
+    imageAvailableSemaphores_.clear();
+    renderFinishedSemaphores_.clear();
+    inFlightFences_.clear();
+    maxFramesInFlight_ = 0;
 }
 
 } // namespace owengine

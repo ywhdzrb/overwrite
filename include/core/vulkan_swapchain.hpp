@@ -24,7 +24,7 @@ class VulkanDevice;
 
 class VulkanSwapchain {
 public:
-    VulkanSwapchain(std::shared_ptr<VulkanDevice> device, GLFWwindow* window);
+    VulkanSwapchain(const std::shared_ptr<VulkanDevice>& device, GLFWwindow* window);
     ~VulkanSwapchain();
 
     // 禁止拷贝
@@ -35,11 +35,11 @@ public:
     void cleanup();
     void recreate(GLFWwindow* window);
     
-    VkSwapchainKHR getSwapchain() const { return swapchain_; }
-    const std::vector<VkImage>& getImages() const { return swapchainImages_; }
-    const std::vector<VkImageView>& getImageViews() const { return swapchainImageViews_; }
-    VkFormat getImageFormat() const { return swapchainImageFormat_; }
-    VkExtent2D getExtent() const { return swapchainExtent_; }
+    [[nodiscard]] VkSwapchainKHR getSwapchain() const noexcept { return swapchain_; }
+    [[nodiscard]] const std::vector<VkImage>& getImages() const noexcept { return swapchainImages_; }
+    [[nodiscard]] const std::vector<VkImageView>& getImageViews() const noexcept { return swapchainImageViews_; }
+    [[nodiscard]] VkFormat getImageFormat() const noexcept { return swapchainImageFormat_; }
+    [[nodiscard]] VkExtent2D getExtent() const noexcept { return swapchainExtent_; }
 
 private:
     void createImageViews();

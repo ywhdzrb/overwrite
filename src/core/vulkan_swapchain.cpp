@@ -11,7 +11,7 @@
 namespace owengine {
 
 // VulkanSwapchain构造函数
-VulkanSwapchain::VulkanSwapchain(std::shared_ptr<VulkanDevice> device, GLFWwindow* window)
+VulkanSwapchain::VulkanSwapchain(const std::shared_ptr<VulkanDevice>& device, GLFWwindow* window)
     : device_(device), window_(window) {
 }
 

@@ -21,12 +21,12 @@ public:
     void cleanup();
     void recreate(const std::vector<VkImageView>& swapchainImageViews, VkExtent2D swapchainExtent, VkImageView colorImageView = VK_NULL_HANDLE);
     
-    const std::vector<VkFramebuffer>& getFramebuffers() const { return swapchainFramebuffers; }
+    [[nodiscard]] const std::vector<VkFramebuffer>& getFramebuffers() const noexcept { return swapchainFramebuffers_; }
 
 private:
-    std::shared_ptr<VulkanDevice> device;
-    VkRenderPass renderPass;
-    std::vector<VkFramebuffer> swapchainFramebuffers;
+    std::shared_ptr<VulkanDevice> device_;
+    VkRenderPass renderPass_;
+    std::vector<VkFramebuffer> swapchainFramebuffers_;
 };
 
 } // namespace owengine

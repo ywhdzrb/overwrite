@@ -128,7 +128,8 @@ if(NOT EXISTS ${EXTERNAL_DIR}/miniaudio.h)
     message(STATUS "正在下载 miniaudio.h ...")
     file(DOWNLOAD https://raw.githubusercontent.com/mackron/miniaudio/master/miniaudio.h
          ${EXTERNAL_DIR}/miniaudio.h
-         SHOW_PROGRESS)
+         SHOW_PROGRESS
+         EXPECTED_HASH SHA256=ac7af4de748b7e26b777f37e01cee313a308a7296a3eb080e2906b320cc55c89)
     message(STATUS "miniaudio.h 下载完成")
 endif()
 
