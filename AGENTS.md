@@ -1,6 +1,8 @@
 # AI Assistant Context - OverWrite 游戏引擎
 
-## 版本：v1.2｜适用：C++/Vulkan/ECS 引擎全场景编码（项目版本 0.1.1-alpha）
+## 版本：v1.3｜适用：C++/Vulkan/ECS 引擎全场景编码（项目版本 0.1.1-alpha）
+
+> **图例：** `[要求]` = 必须遵守的硬性规则 ｜ `[技巧]` = 经过验证的优化方法 ｜ `[文档]` = 架构/流程参考说明
 
 一定不要不忘记这个提示词的内容
 
@@ -14,7 +16,7 @@
 
 思考时一定要用中文，不能用英文
 
-## 一、项目简介
+## 一、[文档] 项目简介
 
 **OverWrite** 开源二次元风格 3D 游戏引擎
 
@@ -28,7 +30,7 @@
 - 单元测试：Google Test（FetchContent），`BUILD_TESTS=ON`
 - CI/CD：GitHub Actions（gcc-14 / clang-19 matrix）
 
-## 二、项目目录结构（标准唯一）
+## 二、[文档] 项目目录结构（标准唯一）
 
 ``` bash
 overwrite/
@@ -65,7 +67,7 @@ overwrite/
 └── plot/             # 游戏剧情、角色设计、事件触发等
 ```
 
-## 三、命名空间规范（强制统一）
+## 三、[要求] 命名空间规范（强制统一）
 
 - `owengine`：项目顶层主命名空间
 - `owengine::ecs`：所有 ECS 组件、系统、全局实体逻辑
@@ -73,7 +75,7 @@ overwrite/
 - `owengine::server`：仅服务端独占代码
 - 禁止全局裸命名空间、禁止全局using命名空间污染
 
-## 四、编码强制规范
+## 四、[要求] 编码强制规范
 
 ### 1. 命名规则（严格执行）
 
@@ -165,7 +167,7 @@ private:
 } // namespace owengine
 ```
 
-## 五、核心模块架构说明
+## 五、[文档] 核心模块架构说明
 
 ### 1. Vulkan 底层封装
 
@@ -224,7 +226,7 @@ Renderer 与游戏逻辑解耦后的中间层，负责：
 - 资源统一管理：纹理/模型/配置懒加载+缓存
 - 全局数学工具、向量矩阵辅助函数
 
-## 六、构建 & 运行规范
+## 六、[文档] 构建 & 运行规范
 
 ### 快捷脚本（统一入口）
 
@@ -240,14 +242,14 @@ Renderer 与游戏逻辑解耦后的中间层，负责：
 
 全部依赖通过 **Git Submodule** 托管，禁止系统全局散依赖。
 
-## 七、开发工作流规则
+## 七、[要求] 开发工作流规则
 
 1. 新增渲染模块：头文件→实现文件→注册至主Renderer→CMake注册编译
 2. 新增ECS组件：共享组件定义→对应系统编写→注册实体查询
 3. 新增着色器：glsl源码→CMake配置→管线绑定→渲染调用
 4. Debug 开发：固定开启Vulkan验证层，杜绝内存泄漏与非法指令
 
-## 八、固定代码范式
+## 八、[要求] 固定代码范式
 
 ### 1. Vulkan 资源标准写法
 
@@ -276,7 +278,7 @@ private:
 
 ---
 
-## 九、AI 上下文使用策略（随便花 token）
+## 九、[文档] AI 上下文使用策略（随便花 token）
 
 1. **允许自由读取项目文件**：可根据需要主动加载相关源码、头文件、配置文件，不限文件数量，以提供准确、完整的实现为准。
 2. **允许全局目录检索**：当问题涉及跨模块交互或架构影响时，可遍历或索引项目目录结构，理解整体上下文。
@@ -286,7 +288,7 @@ private:
 6. **不限制 Token 体积**：优先保证信息的完备性、清晰度和可执行性，无需担忧输出长度。
 7. **依然遵守原有代码规范**：命名、RAII、const 修饰、中文注释等质量要求不变，只是不再因 token 约束而精简内容。
 
-## 十、全局注意事项
+## 十、[要求] 全局注意事项
 
 1. 路径统一使用**项目根目录相对路径**，适配Linux编译环境
 2. Vulkan 严格遵守队列家族限制，禁止跨队列非法资源访问
@@ -296,3 +298,107 @@ private:
 6. 任何新增功能必须附带完整注释，禁止裸代码提交
 7. 代码提交前必须自测编译通过，禁止提交编译错误代码
 8. 必须向用户解释新增功能，更改内容，原理，影响范围。修复bug要告诉用户bug在那，怎么修。
+
+## 十一、[技巧] 体积云渲染技巧记忆
+
+以下是在体积云渲染优化过程中验证有效的技术和参数：
+
+### 1. 颗粒感/噪点消除配置
+
+```glsl
+// 采样抖动幅度
+float jitter = hash21(fragUV * 100.0) * 0.25;     // 从1.0降到0.25
+
+// 花椰菜强度
+#define CAULI_STR 0.18                               // 从0.35降到0.18
+
+// 覆盖阈值抖动
+float thresholdDither = valueNoise3D(p * 0.02) * 0.02; // 从0.04降到0.02
+```
+
+### 2. 颜色分层消除
+
+- 抖动算法：`InterleavedGradientNoise` 优于 `hash21`，幅度0.30
+- 输出前微抖动：`vec4(±1.5/255, ±1.0/255)` 打破8bit色带
+- 环境光底数0.35，散射底数0.5
+- 颜色匹配 `skybox.frag` 的 `dayMid = (0.55, 0.65, 0.80)`
+
+### 3. 性能优化矩阵
+
+| 优化项 | 方法 | 密度求值节省 |
+|--------|------|------------|
+| 光照LOD | Detail=4步, Medium=3步, Far=2步 | 25%~50% |
+| 隔步光照复用 | 每2次密度步做1次光照 | 50% |
+| 薄云垂直剪枝 | `abs(pos.y - height) < 30.0` 才采样 | 薄云区域外~5% |
+| 半分辨率渲染 | ½尺寸RGBA8 + 合成上采样 | 75%像素填充 |
+| **合计** | | **~87.5%** |
+
+### 4. 半分辨率云渲染架构（多渲染通道）
+
+```
+流程: EndMainRP → barrier swapchain → renderHalfRes(½RP) → 
+      barrier ½tex → BeginCompositeRP(color LOAD, depth LOAD) →
+      composite quad(depthTest) → ImGui → EndCompositeRP
+```
+
+关键约束：
+- 主RP depth `storeOp=STORE`（保留深度给合成阶段）
+- 合成RP depth `loadOp=LOAD`, `initialLayout=DS_ATTACHMENT`
+- 合成管线 `depthTest=TRUE, depthWrite=FALSE, compareOp=LESS`
+- 合成着色器写 `gl_FragDepth=0.9999`
+- 子通道依赖包含 `EARLY_FRAGMENT_TESTS` 和 `DEPTH_STENCIL_ATTACHMENT_READ`
+- MSAA启用时**禁用**半分辨率路径（sample count不兼容）
+
+### 5. 连续LOD混合（替代硬切换）
+
+三段式 `smoothstep` 线性插值替代 `evaluateLOD` + `applyLODParams` + enum硬切换：
+
+| 有效距离 | 过渡 | stepCount |
+|----------|------|-----------|
+| 0~90m | Detail权重1 | 48 |
+| 90~150m | smoothstep 过渡 | 48→24 |
+| 150~250m | Medium权重1 | 24 |
+| 250~350m | smoothstep 过渡 | 24→12 |
+| 350m+ | Far权重1 | 12 |
+
+- `stepCount_` 用 `float` 存储，混合后取整编码
+- `lightSteps_` 混合后四舍五入（4↔3↔2整数过渡）
+- 优势：视觉无跳变，边界无迟滞抖动
+
+### 6. 体积云可调参数速查
+
+| 参数 | 文件 | 说明 |
+|------|------|------|
+| `NOISE_TEX_SIZE` | `cloud_system.hpp:233` | 噪声纹理大小(64³)，128³导致13FPS |
+| `cloudHeightMin_/Max_` | `cloud_system.hpp:241-242` | 云层高度范围 |
+| `cloudCoverage_` | `cloud_system.hpp:243` | 覆盖度0.55 |
+| `IN_SCATTER` | `cloud.frag` | 散射颜色 |
+| `EXTINCTION` | `cloud.frag` | 消光系数0.5 |
+
+### 7. Rayleigh Marching性能调优原则
+
+- 步进次数 = 性能与质量的核心权衡
+- 全屏光步骤进总数 = 密度步进 × 光照步进
+- 隔步复用后 ≈ 密度步进 × 光照步进 / 2
+- 配合半分辨率再除以4的像素填充
+- 最终等效成本约为原始最大值的1/8
+
+---
+
+## 十二、[文档] Skill 引用清单
+
+以下 skill 文件位于项目 `skill/` 目录，包含各领域的详细规则和技巧。当相关工作启动时，需要引用对应 skill：
+
+| Skill 文件 | 触发场景 | 内容 |
+|-----------|---------|------|
+| `skill/vulkan.md` | Vulkan 管线创建、资源管理、多RP渲染 | 资源四步法则、RP兼容性、Pipeline规范、Barrier技巧 |
+| `skill/lod.md` | LOD 系统设计、步进参数调整 | 连续混合方案、过渡区间设计、性能公式 |
+| `skill/c++20.md` | 新建/修改 C++ 文件 | 命名规范、RAII模式、const/noexcept规则 |
+| `skill/glsl.md` | 创建/修改 GLSL 着色器 | Vulkan兼容性、Ray Marching优化、噪声选择 |
+| `skill/entt.md` | 创建/修改 ECS 组件或系统 | 组件结构定义、Entity生命周期、System编写、性能优化 |
+| `skill/imgui.md` | 创建/修改 ImGui 面板或集成 | Vulkan集成、每帧渲染流程、调试面板、RP兼容性约束 |
+| `skill/ixwebsocket.md` | 创建/修改网络通信代码 | 服务端/客户端模式、消息协议、线程安全 |
+| `skill/nlohmann_json.md` | 读写 JSON 配置或网络消息 | 安全读取、异常处理、配置文件结构 |
+| `skill/vma.md` | 创建 Vulkan 图像或缓冲 | 内存分配模式、VMA创建/销毁、Host/Device策略 |
+| `skill/tinygltf.md` | 加载 glTF/glb 模型 | 加载流程、accessor访问 |
+| `skill/tinyobjloader.md` | 加载 OBJ 模型 | 加载流程、数据访问 |
