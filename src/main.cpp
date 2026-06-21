@@ -5,6 +5,7 @@
 #include "core/renderer.hpp"
 #include "core/lifecycle_manager.hpp"
 #include "core/config_manager.hpp"
+#include "core/memory_manager.hpp"
 #include "core/event_bus.hpp"
 #include "core/task_manager.hpp"
 #include "core/audio_manager.hpp"
@@ -36,6 +37,7 @@ int main() {
         owengine::LifecycleManager lifecycle;
         owengine::Renderer renderer(WINDOW_WIDTH, WINDOW_HEIGHT, WINDOW_TITLE);
         owengine::ConfigManager configManager;
+        owengine::MemoryManager memoryManager;
         owengine::EventBus eventBus;
         owengine::TaskManager taskManager;
         owengine::AudioManager audioManager;
@@ -56,13 +58,19 @@ int main() {
             [&]() { configManager.clear(); }
         );
 
-        // 2. 事件总线（纯内存结构，初始化无操作）
+        // 2. 内存管理器（启指针追踪，关闭时报告泄漏）
+        lifecycle.registerService("MemoryManager", {},
+            [&]() -> bool { return memoryManager.init(true); },
+            [&]() { memoryManager.cleanup(); }
+        );
+
+        // 3. 事件总线（纯内存结构，初始化无操作）
         lifecycle.registerService("EventBus", {},
             [&]() -> bool { return true; },
             []() { /* EventBus 无资源需要释放 */ }
         );
 
-        // 3. 异步任务调度器
+        // 4. 异步任务调度器
         lifecycle.registerService("TaskManager", {},
             [&]() -> bool {
                 owengine::Logger::info("[TaskManager] 已启动 " +
@@ -72,7 +80,7 @@ int main() {
             [&]() { taskManager.stop(); }
         );
 
-        // 4. 窗口（GLFW）
+        // 5. 窗口（GLFW）
         lifecycle.registerService("Window", {},
             [&]() -> bool {
                 renderer.initWindow();
@@ -81,13 +89,13 @@ int main() {
             []() { /* 窗口清理由 Renderer::cleanup 处理 */ }
         );
 
-        // 5. 音频引擎（初始化音频设备）
+        // 6. 音频引擎（初始化音频设备）
         lifecycle.registerService("AudioManager", {},
             [&]() -> bool { return audioManager.init(); },
             [&]() { audioManager.cleanup(); }
         );
 
-        // 6. Vulkan 渲染引擎（依赖窗口）
+        // 7. Vulkan 渲染引擎（依赖窗口）
         lifecycle.registerService("VulkanEngine", {"Window"},
             [&]() -> bool {
                 renderer.initVulkan();

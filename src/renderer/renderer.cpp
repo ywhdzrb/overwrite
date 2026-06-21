@@ -481,7 +481,7 @@ void Renderer::mainLoop() {
             ImGui::Text("--- 密度参数 ---");
             ImGui::SliderFloat("覆盖率", cp.coverage, 0.0f, 1.0f, "%.2f");
             ImGui::SliderFloat("密度倍率", cp.densityMultiplier, 0.0f, 5.0f, "%.1f");
-            ImGui::SliderInt("步进次数", reinterpret_cast<int*>(cp.stepCountFloat), 16, 160);
+            ImGui::SliderFloat("步进次数", cp.stepCountFloat, 16.0f, 160.0f, "%.0f");
             ImGui::Text("--- 风动画 ---");
             ImGui::SliderFloat("风速", cp.windSpeed, 0.0f, 2.0f, "%.2f");
             ImGui::Text("--- 薄云层 ---");

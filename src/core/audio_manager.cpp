@@ -10,9 +10,24 @@
 #include <unordered_map>
 #include <vector>
 #include <mutex>
+#include <memory>
 #include <glm/glm.hpp>
 
 namespace owengine {
+
+// ============================================================================
+// ma_sound RAII 删除器：stop → uninit → delete
+// ============================================================================
+struct MaSoundDeleter {
+    void operator()(ma_sound* s) const noexcept {
+        if (s) {
+            ma_sound_stop(s);
+            ma_sound_uninit(s);
+            delete s;
+        }
+    }
+};
+using UniqueMaSound = std::unique_ptr<ma_sound, MaSoundDeleter>;
 
 // ============================================================================
 // 每帧空闲声音清理：超过此阈值才扫描活跃列表，避免高频遍历
@@ -37,9 +52,8 @@ struct AudioManagerImpl {
     // 音效注册表：名称 → 文件路径 + 循环标记
     std::unordered_map<std::string, LoadedSoundInfo> sound_registry;
 
-    // 活跃播放句柄 → ma_sound 指针
-    // 句柄从 1 递增，0 表示无效句柄
-    std::unordered_map<uint64_t, ma_sound*> active_sounds;
+    // 活跃播放句柄 → RAII ma_sound
+    std::unordered_map<uint64_t, UniqueMaSound> active_sounds;
     uint64_t next_handle = 1;
 
     // 线程安全锁（playSound / stop / updateFrame 可能跨线程调用）
@@ -105,16 +119,8 @@ void AudioManager::cleanup() {
     if (!initialized_) return;
     initialized_ = false;
 
-    // 停止并销毁所有活跃 ma_sound
     {
         std::lock_guard<std::mutex> lock(impl_->mutex);
-        for (auto& [handle, sound] : impl_->active_sounds) {
-            if (sound) {
-                ma_sound_stop(sound);
-                ma_sound_uninit(sound);
-                delete sound;
-            }
-        }
         impl_->active_sounds.clear();
         impl_->sound_registry.clear();
     }
@@ -163,41 +169,38 @@ void AudioManager::unloadSound(const std::string& name) {
 // createSoundFromFile — 内部辅助：从文件创建 ma_sound 并配置
 // ============================================================================
 
-static ma_sound* createSoundFromFile(ma_engine* engine, const std::string& filepath,
-                                     bool looping, bool spatialize, float volume,
-                                     const glm::vec3* position3D = nullptr) {
-    auto* sound = new ma_sound();
+static UniqueMaSound createSoundFromFile(ma_engine* engine, const std::string& filepath,
+                                         bool looping, bool spatialize, float volume,
+                                         const glm::vec3* position3D = nullptr) {
+    auto sound = UniqueMaSound(new ma_sound());
 
-    // 循环音效用解码加载（方便循环），非循环用流式（低内存占用）
     ma_uint32 flags = looping ? MA_SOUND_FLAG_DECODE : MA_SOUND_FLAG_STREAM;
 
-    ma_result result = ma_sound_init_from_file(engine, filepath.c_str(), flags, nullptr, nullptr, sound);
+    ma_result result = ma_sound_init_from_file(engine, filepath.c_str(), flags, nullptr, nullptr, sound.get());
     if (result != MA_SUCCESS) {
         Logger::error(std::string("AudioManager — ma_sound 创建失败: ") + ma_result_description(result));
-        delete sound;
         return nullptr;
     }
 
-    ma_sound_set_volume(sound, volume);
+    ma_sound_set_volume(sound.get(), volume);
 
     if (spatialize) {
-        ma_sound_set_spatialization_enabled(sound, MA_TRUE);
+        ma_sound_set_spatialization_enabled(sound.get(), MA_TRUE);
         if (position3D) {
-            ma_sound_set_position(sound, position3D->x, position3D->y, position3D->z);
+            ma_sound_set_position(sound.get(), position3D->x, position3D->y, position3D->z);
         }
-        // 默认的 3D 距离参数，可根据需要调整
-        ma_sound_set_min_distance(sound, 1.0f);
-        ma_sound_set_max_distance(sound, 100.0f);
-        ma_sound_set_rolloff(sound, 1.0f);
+        ma_sound_set_min_distance(sound.get(), 1.0f);
+        ma_sound_set_max_distance(sound.get(), 100.0f);
+        ma_sound_set_rolloff(sound.get(), 1.0f);
     } else {
-        ma_sound_set_spatialization_enabled(sound, MA_FALSE);
+        ma_sound_set_spatialization_enabled(sound.get(), MA_FALSE);
     }
 
     if (looping) {
-        ma_sound_set_looping(sound, MA_TRUE);
+        ma_sound_set_looping(sound.get(), MA_TRUE);
     }
 
-    ma_sound_start(sound);
+    ma_sound_start(sound.get());
     return sound;
 }
 
@@ -215,12 +218,12 @@ uint64_t AudioManager::playSound(const std::string& name, float volume) {
     }
 
     const auto& info = it->second;
-    ma_sound* sound = createSoundFromFile(&impl_->engine, info.filepath, info.looping, false, volume);
+    auto sound = createSoundFromFile(&impl_->engine, info.filepath, info.looping, false, volume);
     if (!sound) return 0;
 
     std::lock_guard<std::mutex> lock(impl_->mutex);
     uint64_t handle = impl_->next_handle++;
-    impl_->active_sounds[handle] = sound;
+    impl_->active_sounds[handle] = std::move(sound);
     return handle;
 }
 
@@ -238,12 +241,12 @@ uint64_t AudioManager::playSound3D(const std::string& name, const glm::vec3& pos
     }
 
     const auto& info = it->second;
-    ma_sound* sound = createSoundFromFile(&impl_->engine, info.filepath, info.looping, true, volume, &position);
+    auto sound = createSoundFromFile(&impl_->engine, info.filepath, info.looping, true, volume, &position);
     if (!sound) return 0;
 
     std::lock_guard<std::mutex> lock(impl_->mutex);
     uint64_t handle = impl_->next_handle++;
-    impl_->active_sounds[handle] = sound;
+    impl_->active_sounds[handle] = std::move(sound);
     return handle;
 }
 
@@ -254,26 +257,24 @@ uint64_t AudioManager::playSound3D(const std::string& name, const glm::vec3& pos
 uint64_t AudioManager::playMusic(const std::string& filepath, float volume) {
     if (!initialized_) return 0;
 
-    // 音乐始终流式加载（大文件），强制循环，无空间化
-    auto* sound = new ma_sound();
+    auto sound = UniqueMaSound(new ma_sound());
     ma_result result = ma_sound_init_from_file(
         &impl_->engine, filepath.c_str(),
-        MA_SOUND_FLAG_STREAM, nullptr, nullptr, sound);
+        MA_SOUND_FLAG_STREAM, nullptr, nullptr, sound.get());
 
     if (result != MA_SUCCESS) {
         Logger::error(std::string("AudioManager::playMusic() — 创建失败: ") + ma_result_description(result));
-        delete sound;
         return 0;
     }
 
-    ma_sound_set_volume(sound, volume);
-    ma_sound_set_looping(sound, MA_TRUE);
-    ma_sound_set_spatialization_enabled(sound, MA_FALSE);
-    ma_sound_start(sound);
+    ma_sound_set_volume(sound.get(), volume);
+    ma_sound_set_looping(sound.get(), MA_TRUE);
+    ma_sound_set_spatialization_enabled(sound.get(), MA_FALSE);
+    ma_sound_start(sound.get());
 
     std::lock_guard<std::mutex> lock(impl_->mutex);
     uint64_t handle = impl_->next_handle++;
-    impl_->active_sounds[handle] = sound;
+    impl_->active_sounds[handle] = std::move(sound);
 
     Logger::info("AudioManager 开始播放背景音乐: " + filepath);
     return handle;
@@ -285,26 +286,11 @@ uint64_t AudioManager::playMusic(const std::string& filepath, float volume) {
 
 void AudioManager::stop(uint64_t handle) {
     std::lock_guard<std::mutex> lock(impl_->mutex);
-    auto it = impl_->active_sounds.find(handle);
-    if (it == impl_->active_sounds.end()) return;
-
-    if (it->second) {
-        ma_sound_stop(it->second);
-        ma_sound_uninit(it->second);
-        delete it->second;
-    }
-    impl_->active_sounds.erase(it);
+    impl_->active_sounds.erase(handle);
 }
 
 void AudioManager::stopAll() {
     std::lock_guard<std::mutex> lock(impl_->mutex);
-    for (auto& [handle, sound] : impl_->active_sounds) {
-        if (sound) {
-            ma_sound_stop(sound);
-            ma_sound_uninit(sound);
-            delete sound;
-        }
-    }
     impl_->active_sounds.clear();
 }
 
@@ -348,7 +334,7 @@ void AudioManager::update(uint64_t handle, const glm::vec3& position) {
     std::lock_guard<std::mutex> lock(impl_->mutex);
     auto it = impl_->active_sounds.find(handle);
     if (it != impl_->active_sounds.end() && it->second) {
-        ma_sound_set_position(it->second, position.x, position.y, position.z);
+        ma_sound_set_position(it->second.get(), position.x, position.y, position.z);
     }
 }
 
@@ -373,14 +359,11 @@ void AudioManager::updateFrame() {
     }
 
     // —— 惰性清理已停止的音效 ——
-    // 只在活跃数量超过阈值时扫描，避免每帧遍历
     if (impl_->active_sounds.size() < CLEANUP_THRESHOLD) return;
 
     std::lock_guard<std::mutex> lock(impl_->mutex);
     for (auto it = impl_->active_sounds.begin(); it != impl_->active_sounds.end(); ) {
-        if (it->second && !ma_sound_is_playing(it->second)) {
-            ma_sound_uninit(it->second);
-            delete it->second;
+        if (it->second && !ma_sound_is_playing(it->second.get())) {
             it = impl_->active_sounds.erase(it);
         } else {
             ++it;
@@ -395,8 +378,8 @@ void AudioManager::updateFrame() {
 bool AudioManager::isPlaying(uint64_t handle) const {
     std::lock_guard<std::mutex> lock(impl_->mutex);
     auto it = impl_->active_sounds.find(handle);
-    if (it == impl_->active_sounds.end()) return false;
-    return it->second && ma_sound_is_playing(it->second);
+    if (it == impl_->active_sounds.end() || !it->second) return false;
+    return ma_sound_is_playing(it->second.get());
 }
 
 } // namespace owengine

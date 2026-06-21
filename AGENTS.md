@@ -1,6 +1,6 @@
 # AI Assistant Context - OverWrite 游戏引擎
 
-## 版本：v1.3｜适用：C++/Vulkan/ECS 引擎全场景编码（项目版本 0.1.1-alpha）
+## 版本：v1.4｜适用：C++/Vulkan/ECS 引擎全场景编码（项目版本 0.1.1-alpha）
 
 > **图例：** `[要求]` = 必须遵守的硬性规则 ｜ `[技巧]` = 经过验证的优化方法 ｜ `[文档]` = 架构/流程参考说明
 
@@ -402,3 +402,4 @@ float thresholdDither = valueNoise3D(p * 0.02) * 0.02; // 从0.04降到0.02
 | `skill/vma.md` | 创建 Vulkan 图像或缓冲 | 内存分配模式、VMA创建/销毁、Host/Device策略 |
 | `skill/tinygltf.md` | 加载 glTF/glb 模型 | 加载流程、accessor访问 |
 | `skill/tinyobjloader.md` | 加载 OBJ 模型 | 加载流程、数据访问 |
+| `skill/memory_manager.md` | 内存池/分配统计/指针追踪 | ObjectPool模板、AllocStats、PtrRegistry泄漏检测 |

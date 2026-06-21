@@ -103,7 +103,7 @@ public:
     struct DebugParams {
         float* coverage;
         float* densityMultiplier;
-        float* stepCountFloat;  // int as float for slider
+        float* stepCountFloat;
         float* windSpeed;
         float* thinCloudHeight;
         float* thinCloudDensity;
@@ -116,7 +116,7 @@ public:
     DebugParams getDebugParams() {
         return DebugParams{
             &cloudCoverage_, &cloudDensityMultiplier_,
-            reinterpret_cast<float*>(&stepCount_),
+            &stepCount_,
             &windSpeed_, &thinCloudHeight_, &thinCloudDensity_,
             &sunIntensity_,
             &dayNightEnabled_, &thinCloudEnabled_

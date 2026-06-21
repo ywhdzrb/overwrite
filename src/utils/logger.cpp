@@ -48,9 +48,10 @@ void Logger::error(const std::string& message) {
 }
 
 void Logger::fatal(const std::string& message) {
-    // FATAL 无视最低级别限制，直接输出到 stderr
+    // FATAL 无视最低级别限制，直接输出到 stderr 并终止进程
     std::string timeStr = getCurrentTime();
     std::cerr << "[" << timeStr << "] [FATAL] " << message << std::endl;
+    std::abort();
 }
 
 std::string Logger::getLevelString(LogLevel level) {
