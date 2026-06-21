@@ -1,8 +1,10 @@
 #include "server/websocket_server.hpp"
+#include "network/protocol.hpp"
 #include "utils/logger.hpp"
 #include <sstream>
 #include <iomanip>
 #include <random>
+#include <vector>
 
 namespace owengine {
 namespace server {
@@ -54,6 +56,7 @@ void WebSocketGameServer::start() {
                 
                 // 发送欢迎消息
                 json welcome = {
+                    {"t", network::MSG_WELCOME},
                     {"type", "welcome"},
                     {"clientId", clientId},
                     {"message", "Welcome to OverWrite Server!"},
@@ -85,6 +88,7 @@ void WebSocketGameServer::start() {
                 if (world_.registry().valid(newPlayerEntity)) {
                     auto& transform = world_.registry().get<ecs::TransformComponent>(newPlayerEntity);
                     json joinMsg = {
+                        {"t", network::MSG_PLAYER_JOIN},
                         {"type", "playerJoin"},
                         {"clientId", clientId},
                         {"position", {transform.position.x, transform.position.y, transform.position.z}},
@@ -101,46 +105,81 @@ void WebSocketGameServer::start() {
                 
             } else if (msg->type == ix::WebSocketMessageType::Message) {
                 try {
-                    json message = json::parse(msg->str);
-                    std::string type = message.value("type", "");
-                    
-                    if (type == "input") {
-                        // 解析输入状态
-                        ecs::InputStateComponent input;
-                        input.moveForward = message.value("moveForward", false);
-                        input.moveBackward = message.value("moveBackward", false);
-                        input.moveLeft = message.value("moveLeft", false);
-                        input.moveRight = message.value("moveRight", false);
-                        input.jump = message.value("jump", false);
-                        input.sprint = message.value("sprint", false);
-                        input.spaceHeld = message.value("spaceHeld", false);
-                        input.shiftHeld = message.value("shiftHeld", false);
-                        input.mouseDeltaX = message.value("mouseDeltaX", 0.0f);
-                        input.mouseDeltaY = message.value("mouseDeltaY", 0.0f);
-                        
-                        // 解析相机方向
-                        glm::vec3 cameraFront(0.0f, 0.0f, -1.0f);
-                        glm::vec3 cameraRight(1.0f, 0.0f, 0.0f);
-                        
-                        if (message.contains("cameraFront")) {
-                            auto& cf = message["cameraFront"];
-                            cameraFront = glm::vec3(cf[0].get<float>(), cf[1].get<float>(), cf[2].get<float>());
+                    // 优先处理二进制输入消息（高频路径）
+                    if (msg->binary) {
+                        network::InputMessage inputMsg;
+                        if (network::unpackInputMessage(msg->str, inputMsg)) {
+                            ecs::InputStateComponent input;
+                            network::unpackButtons(inputMsg.buttons,
+                                input.moveForward, input.moveBackward,
+                                input.moveLeft, input.moveRight,
+                                input.jump, input.sprint,
+                                input.spaceHeld, input.shiftHeld);
+                            input.mouseDeltaX = static_cast<float>(inputMsg.mouseDeltaX) * 0.0001f;
+                            input.mouseDeltaY = static_cast<float>(inputMsg.mouseDeltaY) * 0.0001f;
+                            
+                            glm::vec3 cameraFront(
+                                inputMsg.cameraFront[0],
+                                inputMsg.cameraFront[1],
+                                inputMsg.cameraFront[2]);
+                            glm::vec3 cameraRight(
+                                inputMsg.cameraRight[0],
+                                inputMsg.cameraRight[1],
+                                inputMsg.cameraRight[2]);
+                            
+                            world_.applyPlayerInput(clientId, input, cameraFront, cameraRight);
+                            
+                            if (onMessage_) {
+                                json cbMsg = {{"t", network::MSG_INPUT}, {"type", "input"}};
+                                onMessage_(clientId, cbMsg);
+                            }
                         }
-                        if (message.contains("cameraRight")) {
-                            auto& cr = message["cameraRight"];
-                            cameraRight = glm::vec3(cr[0].get<float>(), cr[1].get<float>(), cr[2].get<float>());
+                    } else {
+                        // JSON 消息（低频路径：welcome/state/backward compat）
+                        json message = json::parse(msg->str);
+                        
+                        // 优先读整型 "t" 字段，回退到字符串 "type"
+                        network::MessageType mType = network::MSG_UNKNOWN;
+                        if (message.contains("t") && message["t"].is_number_integer()) {
+                            mType = static_cast<network::MessageType>(message["t"].get<int>());
+                        } else {
+                            mType = network::messageTypeFromName(message.value("type", ""));
                         }
                         
-                        // 应用输入
-                        world_.applyPlayerInput(clientId, input, cameraFront, cameraRight);
+                        if (mType == network::MSG_INPUT) {
+                            // JSON 格式输入（向后兼容）
+                            ecs::InputStateComponent input;
+                            input.moveForward = message.value("moveForward", false);
+                            input.moveBackward = message.value("moveBackward", false);
+                            input.moveLeft = message.value("moveLeft", false);
+                            input.moveRight = message.value("moveRight", false);
+                            input.jump = message.value("jump", false);
+                            input.sprint = message.value("sprint", false);
+                            input.spaceHeld = message.value("spaceHeld", false);
+                            input.shiftHeld = message.value("shiftHeld", false);
+                            input.mouseDeltaX = message.value("mouseDeltaX", 0.0f);
+                            input.mouseDeltaY = message.value("mouseDeltaY", 0.0f);
+                            
+                            glm::vec3 cameraFront(0.0f, 0.0f, -1.0f);
+                            glm::vec3 cameraRight(1.0f, 0.0f, 0.0f);
+                            if (message.contains("cameraFront")) {
+                                auto& cf = message["cameraFront"];
+                                cameraFront = glm::vec3(cf[0].get<float>(), cf[1].get<float>(), cf[2].get<float>());
+                            }
+                            if (message.contains("cameraRight")) {
+                                auto& cr = message["cameraRight"];
+                                cameraRight = glm::vec3(cr[0].get<float>(), cr[1].get<float>(), cr[2].get<float>());
+                            }
+                            world_.applyPlayerInput(clientId, input, cameraFront, cameraRight);
+                            
+                        } else if (mType == network::MSG_PING) {
+                            webSocket->send(json{{"t", network::MSG_PONG}, {"type", "pong"}, {"time", message.value("time", 0.0)}}.dump());
+                        }
                         
-                    } else if (type == "ping") {
-                        webSocket->send(json{{"type", "pong"}, {"time", message.value("time", 0.0)}}.dump());
-                    }
-                    
-                    // 回调
-                    if (onMessage_) {
-                        onMessage_(clientId, message);
+                        // 回调
+                        if (onMessage_) {
+                            onMessage_(clientId, message);
+                        }
                     }
                     
                 } catch (const json::parse_error& e) {
@@ -156,6 +195,7 @@ void WebSocketGameServer::start() {
                 
                 // 广播玩家离开
                 json leaveMsg = {
+                    {"t", network::MSG_PLAYER_LEAVE},
                     {"type", "playerLeave"},
                     {"clientId", clientId}
                 };
@@ -239,23 +279,39 @@ void WebSocketGameServer::sendToClient(const std::string& clientId, const json& 
 void WebSocketGameServer::broadcast(const json& message) {
     std::string payload = message.dump();
     
-    std::lock_guard<std::mutex> lock(connectionsMutex_);
-    for (const auto& [clientId, info] : connections_) {
-        if (info.webSocket) {
-            info.webSocket->send(payload);
+    // 在锁外拷贝连接列表，避免发送慢客户端时长时间占用锁
+    std::vector<std::shared_ptr<ix::WebSocket>> targets;
+    {
+        std::lock_guard<std::mutex> lock(connectionsMutex_);
+        targets.reserve(connections_.size());
+        for (const auto& [clientId, info] : connections_) {
+            targets.push_back(info.webSocket);
         }
+    }
+    
+    for (auto& ws : targets) {
+        if (ws) ws->send(payload);
     }
 }
 
 void WebSocketGameServer::broadcastExcept(const std::string& excludeClientId, const json& message) {
     std::string payload = message.dump();
     
-    std::lock_guard<std::mutex> lock(connectionsMutex_);
+    // 在锁外拷贝连接列表
+    std::vector<std::pair<std::string, std::shared_ptr<ix::WebSocket>>> targets;
+    {
+        std::lock_guard<std::mutex> lock(connectionsMutex_);
+        targets.reserve(connections_.size());
+        for (const auto& [clientId, info] : connections_) {
+            targets.emplace_back(clientId, info.webSocket);
+        }
+    }
+    
     size_t sentCount = 0;
-    for (const auto& [clientId, info] : connections_) {
+    for (auto& [clientId, ws] : targets) {
         if (clientId == excludeClientId) continue;
-        if (info.webSocket) {
-            info.webSocket->send(payload);
+        if (ws) {
+            ws->send(payload);
             sentCount++;
         }
     }
@@ -271,6 +327,7 @@ void WebSocketGameServer::broadcastState() {
     
     // 构建状态消息
     json stateMsg = {
+        {"t", network::MSG_STATE},
         {"type", "state"},
         {"players", json::array()}
     };

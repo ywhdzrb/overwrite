@@ -1,7 +1,9 @@
 #include "network/network_system.hpp"
+#include "network/protocol.hpp"
 #include "utils/logger.hpp"
 #include <ixwebsocket/IXNetSystem.h>
 #include <ixwebsocket/IXWebSocket.h>
+#include <algorithm>
 #include <queue>
 #include <mutex>
 
@@ -122,23 +124,27 @@ void NetworkSystem::sendInput(
 ) {
     if (!impl_->connected) return;
 
-    json message = {
-        {"type", "input"},
-        {"moveForward", moveForward},
-        {"moveBackward", moveBackward},
-        {"moveLeft", moveLeft},
-        {"moveRight", moveRight},
-        {"jump", jump},
-        {"sprint", sprint},
-        {"spaceHeld", spaceHeld},
-        {"shiftHeld", shiftHeld},
-        {"mouseDeltaX", mouseDeltaX},
-        {"mouseDeltaY", mouseDeltaY},
-        {"cameraFront", {cameraFront.x, cameraFront.y, cameraFront.z}},
-        {"cameraRight", {cameraRight.x, cameraRight.y, cameraRight.z}}
-    };
+    // 使用二进制格式发送输入（32 字节，替代 ~250 字节 JSON）
+    network::InputMessage msg;
+    msg.type = network::MSG_INPUT;
+    msg.buttons = network::packButtons(moveForward, moveBackward, moveLeft, moveRight,
+                                       jump, sprint, spaceHeld, shiftHeld);
+    // 量化鼠标增量: float → int16 (±32767 对应约 ±3.28 弧度)
+    msg.mouseDeltaX = static_cast<int16_t>(std::clamp(mouseDeltaX * 10000.0f, -32767.0f, 32767.0f));
+    msg.mouseDeltaY = static_cast<int16_t>(std::clamp(mouseDeltaY * 10000.0f, -32767.0f, 32767.0f));
+    msg.cameraFront[0] = cameraFront.x;
+    msg.cameraFront[1] = cameraFront.y;
+    msg.cameraFront[2] = cameraFront.z;
+    msg.cameraRight[0] = cameraRight.x;
+    msg.cameraRight[1] = cameraRight.y;
+    msg.cameraRight[2] = cameraRight.z;
 
-    sendMessage(message);
+    auto payload = network::packInputMessage(msg);
+    auto sendInfo = impl_->webSocket.sendBinary(payload);
+
+    if (!sendInfo.success) {
+        Logger::error("[NetworkSystem] 输入发送失败");
+    }
 }
 
 void NetworkSystem::sendPing() {
