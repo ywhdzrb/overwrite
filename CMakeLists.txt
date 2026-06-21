@@ -123,6 +123,15 @@ set(TINYOBJ_SOURCES
 add_library(tinyobjloader STATIC ${TINYOBJ_SOURCES})
 target_include_directories(tinyobjloader PUBLIC ${EXTERNAL_DIR}/tinyobjloader)
 
+# ==================== miniaudio (single-header, auto-download) ====================
+if(NOT EXISTS ${EXTERNAL_DIR}/miniaudio.h)
+    message(STATUS "正在下载 miniaudio.h ...")
+    file(DOWNLOAD https://raw.githubusercontent.com/mackron/miniaudio/master/miniaudio.h
+         ${EXTERNAL_DIR}/miniaudio.h
+         SHOW_PROGRESS)
+    message(STATUS "miniaudio.h 下载完成")
+endif()
+
 # ==================== VMA - Vulkan Memory Allocator ====================
 set(VMA_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/core/vma_impl.cpp
@@ -138,6 +147,8 @@ target_link_libraries(vma PUBLIC Vulkan::Vulkan)
 file(GLOB_RECURSE OVERWRITE_SHARED_SOURCES CONFIGURE_DEPENDS
     ${CMAKE_CURRENT_SOURCE_DIR}/shared/src/*.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/utils/logger.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/utils/error_handler.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/core/lifecycle_manager.cpp
 )
 add_library(OverWriteShared STATIC ${OVERWRITE_SHARED_SOURCES})
 
@@ -212,6 +223,7 @@ target_include_directories(${PROJECT_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src
     ${CMAKE_CURRENT_SOURCE_DIR}/shared/include
     ${CMAKE_CURRENT_SOURCE_DIR}/client/include
+    ${EXTERNAL_DIR}
     ${EXTERNAL_DIR}/tinygltf
     ${EXTERNAL_DIR}/imgui
     ${EXTERNAL_DIR}/imgui/backends

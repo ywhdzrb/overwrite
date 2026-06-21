@@ -10,19 +10,36 @@
 #include <stdexcept>
 
 #include <GLFW/glfw3.h>
+#include "utils/logger.hpp"
 
 namespace owengine {
 
 // Vulkan调试回调函数
-// 用于接收和显示Vulkan验证层的调试消息
+// 用于接收和显示Vulkan验证层的调试消息，按严重级别路由到Logger
 static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
     VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
     VkDebugUtilsMessageTypeFlagsEXT messageType,
     const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
     void* pUserData) {
     
-    // 输出验证层的调试消息到标准错误流
-    std::cerr << "validation layer: " << pCallbackData->pMessage << std::endl;
+    (void)messageType;
+    (void)pUserData;
+    
+    std::string msg = "[Vulkan] ";
+    if (pCallbackData->pMessageIdName) {
+        msg += pCallbackData->pMessageIdName;
+        msg += ": ";
+    }
+    msg += pCallbackData->pMessage;
+    
+    // 按严重级别路由到 Logger
+    if (messageSeverity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT) {
+        Logger::error(msg);
+    } else if (messageSeverity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT) {
+        Logger::warning(msg);
+    } else {
+        Logger::debug(msg);
+    }
     return VK_FALSE;
 }
 

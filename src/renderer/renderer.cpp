@@ -36,14 +36,19 @@ Renderer::Renderer(int width, int height, const std::string& title)
 
 // Renderer析构函数
 Renderer::~Renderer() {
-    cleanup();
+    if (!cleanedUp_) {
+        cleanup();
+    }
 }
 
 // 运行渲染器
-// 初始化窗口和Vulkan，然后进入主循环
-void Renderer::run() {
-    initWindow();
-    initVulkan();
+// 默认初始化窗口和Vulkan并进入主循环
+// 如果 skipInit=true，假设外部已调用 initWindow + initVulkan
+void Renderer::run(bool skipInit) {
+    if (!skipInit) {
+        initWindow();
+        initVulkan();
+    }
     mainLoop();
 }
 
@@ -171,6 +176,7 @@ void Renderer::initVulkan() {
 
     // 初始化纹理加载器
     textureLoader_ = std::make_shared<TextureLoader>(vulkanDevice_);
+    shaderManager_ = std::make_unique<ShaderManager>(vulkanDevice_);
 
     // 初始化光源管理器
     lightManager_ = std::make_unique<LightManager>();
@@ -295,7 +301,7 @@ void Renderer::initVulkan() {
     // 启用半分辨率渲染（halfRes=true），先渲染到½尺寸颜色附件，再上采样合成到主场景
     cloudSystem_ = std::make_unique<CloudSystem>(vulkanDevice_);
     cloudSystem_->init(renderPass_->getRenderPass(), swapchain_->getExtent(), msaaSamples_,
-                       true, swapchain_->getImageFormat());
+                       true, swapchain_->getImageFormat(), shaderManager_.get());
 
     // 初始化云合成管线资源（半分辨率上采样用）
     if (cloudSystem_ && cloudSystem_->isHalfResEnabled()) {
@@ -804,29 +810,8 @@ void Renderer::createCloudCompositeResources() {
     vkUpdateDescriptorSets(dev, 1, &writeDs, 0, nullptr);
 
     // --- 创建合成管线（全屏四边形，alpha混合采样云纹理） ---
-    auto loadShader = [&](const std::string& path) -> VkShaderModule {
-        std::ifstream file(path, std::ios::binary | std::ios::ate);
-        if (!file.is_open()) throw std::runtime_error("无法加载着色器: " + path);
-        size_t size = file.tellg();
-        std::vector<char> buffer(size);
-        file.seekg(0);
-        file.read(buffer.data(), size);
-        file.close();
-
-        VkShaderModuleCreateInfo ci{};
-        ci.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-        ci.codeSize = size;
-        ci.pCode = reinterpret_cast<const uint32_t*>(buffer.data());
-
-        VkShaderModule module;
-        if (vkCreateShaderModule(dev, &ci, nullptr, &module) != VK_SUCCESS) {
-            throw std::runtime_error("创建着色器模块失败: " + path);
-        }
-        return module;
-    };
-
-    VkShaderModule vertModule = loadShader("shaders/cloud.vert.spv");
-    VkShaderModule fragModule = loadShader("shaders/cloud_composite.frag.spv");
+    VkShaderModule vertModule = shaderManager_->getModule("shaders/cloud.vert.spv");
+    VkShaderModule fragModule = shaderManager_->getModule("shaders/cloud_composite.frag.spv");
 
     VkPipelineShaderStageCreateInfo vertStage{};
     vertStage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
@@ -927,8 +912,7 @@ void Renderer::createCloudCompositeResources() {
         throw std::runtime_error("[Renderer] 创建云合成管线失败");
     }
 
-    vkDestroyShaderModule(dev, vertModule, nullptr);
-    vkDestroyShaderModule(dev, fragModule, nullptr);
+    // 注意：ShaderManager 拥有这些模块的声明周期，不在本地销毁
 
     // --- 创建合成帧缓冲（每张 swapchain 图像一个） ---
     VkImageView depthView = vulkanDevice_->getDepthImageView();
@@ -1210,6 +1194,28 @@ void Renderer::drawFrame() {
         }
     }
 
+    // 渲染 ECS 驱动的实体（通过 RenderSystem 管理）
+    if (gameSession_) {
+        auto* renderSys = gameSession_->getRenderSystem();
+        if (renderSys) {
+            const auto& entries = renderSys->getRenderEntries();
+            for (const auto& entry : entries) {
+                if (!entry.model || !entry.visible) continue;
+
+                // 绑定模型特定的纹理描述符集
+                if (entry.descriptorSet != VK_NULL_HANDLE) {
+                    vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                           graphicsPipeline_->getPipelineLayout(),
+                                           0, 1, &entry.descriptorSet, 0, nullptr);
+                }
+
+                entry.model->render(commandBuffer, graphicsPipeline_->getPipelineLayout(),
+                                  cam->getViewMatrix(), cam->getProjectionMatrix(),
+                                  entry.modelMatrix);
+            }
+        }
+    }
+
     // 渲染树木（带风场效果）/ 石头 / 草丛
     treeSystem_->render(commandBuffer, graphicsPipeline_->getPipelineLayout(), *cam,
                         totalTime_, gameConfig_.tree.windStrength);
@@ -1469,7 +1475,7 @@ void Renderer::recreateSwapchain() {
     // 重新初始化云系统（包含半分辨率资源）
     if (hadCloudHalfRes && cloudSystem_) {
         cloudSystem_->init(renderPass_->getRenderPass(), swapchain_->getExtent(), msaaSamples_,
-                           true, swapchain_->getImageFormat());
+                           true, swapchain_->getImageFormat(), shaderManager_.get());
         // 重新创建合成管线资源
         createCloudCompositeResources();
     }
@@ -1485,6 +1491,10 @@ void Renderer::recreateSwapchain() {
 }
 
 void Renderer::cleanup() {
+    // 防重复清理：析构函数和 LifecycleManager 都可能触发
+    if (cleanedUp_) return;
+    cleanedUp_ = true;
+
     // 等待设备空闲，确保所有渲染操作完成
     if (vulkanDevice_) {
         vkDeviceWaitIdle(vulkanDevice_->getDevice());
@@ -1520,6 +1530,9 @@ void Renderer::cleanup() {
     cloudSystem_.reset();
     // 清理 FSR1 管线
     fsr1Pass_.reset();
+
+    // 清理着色器管理器（必须在 vulkanDevice_ 销毁前，缓存了 VkShaderModule）
+    shaderManager_.reset();
 
     // 清理描述符集资源
     if (lightUniformBuffer_ != VK_NULL_HANDLE) {

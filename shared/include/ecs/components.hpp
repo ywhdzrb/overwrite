@@ -154,6 +154,17 @@ enum class EntityType : uint8_t {
     Building = 3,
     Item = 4,
     Projectile = 5,
+    Vehicle = 6,
+    Animal = 7,
+    Weapon = 8,
+    Pickup = 9,
+    Door = 10,
+    Chest = 11,
+    Foliage = 12,
+    Water = 13,
+    Explosive = 14,
+    SoundSource = 15,
+    Zone = 16,
 };
 
 /**
@@ -161,6 +172,207 @@ enum class EntityType : uint8_t {
  */
 struct EntityTypeComponent {
     EntityType type{EntityType::Unknown};
+};
+
+/**
+ * @brief 血量组件
+ * @note 适用于所有可受伤/可破坏实体（Player、NPC、Animal、Explosive 等）
+ */
+struct HealthComponent {
+    float current{100.0f};
+    float max{100.0f};
+    bool invincible{false};
+    bool isDead{false};
+
+    /** @brief 受到伤害，返回实际扣血量 */
+    float takeDamage(float amount) {
+        if (invincible || isDead) return 0.0f;
+        float actual = std::min(amount, current);
+        current -= actual;
+        if (current <= 0.0f) {
+            current = 0.0f;
+            isDead = true;
+        }
+        return actual;
+    }
+
+    /** @brief 恢复血量，返回实际回复量 */
+    float heal(float amount) {
+        if (isDead) return 0.0f;
+        float before = current;
+        current = std::min(current + amount, max);
+        return current - before;
+    }
+
+    /** @brief 重置为满血 */
+    void reset() {
+        current = max;
+        isDead = false;
+    }
+};
+
+/**
+ * @brief 交互组件
+ * @note 适用于可交互实体（Door、Chest、Pickup、NPC 等）
+ */
+struct InteractionComponent {
+    bool interactable{true};
+    float interactRange{2.0f};          // 触发交互的最大距离
+    std::string prompt{"Press E to interact"};
+    bool highlightOnHover{true};
+
+    // 冷却时间（秒），防止连续触发
+    float cooldown{0.0f};
+    float lastInteractTime{0.0f};
+
+    /** @brief 是否可以再次交互 */
+    bool canInteract(float currentTime) const {
+        if (!interactable) return false;
+        return (currentTime - lastInteractTime) >= cooldown;
+    }
+
+    /** @brief 标记交互时间 */
+    void markInteracted(float currentTime) {
+        lastInteractTime = currentTime;
+    }
+};
+
+/**
+ * @brief 载具组件
+ * @note 适用于 Vehicle 类型的实体
+ */
+struct VehicleComponent {
+    float forwardSpeed{15.0f};          // 前进速度
+    float reverseSpeed{8.0f};           // 后退速度
+    float turnSpeed{90.0f};             // 转向速度（度/秒）
+    float acceleration{5.0f};           // 加速度
+    float brakingForce{10.0f};          // 制动力
+
+    int passengerCapacity{2};           // 载客量（包含驾驶员）
+    int currentPassengers{0};
+
+    bool engineOn{false};
+    bool hasCollisionDamage{true};
+};
+
+/**
+ * @brief 武器组件
+ * @note 适用于 Weapon 类型的实体
+ */
+struct WeaponComponent {
+    enum class Category {
+        Melee,
+        Ranged,
+        Thrown,
+        Magic,
+    };
+
+    Category category{Category::Melee};
+    float damage{10.0f};
+    float range{2.0f};                  // 近战范围/远程有效距离
+    float fireRate{1.0f};              // 攻击频率（次/秒）
+    float reloadTime{2.0f};            // 装填时间（秒）
+
+    int maxAmmo{30};
+    int currentAmmo{30};
+    bool autoFire{false};               // 是否自动连续开火
+
+    float lastFireTime{0.0f};
+
+    /** @brief 是否可以开火 */
+    bool canFire(float currentTime) const {
+        if (currentAmmo <= 0) return false;
+        return (currentTime - lastFireTime) >= (1.0f / fireRate);
+    }
+
+    /** @brief 开火消耗弹药 */
+    void fire() {
+        if (currentAmmo > 0) currentAmmo--;
+        lastFireTime = 0.0f; // 由外部传入实际时间
+    }
+
+    /** @brief 装填 */
+    void reload() {
+        currentAmmo = maxAmmo;
+    }
+};
+
+/**
+ * @brief 植被组件
+ * @note 适用于 Foliage 类型的实体，控制风动效果和 LOD
+ */
+struct FoliageComponent {
+    float windInfluence{1.0f};          // 风影响系数（0 = 不受风影响）
+    float swaySpeed{1.0f};              // 摆动速度
+    float swayAmplitude{0.1f};          // 摆动幅度
+    bool hasLOD{true};                  // 是否启用 LOD
+    float cutRadius{0.0f};             // 被砍伐后的缺口半径（0 = 未砍伐）
+};
+
+/**
+ * @brief 水体组件
+ * @note 适用于 Water 类型的实体
+ */
+struct WaterComponent {
+    enum class Preset {
+        Calm,
+        Ripple,
+        Waves,
+        Rapid,
+    };
+
+    Preset preset{Preset::Calm};
+    float waveHeight{0.5f};
+    float waveSpeed{1.0f};
+    float waveFrequency{0.1f};
+    glm::vec3 flowDirection{0.0f, 0.0f, 0.0f};
+    float flowSpeed{0.0f};              // 水流速度
+    float depth{5.0f};                  // 水深
+    bool transparent{true};
+    float opacity{0.6f};
+    bool hasReflection{true};
+    bool hasRefraction{false};
+};
+
+/**
+ * @brief 爆炸物组件
+ * @note 适用于 Explosive 类型的实体
+ */
+struct ExplosiveComponent {
+    float blastRadius{5.0f};
+    float blastDamage{50.0f};
+    float fuseTime{0.0f};              // 0 = 即时爆炸，>0 = 延时引爆
+    bool armed{true};
+    bool hasExploded{false};
+
+    // 物理冲击参数
+    float impulseForce{500.0f};
+    float debrisCount{10};
+
+    /** @brief 引爆 */
+    void detonate() {
+        hasExploded = true;
+        armed = false;
+    }
+};
+
+/**
+ * @brief 音源组件
+ * @note 适用于 SoundSource 类型的实体
+ */
+struct SoundSourceComponent {
+    std::string soundPath;
+    float volume{1.0f};
+    float pitch{1.0f};
+    float range{20.0f};                 // 可听距离
+    float innerRange{5.0f};            // 全音量范围
+    bool looping{false};
+    bool autoPlay{false};
+    bool spatialAudio{true};           // 是否启用 3D 空间音频
+
+    // 状态
+    bool isPlaying{false};
+    bool isPaused{false};
 };
 
 } // namespace ecs

@@ -10,9 +10,11 @@
  */
 
 #include "renderer/cloud_system.hpp"
+#include "renderer/shader_manager.hpp"
 #include "core/vulkan_device.hpp"
 #include "core/camera.hpp"
 #include "utils/logger.hpp"
+#include "utils/asset_paths.hpp"
 #include <cmath>
 #include <cstring>
 #include <fstream>
@@ -41,7 +43,9 @@ CloudSystem::~CloudSystem() {
 
 void CloudSystem::init(VkRenderPass renderPass, VkExtent2D extent,
                        VkSampleCountFlagBits msaaSamples,
-                       bool halfRes, VkFormat colorFormat) {
+                       bool halfRes, VkFormat colorFormat,
+                       ShaderManager* shaderManager) {
+    shaderManager_ = shaderManager;
     screenExtent_ = extent;
 
     // 步骤1：创建描述符集布局
@@ -417,31 +421,34 @@ VkPipeline CloudSystem::createHalfResPipeline(VkRenderPass renderPass) {
     VkDevice dev = device_->getDevice();
 
     // 步骤1：加载着色器
-    auto loadShader = [&](const std::string& path) -> VkShaderModule {
-        std::ifstream file(path, std::ios::binary | std::ios::ate);
-        if (!file.is_open()) {
-            throw std::runtime_error("[CloudSystem] 无法加载着色器: " + path);
-        }
-        size_t size = file.tellg();
-        std::vector<char> buffer(size);
-        file.seekg(0);
-        file.read(buffer.data(), size);
-        file.close();
-
-        VkShaderModuleCreateInfo ci{};
-        ci.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-        ci.codeSize = size;
-        ci.pCode = reinterpret_cast<const uint32_t*>(buffer.data());
-
-        VkShaderModule module;
-        if (vkCreateShaderModule(dev, &ci, nullptr, &module) != VK_SUCCESS) {
-            throw std::runtime_error("[CloudSystem] 创建着色器模块失败: " + path);
-        }
-        return module;
-    };
-
-    VkShaderModule vertModule = loadShader("shaders/cloud.vert.spv");
-    VkShaderModule fragModule = loadShader("shaders/cloud.frag.spv");
+    VkShaderModule vertModule, fragModule;
+    if (shaderManager_) {
+        vertModule = shaderManager_->getModule(AssetPaths::CLOUD_VERT_SHADER);
+        fragModule = shaderManager_->getModule(AssetPaths::CLOUD_FRAG_SHADER);
+    } else {
+        auto loadShader = [&](const std::string& path) -> VkShaderModule {
+            std::ifstream file(path, std::ios::binary | std::ios::ate);
+            if (!file.is_open()) {
+                throw std::runtime_error("[CloudSystem] 无法加载着色器: " + path);
+            }
+            size_t size = file.tellg();
+            std::vector<char> buffer(size);
+            file.seekg(0);
+            file.read(buffer.data(), size);
+            file.close();
+            VkShaderModuleCreateInfo ci{};
+            ci.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+            ci.codeSize = size;
+            ci.pCode = reinterpret_cast<const uint32_t*>(buffer.data());
+            VkShaderModule module;
+            if (vkCreateShaderModule(dev, &ci, nullptr, &module) != VK_SUCCESS) {
+                throw std::runtime_error("[CloudSystem] 创建着色器模块失败: " + path);
+            }
+            return module;
+        };
+        vertModule = loadShader(AssetPaths::CLOUD_VERT_SHADER);
+        fragModule = loadShader(AssetPaths::CLOUD_FRAG_SHADER);
+    }
 
     VkPipelineShaderStageCreateInfo vertStageInfo{};
     vertStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
@@ -562,9 +569,11 @@ VkPipeline CloudSystem::createHalfResPipeline(VkRenderPass renderPass) {
         throw std::runtime_error("[CloudSystem] 创建半分辨率管线失败");
     }
 
-    // 清理着色器模块
-    vkDestroyShaderModule(dev, vertModule, nullptr);
-    vkDestroyShaderModule(dev, fragModule, nullptr);
+    // 清理着色器模块（仅在不使用 ShaderManager 缓存时销毁）
+    if (!shaderManager_) {
+        vkDestroyShaderModule(dev, vertModule, nullptr);
+        vkDestroyShaderModule(dev, fragModule, nullptr);
+    }
 
     Logger::info("[CloudSystem] 半分辨率云管线已创建");
     return pipeline;
@@ -936,37 +945,39 @@ void CloudSystem::createPipeline(VkRenderPass renderPass, VkExtent2D extent,
     }
 
     // 步骤2：加载着色器SPIR-V
-    auto readFile = [](const std::string& filename) -> std::vector<char> {
-        std::ifstream file(filename, std::ios::ate | std::ios::binary);
-        if (!file.is_open()) {
-            throw std::runtime_error("[CloudSystem] 无法打开着色器文件: " + filename);
-        }
-        size_t fileSize = static_cast<size_t>(file.tellg());
-        std::vector<char> buffer(fileSize);
-        file.seekg(0);
-        file.read(buffer.data(), static_cast<std::streamsize>(fileSize));
-        file.close();
-        return buffer;
-    };
-
-    auto vertCode = readFile("shaders/cloud.vert.spv");
-    auto fragCode = readFile("shaders/cloud.frag.spv");
-
-    // 创建着色器模块
-    auto createShaderModule = [dev](const std::vector<char>& code) -> VkShaderModule {
-        VkShaderModuleCreateInfo createInfo{};
-        createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-        createInfo.codeSize = code.size();
-        createInfo.pCode = reinterpret_cast<const uint32_t*>(code.data());
-        VkShaderModule module;
-        if (vkCreateShaderModule(dev, &createInfo, nullptr, &module) != VK_SUCCESS) {
-            throw std::runtime_error("[CloudSystem] 创建着色器模块失败");
-        }
-        return module;
-    };
-
-    VkShaderModule vertModule = createShaderModule(vertCode);
-    VkShaderModule fragModule = createShaderModule(fragCode);
+    VkShaderModule vertModule, fragModule;
+    if (shaderManager_) {
+        vertModule = shaderManager_->getModule(AssetPaths::CLOUD_VERT_SHADER);
+        fragModule = shaderManager_->getModule(AssetPaths::CLOUD_FRAG_SHADER);
+    } else {
+        auto readFile = [](const std::string& filename) -> std::vector<char> {
+            std::ifstream file(filename, std::ios::ate | std::ios::binary);
+            if (!file.is_open()) {
+                throw std::runtime_error("[CloudSystem] 无法打开着色器文件: " + filename);
+            }
+            size_t fileSize = static_cast<size_t>(file.tellg());
+            std::vector<char> buffer(fileSize);
+            file.seekg(0);
+            file.read(buffer.data(), static_cast<std::streamsize>(fileSize));
+            file.close();
+            return buffer;
+        };
+        auto vertCode = readFile(AssetPaths::CLOUD_VERT_SHADER);
+        auto fragCode = readFile(AssetPaths::CLOUD_FRAG_SHADER);
+        auto createShaderModule = [dev](const std::vector<char>& code) -> VkShaderModule {
+            VkShaderModuleCreateInfo createInfo{};
+            createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+            createInfo.codeSize = code.size();
+            createInfo.pCode = reinterpret_cast<const uint32_t*>(code.data());
+            VkShaderModule module;
+            if (vkCreateShaderModule(dev, &createInfo, nullptr, &module) != VK_SUCCESS) {
+                throw std::runtime_error("[CloudSystem] 创建着色器模块失败");
+            }
+            return module;
+        };
+        vertModule = createShaderModule(vertCode);
+        fragModule = createShaderModule(fragCode);
+    }
 
     // 着色器阶段
     VkPipelineShaderStageCreateInfo vertStageInfo{};
@@ -1087,9 +1098,11 @@ void CloudSystem::createPipeline(VkRenderPass renderPass, VkExtent2D extent,
         throw std::runtime_error("[CloudSystem] 创建图形管线失败");
     }
 
-    // 清理着色器模块
-    vkDestroyShaderModule(dev, vertModule, nullptr);
-    vkDestroyShaderModule(dev, fragModule, nullptr);
+    // 清理着色器模块（仅在不使用 ShaderManager 缓存时销毁）
+    if (!shaderManager_) {
+        vkDestroyShaderModule(dev, vertModule, nullptr);
+        vkDestroyShaderModule(dev, fragModule, nullptr);
+    }
 
     Logger::info("[CloudSystem] 体积云图形管线已创建");
 }

@@ -45,6 +45,7 @@
 #include "core/game_config.hpp"
 #include "renderer/fsr1_pass.hpp"
 #include "renderer/cloud_system.hpp"
+#include "renderer/shader_manager.hpp"
 
 // 前向声明：游戏会话（Renderer 不拥有游戏逻辑，仅通过指针读取渲染所需数据）
 namespace owengine { class GameSession; }
@@ -69,16 +70,30 @@ public:
     Renderer(const Renderer&) = delete;
     Renderer& operator=(const Renderer&) = delete;
 
-    void run();
+    void run(bool skipInit = false);
 
     /** @brief 设置外部 GameSession（如已设置，initVulkan 将跳过内部创建） */
     void setGameSession(GameSession* gs) noexcept { externalGameSession_ = gs; }
 
-private:
+    // ========== 生命周期分阶段接口（供 LifecycleManager 使用） ==========
+
+    /** @brief 初始化窗口（GLFW），第1阶段 */
     void initWindow();
+
+    /** @brief 初始化 Vulkan 核心和所有渲染子系统，第2阶段 */
     void initVulkan();
-    void mainLoop();
+
+    /** @brief 执行单帧渲染，返回 false 表示窗口已关闭 */
+    bool mainLoopIteration();
+
+    /** @brief 清理所有资源，按依赖逆序 */
     void cleanup();
+
+    /** @brief 获取 GLFW 窗口指针 */
+    GLFWwindow* getWindow() const { return window_; }
+
+private:
+    void mainLoop();
     void drawFrame();
     void recreateSwapchain();
 
@@ -148,6 +163,9 @@ private:
     std::unique_ptr<class GrassSystem> grassSystem_;
     std::unique_ptr<class Fsr1Pass> fsr1Pass_;
 
+    // 着色器管理器
+    std::unique_ptr<ShaderManager> shaderManager_;
+
     // 体积云系统（在所有不透明物体之后、ImGui之前渲染）
     std::unique_ptr<class CloudSystem> cloudSystem_;
 
@@ -194,6 +212,9 @@ private:
 
     // ========== 云 ImGui 调试面板 ==========
     bool showCloudDebug_ = false;
+
+    // ========== 防重复清理标志 ==========
+    bool cleanedUp_ = false;
 
     // ========== 描述符资源 ==========
     VkDescriptorSetLayout textureDescriptorSetLayout_ = VK_NULL_HANDLE;

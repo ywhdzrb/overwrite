@@ -66,11 +66,13 @@ public:
      * @param msaaSamples MSAA采样数
      * @param halfRes 是否启用半分辨率渲染
      * @param colorFormat 颜色附件格式（用于半分辨率图像，默认RGBA8）
+     * @param shaderManager 着色器模块管理器（可选，提供后复用模块缓存）
      */
     void init(VkRenderPass renderPass, VkExtent2D extent,
               VkSampleCountFlagBits msaaSamples,
               bool halfRes = false,
-              VkFormat colorFormat = VK_FORMAT_B8G8R8A8_UNORM);
+              VkFormat colorFormat = VK_FORMAT_B8G8R8A8_UNORM,
+              class ShaderManager* shaderManager = nullptr);
 
     /** @brief 清理所有Vulkan资源 */
     void cleanup();
@@ -213,6 +215,9 @@ private:
     // ========== 成员变量 ==========
     std::shared_ptr<VulkanDevice> device_;
     bool initialized_ = false;
+
+    // 着色器管理器（非拥有指针）
+    class ShaderManager* shaderManager_ = nullptr;
 
     // --- 管线 ---
     VkPipelineLayout pipelineLayout_ = VK_NULL_HANDLE;

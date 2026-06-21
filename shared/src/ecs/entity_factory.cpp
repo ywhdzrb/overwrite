@@ -7,6 +7,7 @@
  */
 
 #include "ecs/entity_factory.hpp"
+#include "ecs/resource_types.hpp"
 
 namespace owengine::ecs {
 
@@ -118,7 +119,112 @@ void EntityFactory::applyPhysics(entt::entity entity, const EntityConfig& config
     registry_.emplace<VelocityComponent>(entity);
 }
 
-// --- 各种实体类型的创建 ---
+// ============================================================
+// 新增标准实体类型
+// ============================================================
+
+std::unique_ptr<IEntityHandle> EntityFactory::createVehicle(const EntityConfig& config) {
+    auto entity = registry_.create();
+    applyBaseConfig(entity, config);
+    registry_.emplace<VehicleComponent>(entity);
+    registry_.emplace<VelocityComponent>(entity);
+    registry_.emplace<EntityTypeComponent>(entity, EntityType::Vehicle);
+    return std::make_unique<EntityHandle>(&registry_, entity);
+}
+
+std::unique_ptr<IEntityHandle> EntityFactory::createAnimal(const EntityConfig& config) {
+    auto entity = registry_.create();
+    applyBaseConfig(entity, config);
+    registry_.emplace<HealthComponent>(entity);
+    registry_.emplace<VelocityComponent>(entity);
+    registry_.emplace<MovementControllerComponent>(entity);
+    applyPhysics(entity, config);
+    registry_.emplace<EntityTypeComponent>(entity, EntityType::Animal);
+    return std::make_unique<EntityHandle>(&registry_, entity);
+}
+
+std::unique_ptr<IEntityHandle> EntityFactory::createWeapon(const EntityConfig& config) {
+    auto entity = registry_.create();
+    applyBaseConfig(entity, config);
+    registry_.emplace<WeaponComponent>(entity);
+    if (config.hasPhysics) applyPhysics(entity, config);
+    registry_.emplace<EntityTypeComponent>(entity, EntityType::Weapon);
+    return std::make_unique<EntityHandle>(&registry_, entity);
+}
+
+std::unique_ptr<IEntityHandle> EntityFactory::createPickup(const EntityConfig& config) {
+    auto entity = registry_.create();
+    applyBaseConfig(entity, config);
+    registry_.emplace<InteractionComponent>(entity);
+    applyPhysics(entity, config);
+    registry_.emplace<EntityTypeComponent>(entity, EntityType::Pickup);
+    return std::make_unique<EntityHandle>(&registry_, entity);
+}
+
+std::unique_ptr<IEntityHandle> EntityFactory::createDoor(const EntityConfig& config) {
+    auto entity = registry_.create();
+    applyBaseConfig(entity, config);
+    registry_.emplace<InteractionComponent>(entity);
+    registry_.emplace<EntityTypeComponent>(entity, EntityType::Door);
+    return std::make_unique<EntityHandle>(&registry_, entity);
+}
+
+std::unique_ptr<IEntityHandle> EntityFactory::createChest(const EntityConfig& config) {
+    auto entity = registry_.create();
+    applyBaseConfig(entity, config);
+    registry_.emplace<InteractionComponent>(entity);
+    registry_.emplace<InventoryComponent>(entity);
+    registry_.emplace<EntityTypeComponent>(entity, EntityType::Chest);
+    return std::make_unique<EntityHandle>(&registry_, entity);
+}
+
+std::unique_ptr<IEntityHandle> EntityFactory::createFoliage(const EntityConfig& config) {
+    auto entity = registry_.create();
+    applyBaseConfig(entity, config);
+    registry_.emplace<FoliageComponent>(entity);
+    registry_.emplace<EntityTypeComponent>(entity, EntityType::Foliage);
+    return std::make_unique<EntityHandle>(&registry_, entity);
+}
+
+std::unique_ptr<IEntityHandle> EntityFactory::createWater(const EntityConfig& config) {
+    auto entity = registry_.create();
+    applyBaseConfig(entity, config);
+    registry_.emplace<WaterComponent>(entity);
+    registry_.emplace<EntityTypeComponent>(entity, EntityType::Water);
+    return std::make_unique<EntityHandle>(&registry_, entity);
+}
+
+std::unique_ptr<IEntityHandle> EntityFactory::createExplosive(const EntityConfig& config) {
+    auto entity = registry_.create();
+    applyBaseConfig(entity, config);
+    registry_.emplace<HealthComponent>(entity);
+    registry_.emplace<ExplosiveComponent>(entity);
+    // 爆炸物通常有物理属性（可被推动/投掷）
+    applyPhysics(entity, config);
+    registry_.emplace<VelocityComponent>(entity);
+    registry_.emplace<EntityTypeComponent>(entity, EntityType::Explosive);
+    return std::make_unique<EntityHandle>(&registry_, entity);
+}
+
+std::unique_ptr<IEntityHandle> EntityFactory::createSoundSource(const EntityConfig& config) {
+    auto entity = registry_.create();
+    applyBaseConfig(entity, config);
+    registry_.emplace<SoundSourceComponent>(entity);
+    registry_.emplace<EntityTypeComponent>(entity, EntityType::SoundSource);
+    return std::make_unique<EntityHandle>(&registry_, entity);
+}
+
+std::unique_ptr<IEntityHandle> EntityFactory::createZone(const EntityConfig& config) {
+    auto entity = registry_.create();
+    applyBaseConfig(entity, config);
+    registry_.emplace<InteractionComponent>(entity);
+    registry_.emplace<EntityTypeComponent>(entity, EntityType::Zone);
+    return std::make_unique<EntityHandle>(&registry_, entity);
+}
+
+// ============================================================
+// 各种实体类型的创建
+// ============================================================
 
 std::unique_ptr<IEntityHandle> EntityFactory::createEmpty(const EntityConfig& config) {
     auto entity = registry_.create();
@@ -219,17 +325,28 @@ std::unique_ptr<IEntityHandle> EntityFactory::createDecoration(const EntityConfi
 std::unique_ptr<IEntityHandle> EntityFactory::createFromArchetype(
     EntityArchetype archetype, const EntityConfig& config) {
     switch (archetype) {
-        case EntityArchetype::Empty:       return createEmpty(config);
-        case EntityArchetype::Player:      return createPlayer(config);
-        case EntityArchetype::NPC:         return createNPC(config);
-        case EntityArchetype::Building:    return createBuilding(config);
-        case EntityArchetype::Item:        return createItem(config);
-        case EntityArchetype::Projectile:  return createProjectile(config);
-        case EntityArchetype::Light:       return createLight(LightConfig{});
-        case EntityArchetype::Plane:       return createPlane(config);
-        case EntityArchetype::Trigger:     return createTrigger(config);
-        case EntityArchetype::Decoration:  return createDecoration(config);
-        default:                           return createEmpty(config);
+        case EntityArchetype::Empty:        return createEmpty(config);
+        case EntityArchetype::Player:       return createPlayer(config);
+        case EntityArchetype::NPC:          return createNPC(config);
+        case EntityArchetype::Building:     return createBuilding(config);
+        case EntityArchetype::Item:         return createItem(config);
+        case EntityArchetype::Projectile:   return createProjectile(config);
+        case EntityArchetype::Light:        return createLight(LightConfig{});
+        case EntityArchetype::Plane:        return createPlane(config);
+        case EntityArchetype::Trigger:      return createTrigger(config);
+        case EntityArchetype::Decoration:   return createDecoration(config);
+        case EntityArchetype::Vehicle:      return createVehicle(config);
+        case EntityArchetype::Animal:       return createAnimal(config);
+        case EntityArchetype::Weapon:       return createWeapon(config);
+        case EntityArchetype::Pickup:       return createPickup(config);
+        case EntityArchetype::Door:         return createDoor(config);
+        case EntityArchetype::Chest:        return createChest(config);
+        case EntityArchetype::Foliage:      return createFoliage(config);
+        case EntityArchetype::Water:        return createWater(config);
+        case EntityArchetype::Explosive:    return createExplosive(config);
+        case EntityArchetype::SoundSource:  return createSoundSource(config);
+        case EntityArchetype::Zone:         return createZone(config);
+        default:                            return createEmpty(config);
     }
 }
 

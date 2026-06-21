@@ -17,7 +17,8 @@ enum class LogLevel : int {
     DEBUG   = 0,
     INFO    = 1,
     WARNING = 2,
-    ERROR   = 3
+    ERROR   = 3,
+    FATAL   = 4,  // 不可恢复错误，输出到 stderr，触发 abort
 };
 
 /**
@@ -52,6 +53,9 @@ public:
     static void info(const std::string& message);
     static void warning(const std::string& message);
     static void error(const std::string& message);
+
+    /** @brief 致命错误：输出到 stderr 后调用 abort() */
+    static void fatal(const std::string& message);
 
     /// @brief 定义日志输出的目标流（默认 std::cout）
     static void setOutputStream(std::ostream& stream);

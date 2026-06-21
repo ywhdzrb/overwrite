@@ -36,6 +36,17 @@ public:
     std::unique_ptr<IEntityHandle> createPlane(const EntityConfig& config = {}) override;
     std::unique_ptr<IEntityHandle> createTrigger(const EntityConfig& config = {}) override;
     std::unique_ptr<IEntityHandle> createDecoration(const EntityConfig& config = {}) override;
+    std::unique_ptr<IEntityHandle> createVehicle(const EntityConfig& config = {}) override;
+    std::unique_ptr<IEntityHandle> createAnimal(const EntityConfig& config = {}) override;
+    std::unique_ptr<IEntityHandle> createWeapon(const EntityConfig& config = {}) override;
+    std::unique_ptr<IEntityHandle> createPickup(const EntityConfig& config = {}) override;
+    std::unique_ptr<IEntityHandle> createDoor(const EntityConfig& config = {}) override;
+    std::unique_ptr<IEntityHandle> createChest(const EntityConfig& config = {}) override;
+    std::unique_ptr<IEntityHandle> createFoliage(const EntityConfig& config = {}) override;
+    std::unique_ptr<IEntityHandle> createWater(const EntityConfig& config = {}) override;
+    std::unique_ptr<IEntityHandle> createExplosive(const EntityConfig& config = {}) override;
+    std::unique_ptr<IEntityHandle> createSoundSource(const EntityConfig& config = {}) override;
+    std::unique_ptr<IEntityHandle> createZone(const EntityConfig& config = {}) override;
     std::unique_ptr<IEntityHandle> createFromArchetype(
         EntityArchetype archetype, const EntityConfig& config = {}) override;
 

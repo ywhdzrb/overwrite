@@ -178,20 +178,129 @@ std::unique_ptr<IEntityHandle> ClientEntityFactory::createDecoration(const Entit
     return handle;
 }
 
+// ============================================================
+// 新增标准实体类型的客户端实现
+// ============================================================
+
+std::unique_ptr<IEntityHandle> ClientEntityFactory::createVehicle(const EntityConfig& config) {
+    EntityConfig cfg = config;
+    if (!cfg.modelPath.has_value()) cfg.modelPath = modelDir_ + "vehicle.glb";
+    auto handle = EntityFactory::createVehicle(cfg);
+    if (handle && handle->valid()) applyRenderComponent(handle->getEntity(), cfg);
+    return handle;
+}
+
+std::unique_ptr<IEntityHandle> ClientEntityFactory::createAnimal(const EntityConfig& config) {
+    EntityConfig cfg = config;
+    if (!cfg.modelPath.has_value()) cfg.modelPath = modelDir_ + "animal.glb";
+    auto handle = EntityFactory::createAnimal(cfg);
+    if (handle && handle->valid()) applyRenderComponent(handle->getEntity(), cfg);
+    return handle;
+}
+
+std::unique_ptr<IEntityHandle> ClientEntityFactory::createWeapon(const EntityConfig& config) {
+    EntityConfig cfg = config;
+    if (!cfg.modelPath.has_value()) cfg.modelPath = modelDir_ + "weapon.glb";
+    auto handle = EntityFactory::createWeapon(cfg);
+    if (handle && handle->valid()) applyRenderComponent(handle->getEntity(), cfg);
+    return handle;
+}
+
+std::unique_ptr<IEntityHandle> ClientEntityFactory::createPickup(const EntityConfig& config) {
+    EntityConfig cfg = config;
+    if (!cfg.modelPath.has_value()) cfg.modelPath = modelDir_ + "pickup.glb";
+    auto handle = EntityFactory::createPickup(cfg);
+    if (handle && handle->valid()) applyRenderComponent(handle->getEntity(), cfg);
+    return handle;
+}
+
+std::unique_ptr<IEntityHandle> ClientEntityFactory::createDoor(const EntityConfig& config) {
+    EntityConfig cfg = config;
+    if (!cfg.modelPath.has_value()) cfg.modelPath = modelDir_ + "door.glb";
+    auto handle = EntityFactory::createDoor(cfg);
+    if (handle && handle->valid()) applyRenderComponent(handle->getEntity(), cfg);
+    return handle;
+}
+
+std::unique_ptr<IEntityHandle> ClientEntityFactory::createChest(const EntityConfig& config) {
+    EntityConfig cfg = config;
+    if (!cfg.modelPath.has_value()) cfg.modelPath = modelDir_ + "chest.glb";
+    auto handle = EntityFactory::createChest(cfg);
+    if (handle && handle->valid()) applyRenderComponent(handle->getEntity(), cfg);
+    return handle;
+}
+
+std::unique_ptr<IEntityHandle> ClientEntityFactory::createFoliage(const EntityConfig& config) {
+    EntityConfig cfg = config;
+    if (!cfg.modelPath.has_value()) cfg.modelPath = modelDir_ + "foliage.glb";
+    auto handle = EntityFactory::createFoliage(cfg);
+    if (handle && handle->valid()) applyRenderComponent(handle->getEntity(), cfg);
+    return handle;
+}
+
+std::unique_ptr<IEntityHandle> ClientEntityFactory::createWater(const EntityConfig& config) {
+    EntityConfig cfg = config;
+    if (!cfg.modelPath.has_value()) cfg.modelPath = modelDir_ + "water.glb";
+    auto handle = EntityFactory::createWater(cfg);
+    if (handle && handle->valid()) applyRenderComponent(handle->getEntity(), cfg);
+    return handle;
+}
+
+std::unique_ptr<IEntityHandle> ClientEntityFactory::createExplosive(const EntityConfig& config) {
+    EntityConfig cfg = config;
+    if (!cfg.modelPath.has_value()) cfg.modelPath = modelDir_ + "explosive.glb";
+    auto handle = EntityFactory::createExplosive(cfg);
+    if (handle && handle->valid()) applyRenderComponent(handle->getEntity(), cfg);
+    return handle;
+}
+
+std::unique_ptr<IEntityHandle> ClientEntityFactory::createSoundSource(const EntityConfig& config) {
+    EntityConfig cfg = config;
+    // 音源通常不需要可见模型，但如果指定了 modelPath 则渲染
+    auto handle = EntityFactory::createSoundSource(cfg);
+    if (handle && handle->valid() && cfg.modelPath.has_value()) {
+        applyRenderComponent(handle->getEntity(), cfg);
+    }
+    return handle;
+}
+
+std::unique_ptr<IEntityHandle> ClientEntityFactory::createZone(const EntityConfig& config) {
+    EntityConfig cfg = config;
+    if (!cfg.modelPath.has_value()) cfg.modelPath = modelDir_ + "zone.glb";
+    auto handle = EntityFactory::createZone(cfg);
+    if (handle && handle->valid()) applyRenderComponent(handle->getEntity(), cfg);
+    return handle;
+}
+
+// ============================================================
+// createFromArchetype
+// ============================================================
+
 std::unique_ptr<IEntityHandle> ClientEntityFactory::createFromArchetype(
     EntityArchetype archetype, const EntityConfig& config) {
     switch (archetype) {
-        case EntityArchetype::Empty:       return createEmpty(config);
-        case EntityArchetype::Player:      return createPlayer(config);
-        case EntityArchetype::NPC:         return createNPC(config);
-        case EntityArchetype::Building:    return createBuilding(config);
-        case EntityArchetype::Item:        return createItem(config);
-        case EntityArchetype::Projectile:  return createProjectile(config);
-        case EntityArchetype::Light:       return createLight(LightConfig{});
-        case EntityArchetype::Plane:       return createPlane(config);
-        case EntityArchetype::Trigger:     return createTrigger(config);
-        case EntityArchetype::Decoration:  return createDecoration(config);
-        default:                           return createEmpty(config);
+        case EntityArchetype::Empty:        return createEmpty(config);
+        case EntityArchetype::Player:       return createPlayer(config);
+        case EntityArchetype::NPC:          return createNPC(config);
+        case EntityArchetype::Building:     return createBuilding(config);
+        case EntityArchetype::Item:         return createItem(config);
+        case EntityArchetype::Projectile:   return createProjectile(config);
+        case EntityArchetype::Light:        return createLight(LightConfig{});
+        case EntityArchetype::Plane:        return createPlane(config);
+        case EntityArchetype::Trigger:      return createTrigger(config);
+        case EntityArchetype::Decoration:   return createDecoration(config);
+        case EntityArchetype::Vehicle:      return createVehicle(config);
+        case EntityArchetype::Animal:       return createAnimal(config);
+        case EntityArchetype::Weapon:       return createWeapon(config);
+        case EntityArchetype::Pickup:       return createPickup(config);
+        case EntityArchetype::Door:         return createDoor(config);
+        case EntityArchetype::Chest:        return createChest(config);
+        case EntityArchetype::Foliage:      return createFoliage(config);
+        case EntityArchetype::Water:        return createWater(config);
+        case EntityArchetype::Explosive:    return createExplosive(config);
+        case EntityArchetype::SoundSource:  return createSoundSource(config);
+        case EntityArchetype::Zone:         return createZone(config);
+        default:                            return createEmpty(config);
     }
 }
 

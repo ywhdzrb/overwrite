@@ -62,6 +62,15 @@ void GameSession::init(const GameSessionInitParams& params) {
         ecsClientWorld_->setTerrainQuery(terrainHeightQuery_);
     }
 
+    // 初始化模型缓存与 ECS 渲染系统
+    modelCache_ = std::make_shared<ModelCache>(device_, textureLoader_);
+    renderSystem_ = std::make_unique<RenderSystem>(
+        ecsClientWorld_->registry(),
+        modelCache_,
+        textureDescriptorSetLayout_,
+        descriptorPool_);
+    Logger::info("[GameSession] ECS 渲染系统初始化完成");
+
     // 加载玩家模型
     loadPlayerModels();
 
@@ -73,6 +82,13 @@ void GameSession::init(const GameSessionInitParams& params) {
 }
 
 void GameSession::cleanup() {
+    // 先清理渲染系统（模型引用）
+    if (renderSystem_) {
+        renderSystem_->cleanup();
+        renderSystem_.reset();
+    }
+    modelCache_.reset();
+
     gltfWalkModel_.reset();
     gltfModel_.reset();
 
@@ -331,6 +347,11 @@ void GameSession::update(float deltaTime) {
                 }
             }
         }
+    }
+
+    // === Phase 13: ECS 渲染系统同步（模型加载/卸载/变换同步） ===
+    if (renderSystem_) {
+        renderSystem_->update(deltaTime);
     }
 
     // 清除帧输入标记（justPressed 等标记仅持续一帧）

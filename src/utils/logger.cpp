@@ -47,12 +47,19 @@ void Logger::error(const std::string& message) {
     log(LogLevel::ERROR, message);
 }
 
+void Logger::fatal(const std::string& message) {
+    // FATAL 无视最低级别限制，直接输出到 stderr
+    std::string timeStr = getCurrentTime();
+    std::cerr << "[" << timeStr << "] [FATAL] " << message << std::endl;
+}
+
 std::string Logger::getLevelString(LogLevel level) {
     switch (level) {
         case LogLevel::DEBUG:   return "DEBUG";
         case LogLevel::INFO:    return "INFO";
         case LogLevel::WARNING: return "WARNING";
         case LogLevel::ERROR:   return "ERROR";
+        case LogLevel::FATAL:   return "FATAL";
         default:                return "UNKNOWN";
     }
 }

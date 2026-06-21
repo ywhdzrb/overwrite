@@ -10,6 +10,8 @@
 #include <glm/glm.hpp>
 
 #include "core/resource_node_system.hpp"
+#include "renderer/model_cache.hpp"
+#include "renderer/render_system.hpp"
 
 namespace owengine {
 
@@ -117,6 +119,12 @@ public:
     /** @brief 获取 ECS 客户端世界 */
     ecs::IGameWorld* getECSWorld() const;
 
+    /** @brief 获取 ECS 驱动的渲染系统 */
+    RenderSystem* getRenderSystem() const { return renderSystem_.get(); }
+
+    /** @brief 获取模型缓存 */
+    ModelCache* getModelCache() const { return modelCache_.get(); }
+
     /** @brief 获取资源节点系统（供 ImGui 调试面板和采集系统使用） */
     ResourceNodeSystem* getResourceNodeSystem() { return &resourceNodeSystem_; }
 
@@ -186,6 +194,10 @@ private:
     VkDescriptorSetLayout textureDescriptorSetLayout_ = VK_NULL_HANDLE;
     VkDescriptorSetLayout lightDescriptorSetLayout_ = VK_NULL_HANDLE;
     VkPipelineLayout graphicsPipelineLayout_ = VK_NULL_HANDLE;
+
+    // 模型缓存与 ECS 渲染系统
+    std::shared_ptr<ModelCache> modelCache_;
+    std::unique_ptr<RenderSystem> renderSystem_;
 
     // 地形高度查询回调
     std::function<float(float, float)> terrainHeightQuery_;
