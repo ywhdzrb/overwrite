@@ -78,7 +78,9 @@ void printStacktrace(int max_depth) {
     try {
         Logger::fatal(ss.str());
     } catch (...) {
-        std::cerr << ss.str() << std::endl;
+        std::string _fb = ss.str();
+        write(STDERR_FILENO, _fb.data(), _fb.size());
+        write(STDERR_FILENO, "\n", 1);
     }
 
     std::free(symbols);
@@ -198,7 +200,9 @@ void terminateHandler() {
     try {
         Logger::fatal(ss.str());
     } catch (...) {
-        std::cerr << "[FATAL] " << ss.str() << std::endl;
+        std::string _fb = ss.str();
+        write(STDERR_FILENO, _fb.data(), _fb.size());
+        write(STDERR_FILENO, "\n", 1);
     }
 
     printStacktrace();
