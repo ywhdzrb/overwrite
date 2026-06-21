@@ -30,6 +30,7 @@ layout(push_constant) uniform PushConstants {
     vec4  cloudMax_time;          // x=cloudHeightMax, y=全局时间, z=风速, w=风向(弧度)
     vec4  params;                 // x=stepCount, y=coverage, z=densityMult, w=薄云层高度
     vec4  sunDir_dayFactor;       // xyz=太阳方向, w=昼夜因子 [0(夜)~1(昼)]
+    vec4  jitter_cauli;           // x=jitterAmp, y=cauliStr, z=thresholdDitherAmp, w=pad
 } push;
 
 // ============================================================
@@ -40,7 +41,7 @@ layout(push_constant) uniform PushConstants {
 const float DETAIL_FREQ   = 0.025;    // 侵蚀细节频率（Worley纹理）
 const float CAULI_FREQ    = 0.10;     // 花椰菜高频细节频率（Worley纹理，≈12.5x DETAIL_FREQ）
                                        // 在云的上半部产生小尺度凹凸
-const float CAULI_STR     = 0.18;     // 花椰菜强度（0.18，减小颗粒感，保留积云凹凸形态）
+// CAULI_STR 已从 #define 抽到 push.jitter_cauli.y（运行时配置）
 const float EROSION_STR   = 0.8;      // 侵蚀强度（越大边缘越破碎）
 const float HG_G          = 0.6;      // HG散射非对称因子
 const float EXTINCTION    = 0.5;      // 消光系数
@@ -221,7 +222,8 @@ float getCloudDensity(vec3 pos, vec3 windOffset,
     float coverage = clamp(push.params.y, 0.0, 1.0);
     // 覆盖阈值微抖：用高频噪声(周期50m)微调每像素的覆盖阈值
     // 避免噪声恰好穿越阈值时产生的方向性切断线（"x轴割裂感"的根因之一）
-    float thresholdDither = valueNoise3D(p * 0.02 + 200.0) * 0.02;
+    // 振幅从 push.jitter_cauli.z 读取（原硬编码 0.02，现运行时配置）
+    float thresholdDither = valueNoise3D(p * 0.02 + 200.0) * push.jitter_cauli.z;
     baseShape = remap(baseShape, 1.0 - coverage + thresholdDither, 1.0, 0.0, 1.0);
     baseShape = clamp(baseShape, 0.0, 1.0);
     if (baseShape < 0.001) return 0.0;
@@ -319,8 +321,8 @@ float getCloudDensity(vec3 pos, vec3 windOffset,
         vec4 cn = texture(noiseTexture, p * CAULI_FREQ + wobble);
         float cauliNoise = cn.r * 0.4 + cn.g * 0.3 + cn.b * 0.2 + cn.a * 0.1;
 
-        // 花椰菜强度 = 基础强度 × 高度区间 × 密度耦合
-        float cauliStrength = CAULI_STR * cauliZone * densityCoupling;
+        // 花椰菜强度 = 运行时配置值 × 高度区间 × 密度耦合
+        float cauliStrength = push.jitter_cauli.y * cauliZone * densityCoupling;
 
         // 乘法调制：[0,1] → cauliMod ∈ [0.7, 1.3] 区间
         float cauliMod = 1.0 + (cauliNoise - 0.5) * cauliStrength;
@@ -415,7 +417,8 @@ void main() {
 
     // 抖动反走样：改用 Interleaved Gradient Noise 替代 hash21
     // IGN 频谱能量集中在高频，人眼不易感知为噪声，同时在消除色带上比白噪声更有效
-    float jitter = interleavedGradientNoise(gl_FragCoord.xy) * 0.30;
+    // 幅度从 push.jitter_cauli.x 读取（原硬编码 0.30，现运行时配置）
+    float jitter = interleavedGradientNoise(gl_FragCoord.xy) * push.jitter_cauli.x;
     vec3 pos = camPos + worldDir * (tMin + stepSize * jitter);
 
     float transmittance = 1.0;

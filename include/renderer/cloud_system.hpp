@@ -110,6 +110,9 @@ public:
         float* sunIntensity;
         bool*   dayNightEnabled;
         bool*   thinCloudEnabled;
+        float* jitterAmplitude;
+        float* cauliStrength;
+        float* thresholdDitherAmp;
     };
 
     /** @brief 获取调试参数指针（供ImGui面板运行时调节） */
@@ -119,7 +122,8 @@ public:
             &stepCount_,
             &windSpeed_, &thinCloudHeight_, &thinCloudDensity_,
             &sunIntensity_,
-            &dayNightEnabled_, &thinCloudEnabled_
+            &dayNightEnabled_, &thinCloudEnabled_,
+            &jitterAmplitude_, &cauliStrength_, &thresholdDitherAmp_
         };
     }
 
@@ -165,13 +169,14 @@ private:
     // ========== 内部数据结构 ==========
 
     /**
-     * @brief PushConstants（128 bytes，Vulkan最小保证值）
+     * @brief PushConstants（144 bytes，6组 = 64 + 16×5）
      *
-     * @note 布局：5组 = 64 + 16×4 = 128 bytes
+     * @note 布局：6组
      *       sunDir.xyz 送入着色器用于光照计算（HG相位+lightMarch）
      *       dayFactor 驱动昼夜颜色变化（从 sunDir.y 计算）
      *       windSpeed/windAngle 驱动纹理偏移风动画
      *       thinCloudHeight 控制第二层薄云起始高度
+     *       jitterAmp/cauliStr/thresholdDitherAmp 从硬编码#DEFINE抽到运行时配置
      */
     struct PushConstants {
         glm::mat4 invViewProj;              // 0-63:  逆VP矩阵
@@ -179,8 +184,10 @@ private:
         glm::vec4 cloudMax_time;            // 80-95:  cloudHeightMax + time + windSpeed + windAngle
         glm::vec4 params;                   // 96-111: stepCount + coverage + densityMult + thinCloudHeight
         glm::vec4 sunDir_dayFactor;         // 112-127: sunDir.xyz + dayFactor
+        glm::vec4 jitter_cauli;             // 128-143: jitterAmp + cauliStr + thresholdDitherAmp + pad
     };
-    static_assert(sizeof(PushConstants) == 128, "PushConstants must be exactly 128 bytes");
+    static_assert(sizeof(PushConstants) == 144, "PushConstants must be exactly 144 bytes. "
+                  "If GPU reports maxPushConstantsSize < 144, reduce or use UBO fallback.");
 
     // ========== 初始化子方法 ==========
     void createDescriptorSetLayout();
@@ -257,6 +264,11 @@ private:
     float thinCloudHeight_ = 180.0f;            // 薄云底部高度 m
     float thinCloudDensity_ = 0.3f;             // 薄云密度乘数 [0,1]
     bool  thinCloudEnabled_ = false;            // 是否启用薄云层（默认关，地面视角体验有限）
+
+    // --- 运行时着色器参数（原硬编码#define，现可运行时调优） ---
+    float jitterAmplitude_ = 0.30f;         // 采样抖动幅度 [0,1]，控制Ray Marching反走样强度
+    float cauliStrength_ = 0.18f;           // 花椰菜高频凸起强度 [0,1]，积云表面凹凸程度
+    float thresholdDitherAmp_ = 0.02f;      // 覆盖阈值抖动幅度，破坏覆盖边界的定向切断线
 
     // --- LOD（连续混合：步进次数在48/24/12之间平滑插值） ---
     float stepCount_ = 48.0f;          // 密度步进次数（float支持连续LOD混合）

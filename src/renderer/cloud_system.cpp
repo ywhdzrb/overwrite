@@ -193,6 +193,14 @@ void CloudSystem::render(VkCommandBuffer commandBuffer, const Camera& camera,
     float dayVis = dayNightEnabled_ ? dayFactor_ : 1.0f;
     pc.sunDir_dayFactor = glm::vec4(sd, dayVis);
 
+    // 运行时着色器参数（原硬编码#define，现可运行时调优）
+    pc.jitter_cauli = glm::vec4(
+        jitterAmplitude_,            // x: 采样抖动幅度
+        cauliStrength_,              // y: 花椰菜强度
+        thresholdDitherAmp_,         // z: 覆盖阈值抖动幅度
+        0.0f                         // w: 填充
+    );
+
     // 推送常量
     vkCmdPushConstants(commandBuffer, pipelineLayout_,
                        VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,

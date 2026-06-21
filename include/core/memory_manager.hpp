@@ -21,6 +21,7 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <unordered_map>
 #include <vector>
 #include <sstream>
 
@@ -173,26 +174,34 @@ public:
         auto& slot = slots_[idx];
         slot.alive = true;
         T* obj = ::new (slot.data) T(std::forward<Args>(args)...);
+        {
+            std::lock_guard<std::mutex> lock(ptrMtx_);
+            ptrToIndex_[static_cast<void*>(obj)] = idx;
+        }
         if (stats_) stats_->onAlloc(sizeof(T));
         return obj;
     }
 
     /**
-     * @brief 将对象归还池中
+     * @brief 将对象归还池中（O(1) 哈希查找）
      * @param obj 由 acquire() 返回的指针
      */
     void release(T* obj) {
         if (!obj) return;
-        std::lock_guard<std::mutex> lock(mtx_);
-        for (size_t i = 0; i < slots_.size(); ++i) {
-            if (slots_[i].alive && reinterpret_cast<void*>(slots_[i].data) == static_cast<void*>(obj)) {
-                reinterpret_cast<T*>(slots_[i].data)->~T();
-                slots_[i].alive = false;
-                freeIndices_.push_back(i);
-                if (stats_) stats_->onDealloc(sizeof(T));
-                return;
-            }
+        void* vp = static_cast<void*>(obj);
+        size_t idx;
+        {
+            std::lock_guard<std::mutex> lock(ptrMtx_);
+            auto it = ptrToIndex_.find(vp);
+            if (it == ptrToIndex_.end()) return;
+            idx = it->second;
+            ptrToIndex_.erase(it);
         }
+        std::lock_guard<std::mutex> lock(mtx_);
+        reinterpret_cast<T*>(slots_[idx].data)->~T();
+        slots_[idx].alive = false;
+        freeIndices_.push_back(idx);
+        if (stats_) stats_->onDealloc(sizeof(T));
     }
 
     /** @brief 当前池容量 */
@@ -225,6 +234,10 @@ private:
     mutable std::mutex mtx_;
     bool growable_;
     AllocStats* stats_;
+
+    // 指针→槽位索引哈希映射（O(1) release 查找）
+    std::unordered_map<void*, size_t> ptrToIndex_;
+    mutable std::mutex ptrMtx_;
 
     void expand(size_t newSize) {
         size_t oldSize = slots_.size();

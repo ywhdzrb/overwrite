@@ -482,8 +482,12 @@ void Renderer::mainLoop() {
             ImGui::SliderFloat("覆盖率", cp.coverage, 0.0f, 1.0f, "%.2f");
             ImGui::SliderFloat("密度倍率", cp.densityMultiplier, 0.0f, 5.0f, "%.1f");
             ImGui::SliderFloat("步进次数", cp.stepCountFloat, 16.0f, 160.0f, "%.0f");
+            ImGui::Text("--- 着色器调优参数（原硬编码#define） ---");
+            ImGui::SliderFloat("采样抖动", cp.jitterAmplitude, 0.0f, 1.0f, "%.2f");
+            ImGui::SliderFloat("花椰菜强度", cp.cauliStrength, 0.0f, 0.5f, "%.3f");
+            ImGui::SliderFloat("覆盖抖动", cp.thresholdDitherAmp, 0.0f, 0.1f, "%.4f");
             ImGui::Text("--- 风动画 ---");
-            ImGui::SliderFloat("风速", cp.windSpeed, 0.0f, 2.0f, "%.2f");
+            ImGui::SliderFloat("风速", cp.windSpeed, 0.0f, 50.0f, "%.1f");
             ImGui::Text("--- 薄云层 ---");
             ImGui::Checkbox("启用薄云", cp.thinCloudEnabled);
             ImGui::SliderFloat("薄云高度", cp.thinCloudHeight, 120.0f, 300.0f, "%.0f");

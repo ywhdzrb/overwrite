@@ -243,6 +243,11 @@ target_link_libraries(${PROJECT_NAME}
     vma
 )
 
+# 预编译头（加速编译：将 Vulkan/GLM/STL 等稳定大头部提前编译）
+target_precompile_headers(${PROJECT_NAME} PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/core/pch.hpp
+)
+
 # ==================== 服务器主程序 ====================
 add_executable(OverWriteServerBin
     server/src/server_main.cpp
