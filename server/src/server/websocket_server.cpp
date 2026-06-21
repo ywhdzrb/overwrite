@@ -110,11 +110,18 @@ void WebSocketGameServer::start() {
                         network::InputMessage inputMsg;
                         if (network::unpackInputMessage(msg->str, inputMsg)) {
                             ecs::InputStateComponent input;
+                            bool moveF, moveB, moveL, moveR, jump, sprint, spaceH, shiftH;
                             network::unpackButtons(inputMsg.buttons,
-                                input.moveForward, input.moveBackward,
-                                input.moveLeft, input.moveRight,
-                                input.jump, input.sprint,
-                                input.spaceHeld, input.shiftHeld);
+                                moveF, moveB, moveL, moveR,
+                                jump, sprint, spaceH, shiftH);
+                            input.setMoveForward(moveF);
+                            input.setMoveBackward(moveB);
+                            input.setMoveLeft(moveL);
+                            input.setMoveRight(moveR);
+                            input.setJump(jump);
+                            input.setSprint(sprint);
+                            input.setSpaceHeld(spaceH);
+                            input.setShiftHeld(shiftH);
                             input.mouseDeltaX = static_cast<float>(inputMsg.mouseDeltaX) * 0.0001f;
                             input.mouseDeltaY = static_cast<float>(inputMsg.mouseDeltaY) * 0.0001f;
                             
@@ -149,14 +156,14 @@ void WebSocketGameServer::start() {
                         if (mType == network::MSG_INPUT) {
                             // JSON 格式输入（向后兼容）
                             ecs::InputStateComponent input;
-                            input.moveForward = message.value("moveForward", false);
-                            input.moveBackward = message.value("moveBackward", false);
-                            input.moveLeft = message.value("moveLeft", false);
-                            input.moveRight = message.value("moveRight", false);
-                            input.jump = message.value("jump", false);
-                            input.sprint = message.value("sprint", false);
-                            input.spaceHeld = message.value("spaceHeld", false);
-                            input.shiftHeld = message.value("shiftHeld", false);
+                            input.setMoveForward(message.value("moveForward", false));
+                            input.setMoveBackward(message.value("moveBackward", false));
+                            input.setMoveLeft(message.value("moveLeft", false));
+                            input.setMoveRight(message.value("moveRight", false));
+                            input.setJump(message.value("jump", false));
+                            input.setSprint(message.value("sprint", false));
+                            input.setSpaceHeld(message.value("spaceHeld", false));
+                            input.setShiftHeld(message.value("shiftHeld", false));
                             input.mouseDeltaX = message.value("mouseDeltaX", 0.0f);
                             input.mouseDeltaY = message.value("mouseDeltaY", 0.0f);
                             

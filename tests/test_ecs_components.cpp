@@ -72,9 +72,9 @@ TEST(PhysicsComponentTest, DefaultJumpForce) {
 
 TEST(PhysicsComponentTest, DefaultGrounded) {
     PhysicsComponent phys;
-    EXPECT_TRUE(phys.isGrounded);
-    EXPECT_FALSE(phys.isJumping);
-    EXPECT_TRUE(phys.useGravity);
+    EXPECT_TRUE(phys.isGrounded());
+    EXPECT_FALSE(phys.isJumping());
+    EXPECT_TRUE(phys.isUseGravity());
 }
 
 TEST(PhysicsComponentTest, DefaultColliderParams) {
@@ -86,33 +86,33 @@ TEST(PhysicsComponentTest, DefaultColliderParams) {
 TEST(PhysicsComponentTest, DefaultCacheState) {
     PhysicsComponent phys;
     EXPECT_FLOAT_EQ(phys.cachedTerrainHeight, -1.5f);
-    EXPECT_FALSE(phys.terrainCacheValid);
+    EXPECT_FALSE(phys.isTerrainCacheValid());
 }
 
 TEST(PhysicsComponentTest, StateToggle) {
     PhysicsComponent phys;
-    phys.isGrounded = false;
-    phys.isJumping = true;
-    phys.useGravity = false;
+    phys.setGrounded(false);
+    phys.setJumping(true);
+    phys.setUseGravity(false);
 
-    EXPECT_FALSE(phys.isGrounded);
-    EXPECT_TRUE(phys.isJumping);
-    EXPECT_FALSE(phys.useGravity);
+    EXPECT_FALSE(phys.isGrounded());
+    EXPECT_TRUE(phys.isJumping());
+    EXPECT_FALSE(phys.isUseGravity());
 }
 
 // ==================== InputStateComponent ====================
 
 TEST(InputStateComponentTest, DefaultAllFalse) {
     InputStateComponent input;
-    EXPECT_FALSE(input.moveForward);
-    EXPECT_FALSE(input.moveBackward);
-    EXPECT_FALSE(input.moveLeft);
-    EXPECT_FALSE(input.moveRight);
-    EXPECT_FALSE(input.jump);
-    EXPECT_FALSE(input.sprint);
-    EXPECT_FALSE(input.freeCameraToggle);
-    EXPECT_FALSE(input.spaceHeld);
-    EXPECT_FALSE(input.shiftHeld);
+    EXPECT_FALSE(input.isMoveForward());
+    EXPECT_FALSE(input.isMoveBackward());
+    EXPECT_FALSE(input.isMoveLeft());
+    EXPECT_FALSE(input.isMoveRight());
+    EXPECT_FALSE(input.isJump());
+    EXPECT_FALSE(input.isSprint());
+    EXPECT_FALSE(input.isFreeCameraToggle());
+    EXPECT_FALSE(input.isSpaceHeld());
+    EXPECT_FALSE(input.isShiftHeld());
 }
 
 TEST(InputStateComponentTest, DefaultMouseDeltasZero) {
@@ -123,14 +123,14 @@ TEST(InputStateComponentTest, DefaultMouseDeltasZero) {
 
 TEST(InputStateComponentTest, ResetClearsAll) {
     InputStateComponent input;
-    input.moveForward = true;
-    input.jump = true;
+    input.setMoveForward(true);
+    input.setJump(true);
     input.mouseDeltaX = 10.0f;
 
     input.reset();
 
-    EXPECT_FALSE(input.moveForward);
-    EXPECT_FALSE(input.jump);
+    EXPECT_FALSE(input.isMoveForward());
+    EXPECT_FALSE(input.isJump());
     EXPECT_FLOAT_EQ(input.mouseDeltaX, 0.0f);
     EXPECT_FLOAT_EQ(input.mouseDeltaY, 0.0f);
 }

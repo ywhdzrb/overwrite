@@ -21,6 +21,7 @@ layout(push_constant) uniform PushConstants {
     float _pad0;
     float windTime;      // 累计时间（秒），用于风场动画
     float windStrength;  // 风场强度（0=无风）
+    vec3 normalScale;    // 逆缩放因子（CPU 计算，用于法线矩阵）
 } pushConstants;
 
 // 输出到片段着色器
@@ -69,8 +70,10 @@ void main() {
     // Vulkan的NDC坐标系Y轴是向下的，需要反转Y轴
     gl_Position.y = -gl_Position.y;
 
-    // 计算法线（使用法线矩阵，处理非均匀缩放）
-    mat3 normalMatrix = transpose(inverse(mat3(pushConstants.model)));
+    // 计算法线（使用 CPU 传入的逆缩放因子，适用于 TRS 矩阵）
+    vec3 ns = pushConstants.normalScale;
+    mat3 m = mat3(pushConstants.model);
+    mat3 normalMatrix = mat3(m[0] * ns.x, m[1] * ns.y, m[2] * ns.z);
     fragNormal = normalize(normalMatrix * inNormal);
     
     // 传递颜色到片段着色器

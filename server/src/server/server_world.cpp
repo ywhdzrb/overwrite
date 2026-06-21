@@ -83,8 +83,8 @@ std::vector<ServerWorld::PlayerSnapshot> ServerWorld::getPlayersSnapshot() const
                 .position = transform.position,
                 .yaw = transform.yaw,
                 .pitch = transform.pitch,
-                .isJumping = physics ? physics->isJumping : false,
-                .isGrounded = physics ? physics->isGrounded : true
+                .isJumping = physics ? physics->isJumping() : false,
+                .isGrounded = physics ? physics->isGrounded() : true
             });
         }
     }

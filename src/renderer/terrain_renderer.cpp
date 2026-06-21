@@ -474,6 +474,7 @@ void TerrainRenderer::render(VkCommandBuffer commandBuffer, VkPipelineLayout pip
     pushConstants.roughness = 0.35f;
     pushConstants.hasTexture = (terrainTexDescSet_ != VK_NULL_HANDLE) ? 1 : 0;
     pushConstants._pad0 = 0.0f;
+    pushConstants.normalScale = glm::vec3(1.0f);  // 地形使用单位矩阵，法线无需缩放
     
     vkCmdPushConstants(commandBuffer, pipelineLayout,
                       VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(PushConstants), &pushConstants);

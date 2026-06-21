@@ -133,6 +133,7 @@ void FloorRenderer::render(VkCommandBuffer commandBuffer, VkPipelineLayout pipel
     pushConstants.roughness = 1.0f;
     pushConstants.hasTexture = 0;
     pushConstants._pad0 = 0.0f;
+    pushConstants.normalScale = glm::vec3(1.0f);  // 地板使用单位矩阵，法线无需缩放
     
     vkCmdPushConstants(commandBuffer, pipelineLayout,
                       VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(PushConstants), &pushConstants);

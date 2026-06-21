@@ -28,15 +28,18 @@ struct TransformComponent {
     float pitch{0.0f};
     float roll{0.0f};
     
-    // 获取前向量（基于欧拉角）
+    // 获取前/右/上向量（基于欧拉角）
     glm::vec3 getFront() const;
     glm::vec3 getRight() const;
     glm::vec3 getUp() const;
     
-    // 从欧拉角更新四元数
+    /** @brief 从欧拉角同步四元数 */
     void updateRotationFromEuler();
     
-    // 获取模型矩阵
+    /** @brief 从四元数同步欧拉角 */
+    void syncEulerFromRotation();
+    
+    /** @brief 获取模型矩阵 */
     glm::mat4 getModelMatrix() const;
 };
 
@@ -62,9 +65,21 @@ struct PhysicsComponent {
     glm::vec3 groundNormal{0.0f, 1.0f, 0.0f};  // 地面法向量（由地形系统计算）
     float jumpForce{5.5f};
     
-    bool isJumping{false};          // 是否正在跳跃（上升阶段）
-    bool isGrounded{true};          // 是否着地（核心状态）
-    bool useGravity{true};
+    // 4个状态标志打包为 uint8_t 位域
+    // Bit 0: isJumping, 1: isGrounded, 2: useGravity, 3: terrainCacheValid
+    uint8_t flags{0b00000110};  //默认: !isJumping, isGrounded, useGravity, !terrainCacheValid
+    
+    bool isJumping() const { return flags & (1u << 0); }
+    void setJumping(bool v) { if (v) flags |= (1u << 0); else flags &= ~(1u << 0); }
+    
+    bool isGrounded() const { return flags & (1u << 1); }
+    void setGrounded(bool v) { if (v) flags |= (1u << 1); else flags &= ~(1u << 1); }
+    
+    bool isUseGravity() const { return flags & (1u << 2); }  // matches old useGravity
+    void setUseGravity(bool v) { if (v) flags |= (1u << 2); else flags &= ~(1u << 2); }
+    
+    bool isTerrainCacheValid() const { return flags & (1u << 3); }
+    void setTerrainCacheValid(bool v) { if (v) flags |= (1u << 3); else flags &= ~(1u << 3); }
     
     // 碰撞体参数
     float colliderHeight{1.8f};
@@ -72,7 +87,6 @@ struct PhysicsComponent {
     
     // 地形查询缓存（由地形系统填充）
     float cachedTerrainHeight{-1.5f};  // 缓存的地形高度
-    bool terrainCacheValid{false};     // 缓存是否有效
 };
 
 /**
@@ -80,26 +94,46 @@ struct PhysicsComponent {
  * 服务器从网络接收，客户端从本地输入
  */
 struct InputStateComponent {
-    // 移动输入
-    bool moveForward{false};
-    bool moveBackward{false};
-    bool moveLeft{false};
-    bool moveRight{false};
-    bool jump{false};
-    bool sprint{false};
-    bool freeCameraToggle{false};
-    bool spaceHeld{false};
-    bool shiftHeld{false};
+    // 9个输入标志打包为 uint16_t 位域
+    // Bit 0: moveForward, 1: moveBackward, 2: moveLeft, 3: moveRight
+    // Bit 4: jump, 5: sprint, 6: freeCameraToggle, 7: spaceHeld, 8: shiftHeld
+    uint16_t flags{0};
     
     // 鼠标输入
     float mouseDeltaX{0.0f};
     float mouseDeltaY{0.0f};
     
+    // 便捷访问方法
+    bool isMoveForward() const { return flags & (1u << 0); }
+    void setMoveForward(bool v) { if (v) flags |= (1u << 0); else flags &= ~(1u << 0); }
+    
+    bool isMoveBackward() const { return flags & (1u << 1); }
+    void setMoveBackward(bool v) { if (v) flags |= (1u << 1); else flags &= ~(1u << 1); }
+    
+    bool isMoveLeft() const { return flags & (1u << 2); }
+    void setMoveLeft(bool v) { if (v) flags |= (1u << 2); else flags &= ~(1u << 2); }
+    
+    bool isMoveRight() const { return flags & (1u << 3); }
+    void setMoveRight(bool v) { if (v) flags |= (1u << 3); else flags &= ~(1u << 3); }
+    
+    bool isJump() const { return flags & (1u << 4); }
+    void setJump(bool v) { if (v) flags |= (1u << 4); else flags &= ~(1u << 4); }
+    
+    bool isSprint() const { return flags & (1u << 5); }
+    void setSprint(bool v) { if (v) flags |= (1u << 5); else flags &= ~(1u << 5); }
+    
+    bool isFreeCameraToggle() const { return flags & (1u << 6); }
+    void setFreeCameraToggle(bool v) { if (v) flags |= (1u << 6); else flags &= ~(1u << 6); }
+    
+    bool isSpaceHeld() const { return flags & (1u << 7); }
+    void setSpaceHeld(bool v) { if (v) flags |= (1u << 7); else flags &= ~(1u << 7); }
+    
+    bool isShiftHeld() const { return flags & (1u << 8); }
+    void setShiftHeld(bool v) { if (v) flags |= (1u << 8); else flags &= ~(1u << 8); }
+    
     // 重置输入状态
     void reset() {
-        moveForward = moveBackward = moveLeft = moveRight = false;
-        jump = sprint = freeCameraToggle = false;
-        spaceHeld = shiftHeld = false;
+        flags = 0;
         mouseDeltaX = mouseDeltaY = 0.0f;
     }
 };

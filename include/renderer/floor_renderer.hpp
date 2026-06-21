@@ -33,8 +33,9 @@ public:
         float roughness;
         int hasTexture;
         float _pad0;  // 填充到16字节对齐
+        glm::vec3 normalScale;  // 逆缩放因子（CPU 计算，用于法线矩阵）
     };
-    static_assert(sizeof(PushConstants) == 220, "FloorRenderer::PushConstants must be 220 bytes");
+    static_assert(sizeof(PushConstants) == 232, "FloorRenderer::PushConstants must be 232 bytes");
 
 private:
     void createVertexBuffer();

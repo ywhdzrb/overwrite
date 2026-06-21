@@ -1,7 +1,10 @@
 #pragma once
 
 #include <entt/entt.hpp>
+#include <cmath>
 #include <memory>
+#include <unordered_map>
+#include <unordered_set>
 #include <vector>
 #include <glm/glm.hpp>
 #include "ecs/components.hpp"
@@ -49,6 +52,65 @@ private:
 };
 
 /**
+ * @brief 2D 空间哈希网格（碰撞加速）
+ * @note 用于快速查询指定位置附近的所有碰撞箱，替代 O(n) 暴力遍历
+ */
+class SpatialGrid {
+public:
+    explicit SpatialGrid(float cellSize = 10.0f) : cellSize_(cellSize) {}
+
+    void clear() { cells_.clear(); }
+
+    /** @brief 将碰撞箱插入网格（基于 position 的 XZ 坐标） */
+    void insert(const glm::vec3& position, const glm::vec3& size, size_t index) {
+        auto [gx, gz] = gridCoords(position.x, position.z);
+        cells_[key(gx, gz)].push_back(index);
+        // 较大的物体可能跨越多个格子
+        float halfX = size.x * 0.5f;
+        float halfZ = size.z * 0.5f;
+        auto [gx2, gz2] = gridCoords(position.x + halfX, position.z + halfZ);
+        if (gx2 != gx || gz2 != gz) cells_[key(gx2, gz2)].push_back(index);
+        auto [gx3, gz3] = gridCoords(position.x - halfX, position.z - halfZ);
+        if (gx3 != gx || gz3 != gz) cells_[key(gx3, gz3)].push_back(index);
+        auto [gx4, gz4] = gridCoords(position.x + halfX, position.z - halfZ);
+        if (gx4 != gx || gz4 != gz) cells_[key(gx4, gz4)].push_back(index);
+        auto [gx5, gz5] = gridCoords(position.x - halfX, position.z + halfZ);
+        if (gx5 != gx || gz5 != gz) cells_[key(gx5, gz5)].push_back(index);
+    }
+
+    /** @brief 查询位置附近所有格子的碰撞箱索引 */
+    std::vector<size_t> query(float worldX, float worldZ, float radius) const {
+        auto [minGx, minGz] = gridCoords(worldX - radius, worldZ - radius);
+        auto [maxGx, maxGz] = gridCoords(worldX + radius, worldZ + radius);
+        // 用集合去重（物体可能在多个格子中重复）
+        std::unordered_set<size_t> result;
+        for (int gx = minGx; gx <= maxGx; ++gx) {
+            for (int gz = minGz; gz <= maxGz; ++gz) {
+                auto it = cells_.find(key(gx, gz));
+                if (it != cells_.end()) {
+                    for (auto idx : it->second) result.insert(idx);
+                }
+            }
+        }
+        return {result.begin(), result.end()};
+    }
+
+private:
+    float cellSize_;
+    std::unordered_map<uint64_t, std::vector<size_t>> cells_;
+
+    std::pair<int, int> gridCoords(float x, float z) const {
+        return {static_cast<int>(std::floor(x / cellSize_)),
+                static_cast<int>(std::floor(z / cellSize_))};
+    }
+
+    static uint64_t key(int gx, int gz) {
+        return (static_cast<uint64_t>(static_cast<uint32_t>(gx)) << 32)
+             | static_cast<uint64_t>(static_cast<uint32_t>(gz));
+    }
+};
+
+/**
  * @brief 移动系统（共享）
  * 
  * 根据输入状态更新实体位置和旋转
@@ -67,8 +129,9 @@ public:
 private:
     World& world_;
     std::vector<std::pair<glm::vec3, glm::vec3>> collisionBoxes_;  // position, size
+    SpatialGrid collisionGrid_;                                      // 空间网格加速
     
-    // 碰撞检测
+    // 碰撞检测（使用 spatial grid 加速）
     bool checkCollision(const glm::vec3& position, const glm::vec3& playerSize) const;
     glm::vec3 resolveCollision(const glm::vec3& oldPos, const glm::vec3& newPos, const glm::vec3& playerSize) const;
     

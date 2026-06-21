@@ -101,8 +101,9 @@ public:
         float _pad0;
         float windTime;      // 累计时间（秒），与 shader.vert/frag 布局一致
         float windStrength;  // 风场强度（地形为 0）
+        glm::vec3 normalScale;  // 逆缩放因子（CPU 计算，用于法线矩阵）
     };
-    static_assert(sizeof(PushConstants) == 228, "TerrainRenderer::PushConstants must be 228 bytes");
+    static_assert(sizeof(PushConstants) == 240, "TerrainRenderer::PushConstants must be 240 bytes");
 
 private:
     struct ChunkKey {

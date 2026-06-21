@@ -68,8 +68,9 @@ public:
         float _pad0;
         float windTime;      // 累计时间（秒），用于风场动画
         float windStrength;  // 风场强度（0=无风）
+        glm::vec3 normalScale;  // 逆缩放因子（CPU 计算，用于法线矩阵）
     };
-    static_assert(sizeof(PushConstants) == 228, "ModelRenderer::PushConstants must be 228 bytes");
+    static_assert(sizeof(PushConstants) == 240, "ModelRenderer::PushConstants must be 240 bytes");
 
 protected:
     std::shared_ptr<VulkanDevice> device;

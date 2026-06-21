@@ -1481,7 +1481,10 @@ void Renderer::recreateSwapchain() {
     skyboxPipeline_->setMsaaSamples(msaaSamples_);
     skyboxPipeline_->cleanup();
     skyboxPipeline_->create();
-    
+
+    // 重建草地管线（固定视口，需随交换链更新）
+    if (grassSystem_) grassSystem_->rebuildPipeline();
+
     // 重建帧缓冲
     framebuffers_->recreate(swapchain_->getImageViews(), renderExt, colorImageView_);
     commandBuffers_->cleanup();

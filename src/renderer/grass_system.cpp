@@ -66,6 +66,9 @@ void GrassSystem::init(const GrassConfig& cfg, VkRenderPass renderPass,
                        VkExtent2D extent, VkSampleCountFlagBits msaaSamples) {
     if (initialized_) return;
     config_ = cfg;
+    renderPass_ = renderPass;
+    cachedExtent_ = extent;
+    cachedMsaaSamples_ = msaaSamples;
 
     // 生成三层 LOD 网格
     for (int lod = 0; lod < LOD_COUNT; lod++) {
@@ -87,6 +90,19 @@ void GrassSystem::init(const GrassConfig& cfg, VkRenderPass renderPass,
 
     Logger::info("[GrassSystem] 初始化完成, " + std::to_string(totalLoadedBlades_) + " 根草茎");
     initialized_ = true;
+}
+
+void GrassSystem::rebuildPipeline() {
+    VkDevice dev = device_->getDevice();
+    if (pipeline_ != VK_NULL_HANDLE) {
+        vkDestroyPipeline(dev, pipeline_, nullptr);
+        pipeline_ = VK_NULL_HANDLE;
+    }
+    if (pipelineLayout_ != VK_NULL_HANDLE) {
+        vkDestroyPipelineLayout(dev, pipelineLayout_, nullptr);
+        pipelineLayout_ = VK_NULL_HANDLE;
+    }
+    createPipeline(renderPass_, cachedExtent_, cachedMsaaSamples_);
 }
 
 void GrassSystem::generateBladeMesh(int lod,

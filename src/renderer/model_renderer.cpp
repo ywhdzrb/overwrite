@@ -85,6 +85,15 @@ void ModelRenderer::render(VkCommandBuffer commandBuffer, VkPipelineLayout pipel
     pushConstants._pad0 = 0.0f;
     pushConstants.windTime = 0.0f;
     pushConstants.windStrength = 0.0f;  // OBJ模型不受风场影响
+    {
+        // 计算法线矩阵的逆缩放因子（适用于 TRS 模型矩阵）
+        glm::vec3 col0(model[0]), col1(model[1]), col2(model[2]);
+        pushConstants.normalScale = glm::vec3(
+            glm::length(col0) > 0.0001f ? 1.0f / glm::length(col0) : 1.0f,
+            glm::length(col1) > 0.0001f ? 1.0f / glm::length(col1) : 1.0f,
+            glm::length(col2) > 0.0001f ? 1.0f / glm::length(col2) : 1.0f
+        );
+    }
 
     vkCmdPushConstants(commandBuffer, pipelineLayout,
                       VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 

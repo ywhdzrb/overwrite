@@ -47,15 +47,15 @@ void InputSystem::update(float deltaTime) {
         auto& input = view.get<InputStateComponent>(entity);
         
         // 更新键盘输入
-        input.moveForward = keys_[GLFW_KEY_W] || keys_[GLFW_KEY_UP];
-        input.moveBackward = keys_[GLFW_KEY_S] || keys_[GLFW_KEY_DOWN];
-        input.moveLeft = keys_[GLFW_KEY_A] || keys_[GLFW_KEY_LEFT];
-        input.moveRight = keys_[GLFW_KEY_D] || keys_[GLFW_KEY_RIGHT];
-        input.jump = isKeyJustPressed(GLFW_KEY_SPACE);
-        input.sprint = keys_[GLFW_KEY_LEFT_SHIFT];
-        input.freeCameraToggle = false;  // R 键功能已移除
-        input.spaceHeld = keys_[GLFW_KEY_SPACE];
-        input.shiftHeld = keys_[GLFW_KEY_LEFT_SHIFT];
+        input.setMoveForward(keys_[GLFW_KEY_W] || keys_[GLFW_KEY_UP]);
+        input.setMoveBackward(keys_[GLFW_KEY_S] || keys_[GLFW_KEY_DOWN]);
+        input.setMoveLeft(keys_[GLFW_KEY_A] || keys_[GLFW_KEY_LEFT]);
+        input.setMoveRight(keys_[GLFW_KEY_D] || keys_[GLFW_KEY_RIGHT]);
+        input.setJump(isKeyJustPressed(GLFW_KEY_SPACE));
+        input.setSprint(keys_[GLFW_KEY_LEFT_SHIFT]);
+        input.setFreeCameraToggle(false);  // R 键功能已移除
+        input.setSpaceHeld(keys_[GLFW_KEY_SPACE]);
+        input.setShiftHeld(keys_[GLFW_KEY_LEFT_SHIFT]);
         
         // 更新鼠标输入
         input.mouseDeltaX = static_cast<float>(mouseDeltaX_);
@@ -224,10 +224,10 @@ void ClientWorld::sendNetworkInputs() {
     auto* movement = registry().try_get<MovementControllerComponent>(player);
     if (!input || !movement) return;
     networkSystem_->sendInput(
-        input->moveForward, input->moveBackward,
-        input->moveLeft, input->moveRight,
-        input->jump, input->sprint,
-        input->spaceHeld, input->shiftHeld,
+        input->isMoveForward(), input->isMoveBackward(),
+        input->isMoveLeft(), input->isMoveRight(),
+        input->isJump(), input->isSprint(),
+        input->isSpaceHeld(), input->isShiftHeld(),
         input->mouseDeltaX, input->mouseDeltaY,
         movement->moveFront, movement->moveRight
     );
@@ -383,8 +383,8 @@ void ClientWorld::adjustPlayerToTerrain() {
     transform->position.y = targetY;
     physics->groundHeight = terrainHeight;
     physics->groundNormal = glm::vec3(0.0f, 1.0f, 0.0f); // 默认上向量，物理系统会重新计算
-    physics->isGrounded = true;
-    physics->isJumping = false;
+    physics->setGrounded(true);
+    physics->setJumping(false);
     
     Logger::info("[ClientWorld] 调整玩家位置到地形高度: " + std::to_string(terrainHeight));
 }
@@ -466,13 +466,13 @@ void ClientWorld::updateFlight(float dt, bool spaceHeld, bool shiftHeld) {
     if (!physics || !transform) return;
 
     if (isFlying_) {
-        physics->useGravity = false;
-        physics->isGrounded = false;
+        physics->setUseGravity(false);
+        physics->setGrounded(false);
         float flySpeed = 10.0f;
         if (spaceHeld) transform->position.y += flySpeed * dt;
         if (shiftHeld) transform->position.y -= flySpeed * dt;
     } else {
-        physics->useGravity = true;
+        physics->setUseGravity(true);
     }
 }
 

@@ -27,6 +27,14 @@ void TransformComponent::updateRotationFromEuler() {
     rotation = glm::quat(glm::vec3(glm::radians(pitch), -glm::radians(yaw), glm::radians(roll)));
 }
 
+void TransformComponent::syncEulerFromRotation() {
+    // 从四元数提取欧拉角 (ZYX 顺序: roll → pitch → yaw)
+    glm::vec3 euler = glm::degrees(glm::eulerAngles(rotation));
+    pitch = euler.x;
+    yaw = -euler.y;  // 符号反转以匹配 getFront() 的约定（正 yaw = 右转）
+    roll = euler.z;
+}
+
 glm::mat4 TransformComponent::getModelMatrix() const {
     glm::mat4 model = glm::mat4(1.0f);
     model = glm::translate(model, position);

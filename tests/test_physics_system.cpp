@@ -149,8 +149,8 @@ TEST(PhysicsSystemTest, ComputeNormalWithoutTerrain) {
 
     // 默认 isGrounded=true，需要设为 false 才能受重力影响
     auto& physComp = world.registry().get<PhysicsComponent>(entity);
-    physComp.isGrounded = false;
-    physComp.useGravity = true;
+    physComp.setGrounded(false);
+    physComp.setUseGravity(true);
 
     // 更新一帧，应使实体下落
     // 默认 defaultGroundHeight = -100.0f，所以脚底（position.y - 0.9=9.1）远高于地面
@@ -176,7 +176,7 @@ TEST(PhysicsSystemTest, EntityFallsDueToGravity) {
     vel.linear.y = 0.0f;
     // isGrounded = true 默认，要先让它变成非着地
     auto& phys = world.registry().get<PhysicsComponent>(entity);
-    phys.isGrounded = false;
+    phys.setGrounded(false);
 
     // 模拟 60 帧（~0.996 秒）
     for (int i = 0; i < 60; ++i) {
@@ -202,8 +202,8 @@ TEST(PhysicsSystemTest, EntityLandsOnGround) {
     world.registry().emplace<VelocityComponent>(entity);
 
     auto& phys = world.registry().get<PhysicsComponent>(entity);
-    phys.isGrounded = false;
-    phys.useGravity = true;
+    phys.setGrounded(false);
+    phys.setUseGravity(true);
 
     // 模拟足够多的帧让实体落地
     for (int i = 0; i < 100; ++i) {
@@ -214,7 +214,7 @@ TEST(PhysicsSystemTest, EntityLandsOnGround) {
     auto& physicsComp = world.registry().get<PhysicsComponent>(entity);
 
     // 落地后 isGrounded 应为 true
-    EXPECT_TRUE(physicsComp.isGrounded);
+    EXPECT_TRUE(physicsComp.isGrounded());
     // 脚底位置 = groundHeight + colliderHeight/2
     // groundHeight = 0 (default), colliderHeight = 1.8 → Y = 0.9
     EXPECT_NEAR(transform.position.y, 0.9f, 0.05f);
@@ -231,16 +231,16 @@ TEST(PhysicsSystemTest, JumpSetsVelocity) {
     auto& input = world.registry().emplace<InputStateComponent>(entity);
 
     // 设置着地状态，请求跳跃
-    phys.isGrounded = true;
-    phys.isJumping = false;
-    input.jump = true;
+    phys.setGrounded(true);
+    phys.setJumping(false);
+    input.setJump(true);
 
     physics.update(0.016f);
 
     auto& vel = world.registry().get<VelocityComponent>(entity);
     // 跳跃应给 Y 轴正向速度
     EXPECT_GT(vel.linear.y, 0.0f);
-    EXPECT_TRUE(phys.isJumping);
+    EXPECT_TRUE(phys.isJumping());
 }
 
 TEST(PhysicsSystemTest, CannotJumpWhileAirborne) {
@@ -254,10 +254,10 @@ TEST(PhysicsSystemTest, CannotJumpWhileAirborne) {
     auto& input = world.registry().emplace<InputStateComponent>(entity);
 
     // 空中状态，请求跳跃
-    phys.isGrounded = false;
-    phys.isJumping = false;
+    phys.setGrounded(false);
+    phys.setJumping(false);
     vel.linear.y = -2.0f;
-    input.jump = true;
+    input.setJump(true);
 
     // 记录跳跃前的 Y 速度
     float yVelBefore = vel.linear.y;
@@ -265,7 +265,7 @@ TEST(PhysicsSystemTest, CannotJumpWhileAirborne) {
     physics.update(0.016f);
 
     // 空中的跳跃请求应被忽略
-    EXPECT_FALSE(phys.isJumping);
+    EXPECT_FALSE(phys.isJumping());
     // Y 速度应仍为负（重力作用）
     EXPECT_LT(vel.linear.y, 0.0f);
 }
@@ -286,7 +286,7 @@ TEST(PhysicsSystemTest, CollisionBoxAsGround) {
     world.registry().emplace<VelocityComponent>(entity);
 
     auto& phys = world.registry().get<PhysicsComponent>(entity);
-    phys.isGrounded = false;
+    phys.setGrounded(false);
 
     // 模拟下落
     for (int i = 0; i < 200; ++i) {
@@ -296,7 +296,7 @@ TEST(PhysicsSystemTest, CollisionBoxAsGround) {
     auto& transform = world.registry().get<TransformComponent>(entity);
     // 应落在碰撞箱顶面 (0.0) + colliderHeight/2 (0.9) = 0.9
     EXPECT_NEAR(transform.position.y, 0.9f, 0.1f);
-    EXPECT_TRUE(phys.isGrounded);
+    EXPECT_TRUE(phys.isGrounded());
 }
 
 // ==================== 多实体物理 ====================
@@ -319,7 +319,7 @@ TEST(PhysicsSystemTest, MultipleEntitiesPhysics) {
         float height = static_cast<float>(5 + i * 3);
         world.registry().emplace<TransformComponent>(e, glm::vec3(0.0f, height, 0.0f));
         auto& phys = world.registry().emplace<PhysicsComponent>(e);
-        phys.isGrounded = false;
+        phys.setGrounded(false);
         world.registry().emplace<VelocityComponent>(e);
 
         entities.push_back({
@@ -336,7 +336,7 @@ TEST(PhysicsSystemTest, MultipleEntitiesPhysics) {
 
     // 所有实体都应落地
     for (auto& te : entities) {
-        EXPECT_TRUE(te.physics->isGrounded)
+        EXPECT_TRUE(te.physics->isGrounded())
             << "实体应该已落地";
         EXPECT_NEAR(te.transform->position.y, 0.9f, 0.1f)
             << "实体 Y 位置应在地面高度";

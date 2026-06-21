@@ -123,7 +123,7 @@ void CameraControllerSystem::updateCameraTransform(entt::entity cameraEntity,
     }
     
     // 处理自由视角切换输入
-    if (input->freeCameraToggle) {
+    if (input->isFreeCameraToggle()) {
         toggleFreeCamera();
     }
 }
@@ -192,19 +192,19 @@ void CameraControllerSystem::updateFreeCamera(TransformComponent& transform,
                                              float deltaTime) {
     // 自由视角：相机可以自由移动
     float speed = controller.freeCameraSpeed;
-    if (input.sprint) speed *= controller.sprintMultiplier;
+    if (input.isSprint()) speed *= controller.sprintMultiplier;
     
     glm::vec3 front = transform.getFront();
     glm::vec3 right = transform.getRight();
     glm::vec3 worldUp = glm::vec3(0.0f, 1.0f, 0.0f);
     
     glm::vec3 moveDelta(0.0f);
-    if (input.moveForward) moveDelta += front * speed * deltaTime;
-    if (input.moveBackward) moveDelta -= front * speed * deltaTime;
-    if (input.moveLeft) moveDelta -= right * speed * deltaTime;
-    if (input.moveRight) moveDelta += right * speed * deltaTime;
-    if (input.spaceHeld) moveDelta += worldUp * speed * deltaTime;
-    if (input.shiftHeld) moveDelta -= worldUp * speed * deltaTime;
+    if (input.isMoveForward()) moveDelta += front * speed * deltaTime;
+    if (input.isMoveBackward()) moveDelta -= front * speed * deltaTime;
+    if (input.isMoveLeft()) moveDelta -= right * speed * deltaTime;
+    if (input.isMoveRight()) moveDelta += right * speed * deltaTime;
+    if (input.isSpaceHeld()) moveDelta += worldUp * speed * deltaTime;
+    if (input.isShiftHeld()) moveDelta -= worldUp * speed * deltaTime;
     
     transform.position += moveDelta;
 }

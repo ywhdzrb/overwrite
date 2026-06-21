@@ -305,8 +305,9 @@ void GLTFModel::renderNode(VkCommandBuffer commandBuffer,
                 float _pad0;
                 float windTime;
                 float windStrength;  // x=time, y=windStrength
+                glm::vec3 normalScale;  // 逆缩放因子（CPU 计算，用于法线矩阵）
             };
-            assert(sizeof(PushConstants) == 228 && "glTF PushConstants must be 228 bytes");
+            assert(sizeof(PushConstants) == 240 && "glTF PushConstants must be 240 bytes");
 
             PushConstants pushConstants{};
             pushConstants.model = nodeMatrix;
@@ -339,6 +340,12 @@ void GLTFModel::renderNode(VkCommandBuffer commandBuffer,
             }
             pushConstants.windTime = windTime;
             pushConstants.windStrength = effectiveWindStrength;
+            // 计算法线矩阵的逆缩放因子（适用于 TRS 模型矩阵）
+            pushConstants.normalScale = glm::vec3(
+                1.0f / glm::length(glm::vec3(nodeMatrix[0])),
+                1.0f / glm::length(glm::vec3(nodeMatrix[1])),
+                1.0f / glm::length(glm::vec3(nodeMatrix[2]))
+            );
 
             vkCmdPushConstants(commandBuffer, pipelineLayout,
                              VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,

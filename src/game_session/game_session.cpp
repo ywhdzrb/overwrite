@@ -195,8 +195,8 @@ void GameSession::update(float deltaTime) {
             auto player = clientWorld->getPlayer();
             auto* inputComp = r ? r->try_get<ecs::InputStateComponent>(player) : nullptr;
             if (inputComp) {
-                isMoving = inputComp->moveForward || inputComp->moveBackward ||
-                          inputComp->moveLeft || inputComp->moveRight;
+                isMoving = inputComp->isMoveForward() || inputComp->isMoveBackward() ||
+                          inputComp->isMoveLeft() || inputComp->isMoveRight();
                 if (isMoving) {
                     float dirX = 0.0f, dirZ = 0.0f;
                     glm::vec3 camFront = camera_->getFront();
@@ -205,10 +205,10 @@ void GameSession::update(float deltaTime) {
                     glm::vec3 camRight = camera_->getRight();
                     camRight.y = 0.0f;
                     camRight = glm::normalize(camRight);
-                    if (inputComp->moveForward)  { dirX += camFront.x; dirZ += camFront.z; }
-                    if (inputComp->moveBackward) { dirX -= camFront.x; dirZ -= camFront.z; }
-                    if (inputComp->moveLeft)     { dirX -= camRight.x; dirZ -= camRight.z; }
-                    if (inputComp->moveRight)    { dirX += camRight.x; dirZ += camRight.z; }
+                    if (inputComp->isMoveForward())  { dirX += camFront.x; dirZ += camFront.z; }
+                    if (inputComp->isMoveBackward()) { dirX -= camFront.x; dirZ -= camFront.z; }
+                    if (inputComp->isMoveLeft())     { dirX -= camRight.x; dirZ -= camRight.z; }
+                    if (inputComp->isMoveRight())    { dirX += camRight.x; dirZ += camRight.z; }
                     if (dirX != 0.0f || dirZ != 0.0f) {
                         moveYaw = glm::degrees(atan2(-dirX, -dirZ));
                     }

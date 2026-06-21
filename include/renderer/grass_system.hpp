@@ -144,6 +144,11 @@ public:
     void setStoneQuery(ProximityQuery q) { stoneQuery_ = std::move(q); }
 
     /**
+     * @brief 重建图形管线（交换链重建后调用，固定视口需更新 extent）
+     */
+    void rebuildPipeline();
+
+    /**
      * @brief 设置全局光照方向（用于石头背阴面草衰减 + 着色器昼夜同步）
      * @param dir 归一化光照方向，场景→光源（太阳方向）
      */
@@ -350,6 +355,11 @@ private:
     // 管线
     VkPipeline pipeline_ = VK_NULL_HANDLE;
     VkPipelineLayout pipelineLayout_ = VK_NULL_HANDLE;
+
+    // 管线重建所需参数（交换链重建时使用）
+    VkRenderPass renderPass_ = VK_NULL_HANDLE;
+    VkExtent2D cachedExtent_{};
+    VkSampleCountFlagBits cachedMsaaSamples_ = VK_SAMPLE_COUNT_1_BIT;
 
     // 四层 LOD 的草茎网格缓冲
     std::array<VkBuffer, LOD_COUNT> lodVertexBuffers_ = {};

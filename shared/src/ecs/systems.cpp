@@ -79,10 +79,12 @@ MovementSystem::MovementSystem(World& world) : world_(world) {
 
 void MovementSystem::addCollisionBox(const glm::vec3& position, const glm::vec3& size) {
     collisionBoxes_.push_back({position, size});
+    collisionGrid_.insert(position, size, collisionBoxes_.size() - 1);
 }
 
 void MovementSystem::clearCollisionBoxes() {
     collisionBoxes_.clear();
+    collisionGrid_.clear();
 }
 
 bool MovementSystem::checkCollision(const glm::vec3& position, const glm::vec3& playerSize) const {
@@ -90,18 +92,20 @@ bool MovementSystem::checkCollision(const glm::vec3& position, const glm::vec3& 
     float playerBottom = position.y;
     float playerTop = position.y + playerSize.y;
     
-    for (const auto& box : collisionBoxes_) {
-        const glm::vec3& boxPos = box.first;
-        const glm::vec3& boxSize = box.second;
+    // 使用空间网格仅查询附近碰撞箱
+    float queryRadius = std::max(playerSize.x, playerSize.z) + 5.0f;
+    auto nearby = collisionGrid_.query(position.x, position.z, queryRadius);
+    
+    for (size_t idx : nearby) {
+        const auto& [boxPos, boxSize] = collisionBoxes_[idx];
         
         // 碰撞箱占据 [boxPos.y - boxSize.y/2, boxPos.y + boxSize.y/2]
         float boxBottom = boxPos.y - boxSize.y * 0.5f;
         float boxTop = boxPos.y + boxSize.y * 0.5f;
         
-        // Y 轴检测：只有当玩家在碰撞箱侧面高度范围内才算碰撞
-        // 排除"站在顶上"（playerBottom >= boxTop）和"从下面穿过"（playerTop <= boxBottom）
+        // Y 轴检测
         if (playerBottom >= boxTop - 0.01f || playerTop <= boxBottom + 0.01f) {
-            continue;  // 不算碰撞
+            continue;
         }
         
         // X/Z 轴检测
@@ -161,7 +165,7 @@ void MovementSystem::update(float deltaTime) {
         // 移动逻辑
         if (velocity) {
             float speed = controller.movementSpeed;
-            if (input.sprint) speed *= controller.sprintMultiplier;
+            if (input.isSprint()) speed *= controller.sprintMultiplier;
             
             // 计算水平移动
             glm::vec3 horizontalVelocity(0.0f);
@@ -177,10 +181,10 @@ void MovementSystem::update(float deltaTime) {
             
 
             
-            if (input.moveForward) horizontalVelocity += front;
-            if (input.moveBackward) horizontalVelocity -= front;
-            if (input.moveLeft) horizontalVelocity -= right;
-            if (input.moveRight) horizontalVelocity += right;
+            if (input.isMoveForward()) horizontalVelocity += front;
+            if (input.isMoveBackward()) horizontalVelocity -= front;
+            if (input.isMoveLeft()) horizontalVelocity -= right;
+            if (input.isMoveRight()) horizontalVelocity += right;
             
             if (glm::length(horizontalVelocity) > 0.0f) {
                 horizontalVelocity = glm::normalize(horizontalVelocity) * speed;
@@ -190,7 +194,7 @@ void MovementSystem::update(float deltaTime) {
                     const auto& physics = world_.registry().get<PhysicsComponent>(entity);
                     
                     // 空中控制：如果不在着地状态，降低控制力
-                    if (!physics.isGrounded) {
+                    if (!physics.isGrounded()) {
                         horizontalVelocity *= controller.airControlFactor;
                     }
                     // 坡度处理：如果着地且地面不是水平的，将移动向量投影到斜坡面。
@@ -354,22 +358,22 @@ void PhysicsSystem::update(float deltaTime) {
             input = &world_.registry().get<InputStateComponent>(entity);
         }
         
-        if (!velocity || !physics.useGravity) continue;
+        if (!velocity || !physics.isUseGravity()) continue;
         
         // 查询当前位置的地形高度
         float terrainHeight = queryTerrainHeight(transform.position.x, transform.position.z);
         physics.cachedTerrainHeight = terrainHeight;
-        physics.terrainCacheValid = true;
+        physics.setTerrainCacheValid(true);
         
         // 跳跃输入处理：仅在着地时允许跳跃
-        if (input && input->jump && physics.isGrounded && !physics.isJumping) {
+        if (input && input->isJump() && physics.isGrounded() && !physics.isJumping()) {
             velocity->linear.y = physics.jumpForce;
-            physics.isJumping = true;
-            physics.isGrounded = false;
+            physics.setJumping(true);
+            physics.setGrounded(false);
         }
         
         // 空中物理：非着地状态应用重力
-        if (!physics.isGrounded) {
+        if (!physics.isGrounded()) {
             velocity->linear.y -= physics.gravity * deltaTime;
             float oldY = transform.position.y;
             transform.position.y += velocity->linear.y * deltaTime;
@@ -382,8 +386,8 @@ void PhysicsSystem::update(float deltaTime) {
                 // 脚到达地形表面
                 transform.position.y = terrainHeight + physics.colliderHeight * 0.5f;
                 velocity->linear.y = 0.0f;
-                physics.isJumping = false;
-                physics.isGrounded = true;
+                physics.setJumping(false);
+                physics.setGrounded(true);
                 physics.groundHeight = terrainHeight;
                 physics.groundNormal = computeTerrainNormal(transform.position.x, transform.position.z, terrainHeight);
             }
@@ -399,7 +403,7 @@ void PhysicsSystem::update(float deltaTime) {
                 physics.groundNormal = computeTerrainNormal(transform.position.x, transform.position.z, terrainHeight);
             } else if (footY > terrainHeight + 0.1f) {
                 // 脚离地超过0.1f，开始下落
-                physics.isGrounded = false;
+                physics.setGrounded(false);
                 physics.groundNormal = glm::vec3(0.0f, 1.0f, 0.0f);
             } else {
                 // 玩家在地面上（在容差范围内）
