@@ -20,9 +20,9 @@ endif()
 
 # 编译选项
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-    add_compile_options(-g -O0 -Wall -Wextra -Wpedantic -Wconversion -Wshadow -Wno-sign-conversion)
+    add_compile_options(-g -O0 -Wall -Wextra -Wpedantic -Wconversion -Wshadow)
 else()
-    add_compile_options(-O3 -march=native)
+    add_compile_options(-O3 -march=native -Wall -Wextra -Wpedantic -Wconversion -Wshadow)
 endif()
 
 # ==================== 外部依赖路径 ====================

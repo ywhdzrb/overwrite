@@ -83,9 +83,6 @@ public:
     /** @brief 初始化 Vulkan 核心和所有渲染子系统，第2阶段 */
     void initVulkan();
 
-    /** @brief 执行单帧渲染，返回 false 表示窗口已关闭 */
-    bool mainLoopIteration();
-
     /** @brief 清理所有资源，按依赖逆序 */
     void cleanup();
 

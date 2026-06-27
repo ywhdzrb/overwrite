@@ -1,5 +1,15 @@
 #pragma once
 
+/**
+ * @file config_manager.hpp
+ * @brief 全局 JSON 配置管理器 — 多文件加载/点分路径访问/类型安全读写
+ *
+ * 归属模块：core
+ * 核心职责：加载合并多个 JSON 配置文件，提供点分路径访问接口
+ * 依赖关系：nlohmann_json
+ * 关键设计：模板 get/set 方法支持任意嵌套层级，merge_patch 合并策略
+ */
+
 // 标准库
 #include <string>
 #include <sstream>

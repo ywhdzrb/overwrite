@@ -1,6 +1,7 @@
 // 输入处理实现
 // 处理键盘和鼠标输入
 #include "core/input.hpp"
+#include "utils/logger.hpp"
 #include <cstring>
 #include <iostream>
 #include <cmath>
@@ -52,6 +53,20 @@ Input::Input(GLFWwindow* window)
     glfwGetCursorPos(window_, &mouseX_, &mouseY_);
     previousMouseX_ = mouseX_;
     previousMouseY_ = mouseY_;
+}
+
+// Input析构函数：清空单例指针并注销GLFW回调，防止回调后访问已释放内存
+Input::~Input() {
+    // 清空单例指针，后续GLFW回调检查 s_instance 时会跳过
+    s_instance = nullptr;
+
+    // 注销GLFW回调，确保不会再有回调指向本实例
+    // 注意：ImGui 会在更早或更晚的时机注册自己的回调，
+    // 这里仅将 Input 注册过的回调置空，不影响 ImGui 对前一个回调的保存
+    glfwSetKeyCallback(window_, nullptr);
+    glfwSetMouseButtonCallback(window_, nullptr);
+    glfwSetCursorPosCallback(window_, nullptr);
+    glfwSetScrollCallback(window_, nullptr);
 }
 
 void Input::update() {

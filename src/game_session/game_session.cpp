@@ -163,8 +163,8 @@ void GameSession::update(float deltaTime) {
     if (grassSystem_) grassSystem_->update(playerPos, *camera_, deltaTime);
     resourceNodeSystem_.update(deltaTime);
 
-    // === Phase 4: 等待异步模拟完成 ===
-    ecsFuture.wait();
+    // === Phase 4: 等待异步模拟完成，通过 get() 传播后台异常防止 std::terminate ===
+    ecsFuture.get();
 
     // === Phase 5: 发送网络输入 ===
     ecsClientWorld_->sendNetInputs();

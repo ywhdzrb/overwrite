@@ -162,10 +162,7 @@ void Renderer::initVulkan() {
     framebuffers_->create(colorAttachments, swapchain_->getExtent(), colorImageView_);
     
     commandBuffers_ = std::make_shared<VulkanCommandBuffer>(
-        vulkanDevice_,
-        renderPass_->getRenderPass(),
-        graphicsPipeline_->getPipeline(),
-        graphicsPipeline_->getPipelineLayout()
+        vulkanDevice_
     );
     commandBuffers_->create(MAX_FRAMES_IN_FLIGHT);
     
@@ -780,11 +777,6 @@ void Renderer::createCloudCompositeResources() {
     if (_vrDSL != VK_SUCCESS) {
         throw std::runtime_error(std::string("[Renderer] 创建云合成描述符集布局失败 ") + vkResultToString(_vrDSL));
     }
-
-    VkPushConstantRange pcRange{};
-    pcRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
-    pcRange.offset = 0;
-    pcRange.size = sizeof(glm::vec2) * 2;  // 最多传 2 个 vec2（UV偏移/缩放）
 
     VkPipelineLayoutCreateInfo plCi{};
     plCi.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
@@ -1600,9 +1592,6 @@ void Renderer::recreateSwapchain() {
     // 重建帧缓冲
     framebuffers_->recreate(swapchain_->getImageViews(), renderExt, colorImageView_);
     commandBuffers_->cleanup();
-    commandBuffers_->updateRenderPass(renderPass_->getRenderPass());
-    commandBuffers_->updatePipeline(graphicsPipeline_->getPipeline());
-    commandBuffers_->updatePipelineLayout(graphicsPipeline_->getPipelineLayout());
     commandBuffers_->create(swapchain_->getImageViews().size());
     
     // 重新初始化 ImGui 以匹配新的 MSAA 设置
@@ -1618,14 +1607,7 @@ void Renderer::recreateSwapchain() {
         createCloudCompositeResources();
     }
     
-    // 记录命令缓冲（所有使用 frame buffer 0）
-    VkFramebuffer fb = framebuffers_->getFramebuffers()[0];
-    Camera* cam = gameSession_ ? gameSession_->getCamera() : nullptr;
-    glm::mat4 viewMat = cam ? cam->getViewMatrix() : glm::mat4(1.0f);
-    glm::mat4 projMat = cam ? cam->getProjectionMatrix() : glm::mat4(1.0f);
-    for (size_t i = 0; i < commandBuffers_->getCommandBuffers().size(); i++) {
-        commandBuffers_->record(i, fb, renderExt, viewMat, projMat);
-    }
+    // 命令缓冲在每次 drawFrame() 中动态录制，无需此处预录制
 }
 
 void Renderer::cleanup() {

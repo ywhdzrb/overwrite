@@ -1,5 +1,16 @@
 #pragma once
 
+/**
+ * @file resource_manager.hpp
+ * @brief GPU 资源管理器 — 模型/纹理的加载、缓存与生命周期统一管理
+ *
+ * 归属模块：core
+ * 核心职责：封装 glTF 模型和纹理的加载、缓存、引用计数、自动释放
+ * 依赖关系：VulkanDevice、TextureLoader、GLTFModel
+ * 关键设计：句柄模式（ModelHandle/TextureHandle）解耦调用方与资源存储，
+ *           支持按 id 去重缓存，避免同一资源重复加载
+ */
+
 #include <vulkan/vulkan.h>
 #include <memory>
 #include <unordered_map>

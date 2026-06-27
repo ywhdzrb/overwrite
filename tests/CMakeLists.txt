@@ -75,3 +75,9 @@ add_executable(test_network_protocol test_network_protocol.cpp)
 target_link_libraries(test_network_protocol GTest::gtest_main)
 target_include_directories(test_network_protocol PRIVATE ${CMAKE_SOURCE_DIR}/shared/include ${CMAKE_SOURCE_DIR}/include)
 add_test(NAME NetworkProtocol COMMAND test_network_protocol)
+
+# 测试：ECS 系统集成（MovementSystem + PhysicsSystem 组合 + 异步线程安全）
+add_executable(test_ecs_integration test_ecs_integration.cpp)
+target_link_libraries(test_ecs_integration GTest::gtest_main OverWriteShared)
+target_include_directories(test_ecs_integration PRIVATE ${CMAKE_SOURCE_DIR}/shared/include ${CMAKE_SOURCE_DIR}/include)
+add_test(NAME ECSIntegration COMMAND test_ecs_integration)

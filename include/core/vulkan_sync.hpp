@@ -1,5 +1,15 @@
 #pragma once
 
+/**
+ * @file vulkan_sync.hpp
+ * @brief Vulkan 同步原语管理 — 信号量/栅栏的创建与生命周期
+ *
+ * 归属模块：core
+ * 核心职责：管理每帧的图像可用信号量、渲染完成信号量、进行中栅栏
+ * 依赖关系：VulkanDevice
+ * 关键设计：双缓冲同步，每帧独立 fence 防止 GPU 与 CPU 不同步
+ */
+
 #include <vulkan/vulkan.h>
 #include <vector>
 #include <memory>

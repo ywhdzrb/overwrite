@@ -20,7 +20,7 @@ namespace owengine {
 class Input {
 public:
     Input(GLFWwindow* window);
-    ~Input() = default;
+    ~Input();
 
     // 更新输入状态
     void update();

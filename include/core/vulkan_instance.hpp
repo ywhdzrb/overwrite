@@ -1,7 +1,7 @@
 #pragma once
 
 /**
- * @file vulkan_instance.h
+ * @file vulkan_instance.hpp
  * @brief Vulkan 实例管理 — 实例/物理设备/逻辑设备/表面创建与生命周期
  *
  * 归属模块：core

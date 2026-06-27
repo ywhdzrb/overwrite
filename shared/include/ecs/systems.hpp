@@ -82,22 +82,27 @@ public:
     std::vector<size_t> query(float worldX, float worldZ, float radius) const {
         auto [minGx, minGz] = gridCoords(worldX - radius, worldZ - radius);
         auto [maxGx, maxGz] = gridCoords(worldX + radius, worldZ + radius);
-        // 用集合去重（物体可能在多个格子中重复）
-        std::unordered_set<size_t> result;
+        // 复用成员容器避免每帧堆分配
+        resultSet_.clear();
         for (int gx = minGx; gx <= maxGx; ++gx) {
             for (int gz = minGz; gz <= maxGz; ++gz) {
                 auto it = cells_.find(key(gx, gz));
                 if (it != cells_.end()) {
-                    for (auto idx : it->second) result.insert(idx);
+                    for (auto idx : it->second) resultSet_.insert(idx);
                 }
             }
         }
-        return {result.begin(), result.end()};
+        resultVector_.assign(resultSet_.begin(), resultSet_.end());
+        return resultVector_;
     }
 
 private:
     float cellSize_;
     std::unordered_map<uint64_t, std::vector<size_t>> cells_;
+
+    // 可复用查询结果容器，避免每帧堆分配
+    mutable std::unordered_set<size_t> resultSet_;
+    mutable std::vector<size_t> resultVector_;
 
     std::pair<int, int> gridCoords(float x, float z) const {
         return {static_cast<int>(std::floor(x / cellSize_)),
