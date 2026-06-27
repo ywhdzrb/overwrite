@@ -56,14 +56,6 @@ sudo apt install vulkan-sdk libglfw3-dev libglm-dev cmake build-essential
 ./build.sh run-server   # 构建并运行服务端
 ```
 
-### 首次运行前获取资源包
-
-素材（模型、贴图等）通过 GitHub Releases 分发，首次使用需下载：
-
-```bash
-# 从 GitHub Releases 下载 assets tarball，解压到项目目录
-```
-
 ### 打包分发
 
 ```bash
