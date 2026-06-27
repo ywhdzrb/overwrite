@@ -103,9 +103,15 @@ public:
      * @param renderPass  渲染通道（用于创建管线）
      * @param extent      交换链尺寸
      * @param msaaSamples 多重采样数
+     * @param set0Layout  纹理描述符集布局（set=0，与主管线共享）
+     * @param set1Layout  光照 SSBO 描述符集布局（set=1，与主管线共享）
+     * @param set2Layout  阴影描述符集布局（set=2，与主管线共享）
      */
     void init(const GrassConfig& cfg, VkRenderPass renderPass,
-              VkExtent2D extent, VkSampleCountFlagBits msaaSamples);
+              VkExtent2D extent, VkSampleCountFlagBits msaaSamples,
+              VkDescriptorSetLayout set0Layout,
+              VkDescriptorSetLayout set1Layout,
+              VkDescriptorSetLayout set2Layout);
 
     /**
      * @brief 每帧更新：根据玩家位置动态加载/卸载草丛区块，更新实例缓冲区
@@ -355,6 +361,11 @@ private:
     // 管线
     VkPipeline pipeline_ = VK_NULL_HANDLE;
     VkPipelineLayout pipelineLayout_ = VK_NULL_HANDLE;
+
+    // 描述符集布局（与主渲染管线共享，用于 grass.frag 读取光照/阴影）
+    VkDescriptorSetLayout set0Layout_ = VK_NULL_HANDLE;   // 纹理 set=0
+    VkDescriptorSetLayout set1Layout_ = VK_NULL_HANDLE;   // 光照 SSBO set=1
+    VkDescriptorSetLayout set2Layout_ = VK_NULL_HANDLE;   // 阴影 set=2
 
     // 管线重建所需参数（交换链重建时使用）
     VkRenderPass renderPass_ = VK_NULL_HANDLE;

@@ -293,11 +293,14 @@ void Renderer::initVulkan() {
     stoneSystem_->setHeightSampler(terrainHeightQuery);
     stoneSystem_->init(gameConfig_.stone);
 
-    // 初始化草丛系统
+    // 初始化草丛系统（传递 descriptor set 布局，使 grass.frag 可从 SSBO 读取光照/阴影）
     grassSystem_ = std::make_unique<GrassSystem>(vulkanDevice_);
     grassSystem_->setHeightSampler(terrainHeightQuery);
     grassSystem_->init(gameConfig_.grass, renderPass_->getRenderPass(),
-                       swapchain_->getExtent(), msaaSamples_);
+                       swapchain_->getExtent(), msaaSamples_,
+                       textureDescriptorSetLayout_,
+                       lightDescriptorSetLayout_,
+                       lightManager_->getShadowDescriptorSetLayout());
 
     grassSystem_->setTreeQuery([this](float x, float z, float radius) {
         return treeSystem_->queryPositions(x, z, radius);

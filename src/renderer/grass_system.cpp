@@ -63,12 +63,18 @@ GrassSystem::~GrassSystem() {
 }
 
 void GrassSystem::init(const GrassConfig& cfg, VkRenderPass renderPass,
-                       VkExtent2D extent, VkSampleCountFlagBits msaaSamples) {
+                       VkExtent2D extent, VkSampleCountFlagBits msaaSamples,
+                       VkDescriptorSetLayout set0Layout,
+                       VkDescriptorSetLayout set1Layout,
+                       VkDescriptorSetLayout set2Layout) {
     if (initialized_) return;
     config_ = cfg;
     renderPass_ = renderPass;
     cachedExtent_ = extent;
     cachedMsaaSamples_ = msaaSamples;
+    set0Layout_ = set0Layout;
+    set1Layout_ = set1Layout;
+    set2Layout_ = set2Layout;
 
     // 生成三层 LOD 网格
     for (int lod = 0; lod < LOD_COUNT; lod++) {
@@ -951,10 +957,18 @@ void GrassSystem::createPipeline(VkRenderPass renderPass, VkExtent2D extent,
     pushRange.offset = 0;
     pushRange.size = sizeof(PushBlock);
 
+    // 使用与主渲染管线相同的 descriptor set 布局（set=0 纹理, set=1 光照SSBO, set=2 阴影）
+    // 确保 grass.frag 可以读取 LightBuffer SSBO 和 ShadowMap
+    VkDescriptorSetLayout dsLayouts[3] = {
+        set0Layout_,   // set=0: 纹理（草不使用，但与主管线布局兼容）
+        set1Layout_,   // set=1: LightBuffer SSBO
+        set2Layout_    // set=2: ShadowMap + ShadowUniform
+    };
+
     VkPipelineLayoutCreateInfo layoutInfo{};
     layoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-    layoutInfo.setLayoutCount = 0;
-    layoutInfo.pSetLayouts = nullptr;
+    layoutInfo.setLayoutCount = 3;
+    layoutInfo.pSetLayouts = dsLayouts;
     layoutInfo.pushConstantRangeCount = 1;
     layoutInfo.pPushConstantRanges = &pushRange;
 
