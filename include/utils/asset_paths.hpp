@@ -50,6 +50,11 @@ inline constexpr const char* CLOUD_FRAG_SHADER = "shaders/cloud.frag.spv";
 /** @brief FSR1 EASU 计算着色器 */
 inline constexpr const char* FSR1_EASU_SHADER = "shaders/fsr1_easu.comp.spv";
 
+/** @brief 阴影深度渲染顶点着色器 */
+inline constexpr const char* SHADOW_VERT_SHADER = "shaders/shadow.vert.spv";
+/** @brief 阴影深度渲染片段着色器 */
+inline constexpr const char* SHADOW_FRAG_SHADER = "shaders/shadow.frag.spv";
+
 // ==================== 纹理文件 ====================
 
 // ==================== 模型文件 ====================

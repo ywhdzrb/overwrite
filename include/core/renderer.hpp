@@ -46,6 +46,7 @@
 #include "renderer/fsr1_pass.hpp"
 #include "renderer/cloud_system.hpp"
 #include "renderer/shader_manager.hpp"
+#include "renderer/shadow_mapper.hpp"
 
 // 前向声明：游戏会话（Renderer 不拥有游戏逻辑，仅通过指针读取渲染所需数据）
 namespace owengine { class GameSession; }
@@ -169,6 +170,9 @@ private:
     // 体积云系统（在所有不透明物体之后、ImGui之前渲染）
     std::unique_ptr<class CloudSystem> cloudSystem_;
 
+    // 阴影映射系统（方向光阴影贴图）
+    std::unique_ptr<ShadowMapper> shadowMapper_;
+
     // 半分辨率云合成管线资源
     VkRenderPass cloudCompositeRenderPass_ = VK_NULL_HANDLE;
     std::vector<VkFramebuffer> cloudCompositeFramebuffers_;
@@ -185,7 +189,7 @@ private:
 
     // ========== 累计时间 ==========
     float totalTime_ = 0.0f;       // 全局时间（风场动画等）
-    float dayTime_ = 0.0f;          // 昼夜循环时间（秒，120 秒一个完整周期）
+    float dayTime_ = 20.0f;         // 昼夜循环时间（秒，120 秒一个完整周期）20s=太阳较高便于观察阴影
     float dayCyclePeriod_ = 120.0f; // 昼夜完整周期秒数
 
     // ========== 游戏配置（供 drawFrame 等访问） ==========
@@ -219,6 +223,7 @@ private:
     // ========== 描述符资源 ==========
     VkDescriptorSetLayout textureDescriptorSetLayout_ = VK_NULL_HANDLE;
     VkDescriptorSetLayout lightDescriptorSetLayout_ = VK_NULL_HANDLE;
+    VkDescriptorSetLayout shadowDescriptorSetLayout_ = VK_NULL_HANDLE;
     VkDescriptorPool descriptorPool_ = VK_NULL_HANDLE;
     std::mutex descriptorPoolMutex_;
     VkDescriptorSet textureDescriptorSet_ = VK_NULL_HANDLE;

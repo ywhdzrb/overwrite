@@ -44,6 +44,8 @@
         "msaa_samples":       4,
         "fly_speed":          10.0,
         "sun_direction":      [0.01, 0.05, 0.02],
-        "day_night_cycle":    true
+        "day_night_cycle":    true,
+        "shadow_enabled":     true,
+        "shadow_map_size":    2048
     }
 }

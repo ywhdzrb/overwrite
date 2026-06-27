@@ -9,8 +9,9 @@ layout(location = 2) in vec3 inColor;
 // 纹理坐标属性（location = 3）
 layout(location = 3) in vec2 inTexCoord;
 
-// Uniform 变量
-layout(push_constant) uniform PushConstants {
+// Uniform 变量（scalar布局使vec3对齐到4字节，与C++ glm::vec3兼容）
+#extension GL_EXT_scalar_block_layout : enable
+layout(push_constant, scalar) uniform PushConstants {
     mat4 model;
     mat4 view;
     mat4 proj;

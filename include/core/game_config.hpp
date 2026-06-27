@@ -24,6 +24,8 @@ struct RendererConfig {
     float flySpeed = 10.0f;           // 飞行模式上升/下降速度（米/秒）
     glm::vec3 sunDirection{0.25f, 0.55f, 0.50f}; // 天空盒太阳方向（归一化向量）
     bool dayNightCycle = true;                  // 是否启用昼夜循环（false 则固定为 sunDirection）
+    bool shadowEnabled = true;                  // 是否启用方向光阴影映射
+    uint32_t shadowMapSize = 2048;              // 阴影贴图分辨率
 };
 
 /// 游戏全局配置，从 JSON 文件加载所有可调参数
@@ -102,6 +104,8 @@ struct GameConfig {
                     cfg.renderer.sunDirection = glm::vec3(sd[0].get<float>(), sd[1].get<float>(), sd[2].get<float>());
                 }
                 cfg.renderer.dayNightCycle = r.value("day_night_cycle", cfg.renderer.dayNightCycle);
+                cfg.renderer.shadowEnabled = r.value("shadow_enabled", cfg.renderer.shadowEnabled);
+                cfg.renderer.shadowMapSize = r.value("shadow_map_size", cfg.renderer.shadowMapSize);
             }
         } catch (const std::exception& e) {
             Logger::error("解析配置文件失败: " + std::string(e.what()) + "，使用默认参数");

@@ -127,8 +127,20 @@ void Renderer::initVulkan() {
     
     // 创建描述符集布局（必须在 graphicsPipeline_ 之前）
     createDescriptorSetLayouts();
-    
-    std::vector<VkDescriptorSetLayout> descriptorSetLayouts = {textureDescriptorSetLayout_, lightDescriptorSetLayout_};
+
+    // 初始化阴影映射器（方向光阴影贴图，分辨率 2048×2048）
+    // 阴影管线布局只需要 set=0（纹理），因为阴影 pass 中只有纹理描述符集被绑定
+    shadowMapper_ = std::make_unique<ShadowMapper>();
+    shadowMapper_->init(vulkanDevice_, 2048, {textureDescriptorSetLayout_});
+
+    // 阴影描述符集布局（set=2），加入管线布局供主着色器采样阴影贴图
+    shadowDescriptorSetLayout_ = shadowMapper_->getDescriptorSetLayout();
+
+    std::vector<VkDescriptorSetLayout> descriptorSetLayouts = {
+        textureDescriptorSetLayout_,
+        lightDescriptorSetLayout_,
+        shadowDescriptorSetLayout_
+    };
     graphicsPipeline_ = std::make_shared<VulkanPipeline>(
         vulkanDevice_,
         renderPass_->getRenderPass(),
@@ -204,8 +216,8 @@ void Renderer::initVulkan() {
     );
     skyboxPipeline_->create();
 
-    // 基础描述符池（+1 给地形纹理描述符集预留）
-    createDescriptorPool(26, 26);
+    // 基础描述符池（+2 给阴影贴图描述符集预留）
+    createDescriptorPool(29, 28);
 
     // 从 JSON 配置文件加载场景（光源和静态模型）
     SceneConfig sceneConfig = loadSceneConfig(AssetPaths::SCENE_CONFIG);
@@ -1046,6 +1058,82 @@ void Renderer::drawFrame() {
         throw std::runtime_error(std::string("failed to begin recording command buffer! ") + vkResultToString(_vrBegin));
     }
     
+    // 获取摄像机（阴影 pass 和主渲染 pass 共用）
+    Camera* shadowCam = gameSession_ ? gameSession_->getCamera() : nullptr;
+
+    // ================================================================
+    // 阶段 1：阴影渲染通道
+    // 从光源视角渲染场景深度到阴影贴图，供主渲染通道采样
+    // ================================================================
+    if (shadowMapper_ && shadowMapper_->isInitialized() && shadowCam) {
+        // 更新光源 VP 矩阵（使用当前太阳方向和相机位置）
+        glm::vec3 sunDir = gameConfig_.renderer.sunDirection;
+        shadowMapper_->updateLightMatrix(sunDir, shadowCam->getPosition());
+
+        // 开始阴影渲染通道（清除深度、绑定阴影管线、设置阴影视口）
+        shadowMapper_->beginShadowPass(commandBuffer);
+
+        // 渲染所有投射阴影的物体（使用光源 VP 矩阵）
+        VkPipelineLayout shadowPL = shadowMapper_->getPipelineLayout();
+        glm::mat4 lightView = shadowMapper_->getLightView();
+        glm::mat4 lightProj = shadowMapper_->getLightProj();
+
+        // 渲染地形（主要阴影投射体）
+        terrainRenderer_->render(commandBuffer, shadowPL, lightView, lightProj);
+
+        // 渲染静态 OBJ 模型（如房屋、建筑等）
+        if (modelRenderer_) {
+            modelRenderer_->render(commandBuffer, shadowPL, lightView, lightProj);
+        }
+
+        // 渲染动态加载的静态模型
+        for (auto& [id, model] : models_) {
+            if (model && model->getMeshCount() > 0) {
+                // 使用模型自身的模型矩阵，但传递光源 view/proj
+                model->render(commandBuffer, shadowPL, lightView, lightProj,
+                              model->getModelMatrix());
+            }
+        }
+
+        // 渲染玩家模型（投射阴影）
+        if (gameSession_) {
+            GLTFModel* playerModel = gameSession_->getActivePlayerModel();
+            if (playerModel && playerModel->getMeshCount() > 0) {
+                playerModel->render(commandBuffer, shadowPL, lightView, lightProj,
+                                    playerModel->getModelMatrix());
+            }
+
+            // 渲染远程玩家模型
+            for (const auto& [clientId, rp] : gameSession_->getRemotePlayerModels()) {
+                GLTFModel* activeModel = rp.wasMoving ? rp.walkModel.get() : rp.idleModel.get();
+                if (activeModel && activeModel->getMeshCount() > 0) {
+                    activeModel->render(commandBuffer, shadowPL, lightView, lightProj,
+                                        activeModel->getModelMatrix());
+                }
+            }
+
+            // 渲染 ECS 驱动的实体（如资源、建筑等）
+            auto* renderSys = gameSession_->getRenderSystem();
+            if (renderSys) {
+                const auto& entries = renderSys->getRenderEntries();
+                for (const auto& entry : entries) {
+                    if (!entry.model || !entry.visible) continue;
+                    entry.model->render(commandBuffer, shadowPL, lightView, lightProj,
+                                        entry.modelMatrix);
+                }
+            }
+        }
+
+        // 注意：树木和石头暂不参与阴影 pass
+        // TODO(阴影): 为 TreeSystem/StoneSystem 添加接受自定义 view/proj 的 render 重载
+
+        // 结束阴影渲染通道（阴影贴图自动转换为 SHADER_READ_ONLY_OPTIMAL）
+        shadowMapper_->endShadowPass(commandBuffer);
+    }
+
+    // ================================================================
+    // 阶段 2：主渲染通道
+    // ================================================================
     VkRenderPassBeginInfo renderPass_Info{};
     renderPass_Info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
     renderPass_Info.renderPass = renderPass_->getRenderPass();
@@ -1133,6 +1221,13 @@ void Renderer::drawFrame() {
             grassSystem_->setLightIntensity(dayFactor);
             grassSystem_->setAmbientColor(lightManager_->getAmbient());
         }
+
+        // 阴影强度随昼夜因子平滑过渡：白天最强，黄昏渐弱，夜晚消失
+        // 使用 smoothstep 让过渡更自然：dayFactor<0.2 时无阴影，>0.5 时达最大强度
+        float shadowStr = glm::smoothstep(0.0f, 0.6f, dayFactor) * 0.7f;
+        if (shadowMapper_) {
+            shadowMapper_->setShadowIntensity(shadowStr);
+        }
     } else {
         // 昼夜循环关闭：使用配置文件中的固定方向
         glm::vec3 fixedDir = gameConfig_.renderer.sunDirection;
@@ -1151,6 +1246,10 @@ void Renderer::drawFrame() {
             grassSystem_->setLightIntensity(1.0f);
             if (lightManager_) grassSystem_->setAmbientColor(lightManager_->getAmbient());
         }
+        // 昼夜关闭时阴影强度固定为 0.6
+        if (shadowMapper_) {
+            shadowMapper_->setShadowIntensity(0.6f);
+        }
     }
 
     // 先渲染天空盒（背景，程序化渐变色+昼夜切换）
@@ -1164,10 +1263,24 @@ void Renderer::drawFrame() {
 
     updateLightUniformBuffer();
 
+    // 更新当前帧阴影 uniform 缓冲（每帧独立以防并发读取撕裂）
+    if (shadowMapper_) {
+        shadowMapper_->updateUniformBuffer(currentFrame_);
+    }
+
     vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
                            graphicsPipeline_->getPipelineLayout(), 0, 1, &textureDescriptorSet_, 0, nullptr);
     vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
                            graphicsPipeline_->getPipelineLayout(), 1, 1, &lightDescriptorSet_, 0, nullptr);
+
+    // 绑定当前帧的阴影描述符集（set=2），每帧独立以防并发撕裂
+    if (shadowMapper_) {
+        VkDescriptorSet frameShadowDS = shadowMapper_->getDescriptorSet(currentFrame_);
+        if (frameShadowDS != VK_NULL_HANDLE) {
+            vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                   graphicsPipeline_->getPipelineLayout(), 2, 1, &frameShadowDS, 0, nullptr);
+        }
+    }
 
     // 渲染地形
     terrainRenderer_->render(commandBuffer, graphicsPipeline_->getPipelineLayout(),
@@ -1557,6 +1670,9 @@ void Renderer::cleanup() {
     // 清理 FSR1 管线
     fsr1Pass_.reset();
 
+    // 清理阴影映射器（必须在描述符池销毁前）
+    shadowMapper_.reset();  // ShadowMapper 析构自动调用 cleanup()
+
     // 清理着色器管理器（必须在 vulkanDevice_ 销毁前，缓存了 VkShaderModule）
     shaderManager_.reset();
 
@@ -1705,15 +1821,20 @@ void Renderer::createDescriptorSetLayouts() {
 }
 
 void Renderer::createDescriptorPool(uint32_t maxSets, uint32_t descriptorCount) {
-    std::array<VkDescriptorPoolSize, 2> poolSizes{};
+    std::array<VkDescriptorPoolSize, 3> poolSizes{};
     
     // 纹理描述符（每个 mesh 需要一个 sampler，每个模型需要一个额外 sampler）
+    // +2 给双帧阴影贴图图像 + 采样器
     poolSizes[0].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-    poolSizes[0].descriptorCount = descriptorCount;
+    poolSizes[0].descriptorCount = descriptorCount + 2;
     
     // 光源 storage buffer
     poolSizes[1].type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
     poolSizes[1].descriptorCount = 1;
+    
+    // 阴影 uniform buffer（双帧独立，避免数据撕裂）
+    poolSizes[2].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    poolSizes[2].descriptorCount = 2;
 
     VkDescriptorPoolCreateInfo poolInfo{};
     poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
@@ -1840,6 +1961,12 @@ void Renderer::createDescriptorSets() {
     
     // 初始化光源数据
     updateLightUniformBuffer();
+
+    // 4. 创建阴影描述符集（set=2：阴影贴图采样器 + 阴影 uniform 缓冲）
+    if (shadowMapper_) {
+        shadowMapper_->allocateDescriptorSets(descriptorPool_);
+        Logger::info("[Renderer] 阴影描述符集已分配");
+    }
 }
 
 void Renderer::updateLightUniformBuffer() {

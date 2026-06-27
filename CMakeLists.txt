@@ -276,6 +276,8 @@ set(SHADER_SOURCES
     shaders/cloud.vert
     shaders/cloud.frag
     shaders/cloud_composite.frag
+    shaders/shadow.vert
+    shaders/shadow.frag
 )
 
 foreach(shader_file ${SHADER_SOURCES})
