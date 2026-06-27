@@ -20,6 +20,8 @@
 #include <vk_mem_alloc.h>
 #include <vulkan/vulkan.h>
 
+#include "core/vulkan_instance.hpp"
+
 namespace owengine {
 
 struct SwapChainSupportDetails {
@@ -30,8 +32,8 @@ struct SwapChainSupportDetails {
 
 class VulkanDevice {
 public:
-    VulkanDevice(VkInstance instance, VkPhysicalDevice physicalDevice, VkDevice device, VkSurfaceKHR surface,
-                 uint32_t graphicsQueueFamily, uint32_t presentQueueFamily);
+    VulkanDevice(VkInstance instance, VkPhysicalDevice physicalDevice, VkSurfaceKHR surface,
+                 bool enableValidationLayers);
     ~VulkanDevice();
 
     // 禁止拷贝
@@ -72,6 +74,8 @@ public:
 
 private:
     void createCommandPool();
+    void createLogicalDevice();
+    QueueFamilyIndices findQueueFamilies(VkPhysicalDevice device, VkSurfaceKHR surface);
 
     VkInstance instance_;
     VkPhysicalDevice physicalDevice_ = VK_NULL_HANDLE;
@@ -83,6 +87,7 @@ private:
     uint32_t graphicsQueueFamily_ = 0;
     uint32_t presentQueueFamily_ = 0;
     VkCommandPool commandPool_ = VK_NULL_HANDLE;
+    bool enableValidationLayers_ = false;
 
     // 呈现模式偏好：true=优先 Mailbox（默认），false=始终使用 Fifo
     bool preferMailbox_ = true;

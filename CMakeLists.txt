@@ -139,8 +139,12 @@ target_include_directories(vma PUBLIC
 target_link_libraries(vma PUBLIC Vulkan::Vulkan)
 
 # ==================== 共享库 (shared) ====================
-file(GLOB_RECURSE OVERWRITE_SHARED_SOURCES CONFIGURE_DEPENDS
-    ${CMAKE_CURRENT_SOURCE_DIR}/shared/src/*.cpp
+set(OVERWRITE_SHARED_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/shared/src/ecs/components.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/shared/src/ecs/entity_factory.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/shared/src/ecs/systems.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/shared/src/network/server_discovery.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/shared/src/terrain_query.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/utils/logger.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/utils/error_handler.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/core/lifecycle_manager.cpp
@@ -160,8 +164,11 @@ target_link_libraries(OverWriteShared PUBLIC
 )
 
 # ==================== 客户端库 (client) ====================
-file(GLOB_RECURSE OVERWRITE_CLIENT_SOURCES CONFIGURE_DEPENDS
-    ${CMAKE_CURRENT_SOURCE_DIR}/client/src/*.cpp
+set(OVERWRITE_CLIENT_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/client/src/ecs/camera_controller_system.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/client/src/ecs/client_entity_factory.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/client/src/ecs/client_systems.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/client/src/network/network_system.cpp
 )
 add_library(OverWriteClient STATIC ${OVERWRITE_CLIENT_SOURCES})
 
@@ -182,8 +189,9 @@ target_link_libraries(OverWriteClient PUBLIC
 )
 
 # ==================== 服务器库 (server) ====================
-file(GLOB_RECURSE OVERWRITE_SERVER_SOURCES CONFIGURE_DEPENDS
-    ${CMAKE_CURRENT_SOURCE_DIR}/server/src/*.cpp
+set(OVERWRITE_SERVER_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/server/src/server/server_world.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/server/src/server/websocket_server.cpp
 )
 add_library(OverWriteServer STATIC ${OVERWRITE_SERVER_SOURCES})
 
@@ -202,13 +210,58 @@ target_link_libraries(OverWriteServer PUBLIC
 )
 
 # ==================== 客户端主程序 ====================
-# 源文件（自动扫描 src/ 目录，CONFIGURE_DEPENDS 使 CMake 在文件变更时自动重跑）
-file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp
-)
-# vma_impl.cpp 已单独编译为 vma 静态库，排除重复编译
-list(REMOVE_ITEM SOURCES
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/core/vma_impl.cpp
+set(SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/core/audio_manager.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/core/camera.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/core/config_manager.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/core/entity_registry.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/core/input.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/core/light.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/core/light_manager.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/core/physics.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/core/resource_manager.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/core/scene_manager.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/core/task_manager.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/core/thread_manager.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/core/vulkan_command_buffer.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/core/vulkan_device.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/core/vulkan_framebuffer.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/core/vulkan_instance.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/core/vulkan_pipeline.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/core/vulkan_render_pass.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/core/vulkan_swapchain.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/core/vulkan_sync.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/game_session/game_session.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/game_session/game_session_update.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/game_session/game_session_network.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/game_session/game_session_helpers.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/game_session/resource_node_system.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/renderer/cloud_system.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/renderer/floor_renderer.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/renderer/fsr1_pass.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/renderer/gltf_model.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/renderer/grass_system.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/renderer/imgui_manager.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/renderer/mesh.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/renderer/model_cache.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/renderer/model.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/renderer/model_renderer.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/renderer/renderer.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/renderer/renderer_draw.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/renderer/renderer_setup.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/renderer/render_system.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/renderer/shader_manager.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/renderer/shadow_mapper.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/renderer/skybox_renderer.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/renderer/stone_system.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/renderer/terrain_renderer.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/renderer/text_renderer.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/renderer/texture.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/renderer/texture_loader.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/renderer/tree_system.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/utils/scene_config.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/utils/shader_compiler.cpp
 )
 
 # 创建客户端可执行文件

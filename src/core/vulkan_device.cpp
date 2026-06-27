@@ -1,31 +1,40 @@
-// Vulkan设备管理实现
-// 负责管理Vulkan设备、队列、命令池以及图像操作
+/**
+ * @file vulkan_device.cpp
+ * @brief Vulkan 设备管理实现 — 逻辑设备创建/队列/VMA/命令池/深度资源
+ *
+ * 归属模块：core
+ * 核心职责：VkDevice 全生命周期（包含创建），VMA 分配器，命令池，深度缓冲
+ * 依赖关系：Vulkan SDK、VMA、GLFW
+ */
 #include "core/vulkan_device.hpp"
 #include "utils/logger.hpp"
 #include "utils/vk_result.hpp"
 
 #include <algorithm>
+#include <cstring>
 #include <iostream>
 #include <limits>
+#include <set>
 #include <stdexcept>
+#include <unordered_set>
 
 #include <GLFW/glfw3.h>
 
 namespace owengine {
 
 // VulkanDevice构造函数
-// 直接接收 VulkanInstance 已枚举的队列族索引，避免重复枚举
-VulkanDevice::VulkanDevice(VkInstance instance, VkPhysicalDevice physicalDevice, VkDevice device, VkSurfaceKHR surface,
-                           uint32_t graphicsQueueFamily, uint32_t presentQueueFamily)
-    : instance_(instance), physicalDevice_(physicalDevice), device_(device), surface_(surface),
-      graphicsQueueFamily_(graphicsQueueFamily), presentQueueFamily_(presentQueueFamily) {
+// 自包含：自动枚举队列族、创建逻辑设备、命令池和VMA分配器
+VulkanDevice::VulkanDevice(VkInstance instance, VkPhysicalDevice physicalDevice, VkSurfaceKHR surface,
+                           bool enableValidationLayers)
+    : instance_(instance), physicalDevice_(physicalDevice), surface_(surface),
+      enableValidationLayers_(enableValidationLayers) {
 
-    vkGetDeviceQueue(device_, graphicsQueueFamily_, 0, &graphicsQueue_);
-    vkGetDeviceQueue(device_, presentQueueFamily_, 0, &presentQueue_);
-
+    // 枚举队列族并创建逻辑设备
+    createLogicalDevice();
+    // 创建命令池（依赖 graphicsQueueFamily_）
     createCommandPool();
 
-    // 初始化 VMA
+    // 初始化 VMA 分配器
     VmaAllocatorCreateInfo allocatorInfo{};
     allocatorInfo.flags = VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT;
     allocatorInfo.vulkanApiVersion = VK_API_VERSION_1_3;
@@ -40,6 +49,7 @@ VulkanDevice::VulkanDevice(VkInstance instance, VkPhysicalDevice physicalDevice,
 }
 
 // VulkanDevice析构函数
+// 按逆序销毁所有资源（VMA → 命令池 → 逻辑设备）
 VulkanDevice::~VulkanDevice() {
     if (depthImageView_ != VK_NULL_HANDLE) {
         vkDestroyImageView(device_, depthImageView_, nullptr);
@@ -53,10 +63,151 @@ VulkanDevice::~VulkanDevice() {
     if (allocator_ != VK_NULL_HANDLE) {
         vmaDestroyAllocator(allocator_);
     }
+    // VulkanDevice 拥有逻辑设备，在析构中销毁
+    if (device_ != VK_NULL_HANDLE) {
+        vkDestroyDevice(device_, nullptr);
+    }
+}
+
+// 创建逻辑设备
+// 枚举队列族 → 构建 VkDeviceCreateInfo → vkCreateDevice → 获取队列句柄
+void VulkanDevice::createLogicalDevice() {
+    QueueFamilyIndices indices = findQueueFamilies(physicalDevice_, surface_);
+    graphicsQueueFamily_ = indices.graphicsFamily.value();
+    presentQueueFamily_ = indices.presentFamily.value();
+
+    // 去重队列族（图形和呈现可能共用同一族）
+    std::set<uint32_t> uniqueQueueFamilies = {
+        graphicsQueueFamily_,
+        presentQueueFamily_
+    };
+
+    // 构建队列创建信息
+    std::vector<VkDeviceQueueCreateInfo> queueCreateInfos;
+    float queuePriority = 1.0f;
+    for (uint32_t queueFamily : uniqueQueueFamilies) {
+        VkDeviceQueueCreateInfo queueCreateInfo{};
+        queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+        queueCreateInfo.queueFamilyIndex = queueFamily;
+        queueCreateInfo.queueCount = 1;
+        queueCreateInfo.pQueuePriorities = &queuePriority;
+        queueCreateInfos.push_back(queueCreateInfo);
+    }
+
+    // 物理设备特性：各向异性过滤 + 片段SSBO访问（光源动态数组）
+    VkPhysicalDeviceFeatures deviceFeatures{};
+    deviceFeatures.samplerAnisotropy = VK_TRUE;
+    deviceFeatures.fragmentStoresAndAtomics = VK_TRUE;
+
+    // BufferDeviceAddress（VMA 需要，Vulkan 1.3 核心特性但需显式启用）
+    VkPhysicalDeviceBufferDeviceAddressFeatures bufferDeviceAddrFeatures{};
+    bufferDeviceAddrFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BUFFER_DEVICE_ADDRESS_FEATURES;
+    bufferDeviceAddrFeatures.bufferDeviceAddress = VK_TRUE;
+    void* nextFeature = &bufferDeviceAddrFeatures;
+
+    // 设备扩展列表
+    const std::vector<const char*> deviceExtensions = {
+        VK_KHR_SWAPCHAIN_EXTENSION_NAME
+    };
+
+    // 验证层列表
+    const std::vector<const char*> validationLayers = {
+        "VK_LAYER_KHRONOS_validation"
+    };
+
+    VkDeviceCreateInfo createInfo{};
+    createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
+    createInfo.queueCreateInfoCount = static_cast<uint32_t>(queueCreateInfos.size());
+    createInfo.pQueueCreateInfos = queueCreateInfos.data();
+    createInfo.pEnabledFeatures = &deviceFeatures;
+    createInfo.enabledExtensionCount = static_cast<uint32_t>(deviceExtensions.size());
+    createInfo.ppEnabledExtensionNames = deviceExtensions.data();
+
+    if (enableValidationLayers_) {
+        createInfo.enabledLayerCount = static_cast<uint32_t>(validationLayers.size());
+        createInfo.ppEnabledLayerNames = validationLayers.data();
+
+        // 调试信使挂载到 pNext 链
+        VkDebugUtilsMessengerCreateInfoEXT debugCreateInfo{};
+        debugCreateInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
+        debugCreateInfo.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT |
+                                          VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT |
+                                          VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
+        debugCreateInfo.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT |
+                                      VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT |
+                                      VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
+        debugCreateInfo.pfnUserCallback = [](VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
+                                              VkDebugUtilsMessageTypeFlagsEXT messageType,
+                                              const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
+                                              void* pUserData) -> VkBool32 {
+            (void)messageType;
+            (void)pUserData;
+            std::string msg = "[Vulkan] ";
+            if (pCallbackData->pMessageIdName) {
+                msg += pCallbackData->pMessageIdName;
+                msg += ": ";
+            }
+            msg += pCallbackData->pMessage;
+            if (messageSeverity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT) {
+                Logger::error(msg);
+            } else if (messageSeverity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT) {
+                Logger::warning(msg);
+            } else {
+                Logger::debug(msg);
+            }
+            return VK_FALSE;
+        };
+        debugCreateInfo.pNext = nextFeature;
+        createInfo.pNext = &debugCreateInfo;
+    } else {
+        createInfo.enabledLayerCount = 0;
+        createInfo.pNext = nextFeature;
+    }
+
+    // 创建逻辑设备
+    VkResult _vr = vkCreateDevice(physicalDevice_, &createInfo, nullptr, &device_);
+    if (_vr != VK_SUCCESS) {
+        throw std::runtime_error(std::string("failed to create logical device! ") + vkResultToString(_vr));
+    }
+
+    // 获取队列句柄
+    vkGetDeviceQueue(device_, graphicsQueueFamily_, 0, &graphicsQueue_);
+    vkGetDeviceQueue(device_, presentQueueFamily_, 0, &presentQueue_);
+}
+
+// 枚举队列族
+// 查找支持 VK_QUEUE_GRAPHICS_BIT 和呈现支持的队列族
+QueueFamilyIndices VulkanDevice::findQueueFamilies(VkPhysicalDevice device, VkSurfaceKHR surface) {
+    QueueFamilyIndices indices;
+
+    uint32_t queueFamilyCount = 0;
+    vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, nullptr);
+
+    std::vector<VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
+    vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, queueFamilies.data());
+
+    int i = 0;
+    for (const auto& queueFamily : queueFamilies) {
+        if (queueFamily.queueFlags & VK_QUEUE_GRAPHICS_BIT) {
+            indices.graphicsFamily = i;
+        }
+
+        VkBool32 presentSupport = false;
+        vkGetPhysicalDeviceSurfaceSupportKHR(device, i, surface, &presentSupport);
+        if (presentSupport) {
+            indices.presentFamily = i;
+        }
+
+        if (indices.isComplete()) {
+            break;
+        }
+        i++;
+    }
+
+    return indices;
 }
 
 // 创建命令池
-// 使用构造函数中已接收的 graphicsQueueFamily_ 索引，不需重复枚举
 void VulkanDevice::createCommandPool() {
     VkCommandPoolCreateInfo poolInfo{};
     poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
@@ -71,25 +222,25 @@ void VulkanDevice::createCommandPool() {
 
 SwapChainSupportDetails VulkanDevice::querySwapChainSupport() const {
     SwapChainSupportDetails details;
-    
+
     vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physicalDevice_, surface_, &details.capabilities);
-    
+
     uint32_t formatCount;
     vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice_, surface_, &formatCount, nullptr);
-    
+
     if (formatCount != 0) {
         details.formats.resize(formatCount);
         vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice_, surface_, &formatCount, details.formats.data());
     }
-    
+
     uint32_t presentModeCount;
     vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice_, surface_, &presentModeCount, nullptr);
-    
+
     if (presentModeCount != 0) {
         details.presentModes.resize(presentModeCount);
         vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice_, surface_, &presentModeCount, details.presentModes.data());
     }
-    
+
     return details;
 }
 
@@ -100,7 +251,6 @@ VkSurfaceFormatKHR VulkanDevice::chooseSwapSurfaceFormat(const std::vector<VkSur
             return availableFormat;
         }
     }
-    
     return availableFormats[0];
 }
 
@@ -125,15 +275,12 @@ VkExtent2D VulkanDevice::chooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabi
     } else {
         int width, height;
         glfwGetFramebufferSize(window, &width, &height);
-        
         VkExtent2D actualExtent = {
             static_cast<uint32_t>(width),
             static_cast<uint32_t>(height)
         };
-        
         actualExtent.width = std::clamp(actualExtent.width, capabilities.minImageExtent.width, capabilities.maxImageExtent.width);
         actualExtent.height = std::clamp(actualExtent.height, capabilities.minImageExtent.height, capabilities.maxImageExtent.height);
-        
         return actualExtent;
     }
 }
@@ -141,35 +288,33 @@ VkExtent2D VulkanDevice::chooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabi
 uint32_t VulkanDevice::findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties) const {
     VkPhysicalDeviceMemoryProperties memProperties;
     vkGetPhysicalDeviceMemoryProperties(physicalDevice_, &memProperties);
-    
+
     for (uint32_t i = 0; i < memProperties.memoryTypeCount; i++) {
-        if ((typeFilter & (1 << i)) && 
+        if ((typeFilter & (1 << i)) &&
             (memProperties.memoryTypes[i].propertyFlags & properties) == properties) {
             return i;
         }
     }
-    
     throw std::runtime_error("failed to find suitable memory type!");
 }
 
 VkCommandBuffer VulkanDevice::beginSingleTimeCommands() const {
     std::lock_guard<std::mutex> lock(commandPoolMutex_);
-    
+
     VkCommandBufferAllocateInfo allocInfo{};
     allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
     allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
     allocInfo.commandPool = commandPool_;
     allocInfo.commandBufferCount = 1;
-    
+
     VkCommandBuffer commandBuffer;
     vkAllocateCommandBuffers(device_, &allocInfo, &commandBuffer);
-    
+
     VkCommandBufferBeginInfo beginInfo{};
     beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
     beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-    
+
     vkBeginCommandBuffer(commandBuffer, &beginInfo);
-    
     return commandBuffer;
 }
 
@@ -191,13 +336,10 @@ void VulkanDevice::endSingleTimeCommands(VkCommandBuffer commandBuffer) const {
         std::lock_guard<std::mutex> lock(queueMutex_);
         submitResult = vkQueueSubmit(graphicsQueue_, 1, &submitInfo, fence);
     }
-    // queueMutex_ 已释放！主线程可以继续提交渲染帧
 
     if (submitResult == VK_SUCCESS) {
-        // 等待 fence，设 5 秒超时防止死锁
         VkResult waitResult = vkWaitForFences(device_, 1, &fence, VK_TRUE, 5000000000ULL);
         if (waitResult != VK_SUCCESS) {
-            // fence 超时：紧急回退到 queueWaitIdle（锁内，会阻塞主线程）
             std::lock_guard<std::mutex> lock(queueMutex_);
             VkResult idleResult = vkQueueWaitIdle(graphicsQueue_);
             if (idleResult != VK_SUCCESS) {
@@ -205,9 +347,8 @@ void VulkanDevice::endSingleTimeCommands(VkCommandBuffer commandBuffer) const {
             }
         }
     }
-    // 若 vkQueueSubmit 失败（如设备丢失），fence 永远不会被信号化，跳过等待即可
 
-        vkDestroyFence(device_, fence, nullptr);
+    vkDestroyFence(device_, fence, nullptr);
 
     {
         std::lock_guard<std::mutex> lock(commandPoolMutex_);
@@ -218,7 +359,7 @@ void VulkanDevice::endSingleTimeCommands(VkCommandBuffer commandBuffer) const {
 void VulkanDevice::transitionImageLayout(VkImage image, VkImageLayout oldLayout, VkImageLayout newLayout,
                                           VkPipelineStageFlags srcStage, VkPipelineStageFlags dstStage) const {
     VkCommandBuffer commandBuffer = beginSingleTimeCommands();
-    
+
     VkImageMemoryBarrier barrier{};
     barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
     barrier.oldLayout = oldLayout;
@@ -230,47 +371,42 @@ void VulkanDevice::transitionImageLayout(VkImage image, VkImageLayout oldLayout,
     barrier.subresourceRange.levelCount = 1;
     barrier.subresourceRange.baseArrayLayer = 0;
     barrier.subresourceRange.layerCount = 1;
-    
-    // 判断是颜色图像还是深度图像
+
     if (newLayout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL) {
         barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
     } else {
         barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
     }
-    
+
     VkPipelineStageFlags sourceStage;
     VkPipelineStageFlags destinationStage;
-    
+
     if (oldLayout == VK_IMAGE_LAYOUT_UNDEFINED && newLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL) {
         barrier.srcAccessMask = 0;
         barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-        
         sourceStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
         destinationStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
     } else if (oldLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL && newLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
         barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
         barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-        
         sourceStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
         destinationStage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
     } else if (oldLayout == VK_IMAGE_LAYOUT_UNDEFINED && newLayout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL) {
         barrier.srcAccessMask = 0;
         barrier.dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-        
         sourceStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
         destinationStage = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
     } else {
         throw std::invalid_argument("unsupported layout transition!");
     }
-    
+
     vkCmdPipelineBarrier(commandBuffer, sourceStage, destinationStage, 0, 0, nullptr, 0, nullptr, 1, &barrier);
-    
     endSingleTimeCommands(commandBuffer);
 }
 
 void VulkanDevice::copyBufferToImage(VkBuffer buffer, VkImage image, uint32_t width, uint32_t height) const {
     VkCommandBuffer commandBuffer = beginSingleTimeCommands();
-    
+
     VkBufferImageCopy region{};
     region.bufferOffset = 0;
     region.bufferRowLength = 0;
@@ -281,16 +417,14 @@ void VulkanDevice::copyBufferToImage(VkBuffer buffer, VkImage image, uint32_t wi
     region.imageSubresource.layerCount = 1;
     region.imageOffset = {0, 0, 0};
     region.imageExtent = {width, height, 1};
-    
+
     vkCmdCopyBufferToImage(commandBuffer, buffer, image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
-    
     endSingleTimeCommands(commandBuffer);
 }
 
 void VulkanDevice::createDepthResources(VkExtent2D extent, VkSampleCountFlagBits msaaSamples) {
     VkFormat depthFormat = VK_FORMAT_D32_SFLOAT;
-    
-    // 创建深度图像（VMA 托管内存）
+
     VkImageCreateInfo imageInfo{};
     imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
     imageInfo.imageType = VK_IMAGE_TYPE_2D;
@@ -305,17 +439,16 @@ void VulkanDevice::createDepthResources(VkExtent2D extent, VkSampleCountFlagBits
     imageInfo.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
     imageInfo.samples = msaaSamples;
     imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    
+
     VmaAllocationCreateInfo allocInfo{};
     allocInfo.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
     allocInfo.flags = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT;
-    
+
     VkResult _vr2 = vmaCreateImage(allocator_, &imageInfo, &allocInfo, &depthImage_, &depthImageAllocation_, nullptr);
     if (_vr2 != VK_SUCCESS) {
         throw std::runtime_error(std::string("failed to create depth image with VMA! ") + vkResultToString(_vr2));
     }
-    
-    // 创建深度图像视图
+
     VkImageViewCreateInfo viewInfo{};
     viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
     viewInfo.image = depthImage_;
@@ -326,13 +459,12 @@ void VulkanDevice::createDepthResources(VkExtent2D extent, VkSampleCountFlagBits
     viewInfo.subresourceRange.levelCount = 1;
     viewInfo.subresourceRange.baseArrayLayer = 0;
     viewInfo.subresourceRange.layerCount = 1;
-    
+
     VkResult _vr3 = vkCreateImageView(device_, &viewInfo, nullptr, &depthImageView_);
     if (_vr3 != VK_SUCCESS) {
         throw std::runtime_error(std::string("failed to create depth image view! ") + vkResultToString(_vr3));
     }
-    
-    // 转换深度图像布局
+
     transitionImageLayout(depthImage_, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
                           VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT);
 }

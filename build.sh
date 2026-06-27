@@ -17,8 +17,6 @@
 #   ./build.sh package      # 打包为可分发 tar.xz
 #   ./build.sh dashboard    # 生成项目综合仪表盘（Python3 + matplotlib）
 
-set -e  # Exit on error
-
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -50,46 +48,14 @@ package() {
     echo "=================================="
 
     rm -rf "${pkg_dir}" "${pkg_tarball}"
-    mkdir -p "${pkg_dir}/bin" "${pkg_dir}/lib"
+    mkdir -p "${pkg_dir}/bin"
 
     echo -e "  ${CYAN} * ${NC}拷贝二进制文件..."
     [ -f "build/OverWrite" ] && cp "build/OverWrite" "${pkg_dir}/bin/OverWrite"
     [ -f "build/overwrite-server" ] && cp "build/overwrite-server" "${pkg_dir}/bin/overwrite-server"
 
-    echo -e "  ${CYAN} * ${NC}收集运行时库..."
-    local binaries=()
-    [ -f "build/OverWrite" ] && binaries+=("build/OverWrite")
-    [ -f "build/overwrite-server" ] && binaries+=("build/overwrite-server")
-
-    declare -A seen_lib
-    for bin in "${binaries[@]}"; do
-        while IFS= read -r line; do
-            if [[ $line =~ ^[[:space:]]*([^ ]+)' => '(/[^ ]+)' ' ]]; then
-                local lib_path="${BASH_REMATCH[2]}"
-                local lib_name="${BASH_REMATCH[1]}"
-                if [[ ! "$lib_name" =~ ^(libc\.so|libdl\.so|libm\.so|libpthread\.so|librt\.so|ld-linux|libgcc_s\.so|libstdc\+\+\.so) ]]; then
-                    if [[ -z "${seen_lib[$lib_path]}" ]]; then
-                        seen_lib[$lib_path]=1
-                        cp --parents "$lib_path" "${pkg_dir}/" 2>/dev/null || cp -L "$lib_path" "${pkg_dir}/lib/" 2>/dev/null
-                        local basename=$(basename "$lib_path")
-                        [ -f "${pkg_dir}/lib/${basename}" ] && echo "      ${lib_name}"
-                    fi
-                fi
-            fi
-        done < <(ldd "${bin}" 2>/dev/null || true)
-    done
-    if [ -d "${pkg_dir}/usr" ]; then
-        find "${pkg_dir}/usr" -type f -name "*.so*" 2>/dev/null | while read -r f; do
-            cp -n "$f" "${pkg_dir}/lib/" 2>/dev/null || true
-        done
-        rm -rf "${pkg_dir}/usr"
-    fi
-
     echo -e "  ${CYAN} * ${NC}拷贝素材文件..."
-    if [ -d "assets" ]; then
-        cp -r assets "${pkg_dir}/assets"
-        find "${pkg_dir}/assets" \( -name "*.blend" -o -name "*.blend1" -o -name "*.psd" -o -name "*.xcf" -o -name "*.kra" -o -name "Thumbs.db" -o -name ".DS_Store" \) -exec rm -f {} + 2>/dev/null || true
-    fi
+    [ -d "assets" ] && cp -r assets "${pkg_dir}/assets"
 
     echo -e "  ${CYAN} * ${NC}拷贝配置文件..."
     [ -d "config" ] && cp -r config "${pkg_dir}/config"
@@ -98,10 +64,6 @@ package() {
     if ls shaders/*.spv 1>/dev/null 2>&1; then
         mkdir -p "${pkg_dir}/shaders"
         cp shaders/*.spv "${pkg_dir}/shaders/"
-        for src in shaders/*.frag shaders/*.vert shaders/*.comp; do
-            [ -f "$src" ] && cp "$src" "${pkg_dir}/shaders/"
-        done
-        [ -d "shaders/ffx" ] && cp -r shaders/ffx "${pkg_dir}/shaders/ffx"
     fi
 
     echo -e "  ${CYAN} * ${NC}拷贝版本文件..."
@@ -111,7 +73,6 @@ package() {
     cat > "${pkg_dir}/run.sh" << 'RUNEOF'
 #!/bin/bash
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-export LD_LIBRARY_PATH="${SCRIPT_DIR}/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
 cd "$SCRIPT_DIR"
 exec ./bin/OverWrite "$@"
 RUNEOF
@@ -120,24 +81,10 @@ RUNEOF
     cat > "${pkg_dir}/run-server.sh" << 'RUNEOF'
 #!/bin/bash
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-export LD_LIBRARY_PATH="${SCRIPT_DIR}/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
 cd "$SCRIPT_DIR"
 exec ./bin/overwrite-server "$@"
 RUNEOF
     chmod +x "${pkg_dir}/run-server.sh"
-
-    cat > "${pkg_dir}/README.txt" << READMEEOF
-OverWrite 游戏引擎 - Linux 预编译包
-版本: ${VERSION} | 架构: x86_64
-
-系统要求: Vulkan 1.3+ 驱动, libstdc++ (gcc>=12)
-
-启动:
-  ./run.sh          # 客户端
-  ./run-server.sh   # 服务端
-
-注意: imgui.ini 等运行时文件首次运行后自动生成，不在包中。
-READMEEOF
 
     echo -e "  ${CYAN} * ${NC}压缩为 tar.xz..."
     tar -cJf "${pkg_tarball}" "${pkg_dir}"
@@ -265,48 +212,48 @@ else
     cmake --build . -j$(nproc) --target ${BUILD_TARGET}
 fi
 
-# Check if build was successful
-if [ $? -eq 0 ]; then
-    echo ""
-    echo -e "${GREEN}=================================="
-    echo "Build completed successfully!"
-    echo "=================================="
-    echo -e "Targets built:"
-    echo -e "  ${CYAN}OverWrite${NC}        - ${YELLOW}./build/OverWrite${NC} (客户端)"
-    echo -e "  ${CYAN}overwrite-server${NC} - ${YELLOW}./build/overwrite-server${NC} (服务端)"
-    echo ""
-
-    # 如果指定了 package 模式，执行打包（必须在 cd build 之前调用，因为函数定义在 if 块之外）
-    if [ "$MODE" = "package" ]; then
-        cd "${ORIG_DIR:-$OLDPWD}"
-        package
-        exit 0
-    fi
-
-    # 如果启用测试，运行 CTest
-    if [ "$BUILD_TESTS" = "ON" ]; then
-        echo -e "${GREEN}Running unit tests...${NC}"
-        ctest --output-on-failure
-        echo ""
-    fi
-    
-    # 如果指定了 run 参数，则运行程序
-    if [ "$RUN_AFTER_BUILD" = true ]; then
-        cd ..
-        if [ "$RUN_SERVER" = true ]; then
-            echo -e "${BLUE}Starting server on port 9002...${NC}"
-            ./build/overwrite-server
-        else
-            echo -e "${BLUE}Running the game client...${NC}"
-            # 使用默认平台（X11，Wayland 键盘输入可能不工作）
-            unset GLFW_PLATFORM
-            ./build/OverWrite
-        fi
-    fi
-else
+build_result=$?
+if [ $build_result -ne 0 ]; then
     echo ""
     echo -e "${RED}=================================="
     echo "Build failed!"
     echo "=================================="
-    exit 1
+    exit $build_result
+fi
+
+echo ""
+echo -e "${GREEN}=================================="
+echo "Build completed successfully!"
+echo "=================================="
+echo -e "Targets built:"
+echo -e "  ${CYAN}OverWrite${NC}        - ${YELLOW}./build/OverWrite${NC} (客户端)"
+echo -e "  ${CYAN}overwrite-server${NC} - ${YELLOW}./build/overwrite-server${NC} (服务端)"
+echo ""
+
+# 如果指定了 package 模式，执行打包（必须在 cd build 之前调用，因为函数定义在 if 块之外）
+if [ "$MODE" = "package" ]; then
+    cd "${ORIG_DIR:-$OLDPWD}"
+    package
+    exit 0
+fi
+
+# 如果启用测试，运行 CTest
+if [ "$BUILD_TESTS" = "ON" ]; then
+    echo -e "${GREEN}Running unit tests...${NC}"
+    ctest --output-on-failure
+    echo ""
+fi
+
+# 如果指定了 run 参数，则运行程序
+if [ "$RUN_AFTER_BUILD" = true ]; then
+    cd ..
+    if [ "$RUN_SERVER" = true ]; then
+        echo -e "${BLUE}Starting server on port 9002...${NC}"
+        ./build/overwrite-server
+    else
+        echo -e "${BLUE}Running the game client...${NC}"
+        # 使用默认平台（X11，Wayland 键盘输入可能不工作）
+        unset GLFW_PLATFORM
+        ./build/OverWrite
+    fi
 fi
