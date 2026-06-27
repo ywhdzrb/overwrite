@@ -58,6 +58,7 @@ private:
     void createLogicalDevice();
     
     [[nodiscard]] bool isDeviceSuitable(VkPhysicalDevice device);
+    [[nodiscard]] bool checkDeviceExtensionSupport(VkPhysicalDevice device);
     QueueFamilyIndices findQueueFamilies(VkPhysicalDevice device);
     
     [[nodiscard]] std::vector<const char*> getRequiredExtensions();

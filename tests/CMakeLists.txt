@@ -69,3 +69,9 @@ add_test(NAME ECSWorld COMMAND test_ecs_world)
 add_executable(test_physics_system test_physics_system.cpp)
 target_link_libraries(test_physics_system GTest::gtest_main OverWriteShared)
 add_test(NAME PhysicsSystem COMMAND test_physics_system)
+
+# 测试：网络协议序列化/反序列化（纯 header-only inline 函数）
+add_executable(test_network_protocol test_network_protocol.cpp)
+target_link_libraries(test_network_protocol GTest::gtest_main)
+target_include_directories(test_network_protocol PRIVATE ${CMAKE_SOURCE_DIR}/shared/include ${CMAKE_SOURCE_DIR}/include)
+add_test(NAME NetworkProtocol COMMAND test_network_protocol)

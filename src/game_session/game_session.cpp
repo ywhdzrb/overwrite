@@ -170,15 +170,13 @@ void GameSession::update(float deltaTime) {
     ecsClientWorld_->sendNetInputs();
 
     // === Phase 6: 飞行模式切换（R 键） ===
-    {
-        bool curR = glfwGetKey(window_, GLFW_KEY_R) == GLFW_PRESS;
-        if (curR && !prevR_) ecsClientWorld_->setPlayerFlying(!ecsClientWorld_->isPlayerFlying());
-        prevR_ = curR;
+    if (input_ && input_->isKeyJustPressed(GLFW_KEY_R)) {
+        ecsClientWorld_->setPlayerFlying(!ecsClientWorld_->isPlayerFlying());
     }
     ecsClientWorld_->updateFlight(deltaTime,
-        glfwGetKey(window_, GLFW_KEY_SPACE) == GLFW_PRESS,
-        glfwGetKey(window_, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS ||
-        glfwGetKey(window_, GLFW_KEY_RIGHT_SHIFT) == GLFW_PRESS);
+        input_ ? input_->isKeyPressed(GLFW_KEY_SPACE) : false,
+        (input_ && input_->isKeyPressed(GLFW_KEY_LEFT_SHIFT)) ||
+        (input_ && input_->isKeyPressed(GLFW_KEY_RIGHT_SHIFT)));
 
     // === Phase 7: 从 ECS 同步到摄像机 ===
     ecsClientWorld_->syncCamera(*camera_);
@@ -245,48 +243,36 @@ void GameSession::update(float deltaTime) {
     updateRemotePlayers(deltaTime);
 
     // === Phase 10: 背包开关（E 键） ===
-    {
-        bool curE = glfwGetKey(window_, GLFW_KEY_E) == GLFW_PRESS;
-        if (curE && !prevE_) {
-            inventoryOpen_ = !inventoryOpen_;
-            // 打开背包时释放鼠标，关闭时恢复捕获
-            bool captured = !inventoryOpen_;
-            if (input_) {
-                input_->setCursorCaptured(captured);
+    if (input_ && input_->isKeyJustPressed(GLFW_KEY_E)) {
+        inventoryOpen_ = !inventoryOpen_;
+        // 打开背包时释放鼠标，关闭时恢复捕获
+        bool captured = !inventoryOpen_;
+        input_->setCursorCaptured(captured);
+        if (ecsClientWorld_) {
+            auto* ecsInput = ecsClientWorld_->getInputSystem();
+            if (ecsInput) {
+                ecsInput->resetMouseDelta();
             }
+        }
+    }
+
+    // === Phase 10.5: ESC 关闭所有界面 ===
+    if (input_ && input_->isKeyJustPressed(GLFW_KEY_ESCAPE)) {
+        bool anyOpen = false;
+        if (inventoryOpen_) {
+            inventoryOpen_ = false;
+            anyOpen = true;
+        }
+        if (anyOpen) {
+            bool captured = true;
+            input_->setCursorCaptured(captured);
             if (ecsClientWorld_) {
                 auto* ecsInput = ecsClientWorld_->getInputSystem();
                 if (ecsInput) {
-                    ecsInput->setCursorCaptured(captured);
                     ecsInput->resetMouseDelta();
                 }
             }
         }
-        prevE_ = curE;
-    }
-
-    // === Phase 10.5: ESC 关闭所有界面 ===
-    {
-        bool curEsc = glfwGetKey(window_, GLFW_KEY_ESCAPE) == GLFW_PRESS;
-        if (curEsc && !prevEsc_) {
-            bool anyOpen = false;
-            if (inventoryOpen_) {
-                inventoryOpen_ = false;
-                anyOpen = true;
-            }
-            if (anyOpen) {
-                bool captured = true;
-                if (input_) input_->setCursorCaptured(captured);
-                if (ecsClientWorld_) {
-                    auto* ecsInput = ecsClientWorld_->getInputSystem();
-                    if (ecsInput) {
-                        ecsInput->setCursorCaptured(captured);
-                        ecsInput->resetMouseDelta();
-                    }
-                }
-            }
-        }
-        prevEsc_ = curEsc;
     }
 
     // === Phase 11: 采集交互（F 键采集，背包打开时不触发） ===
@@ -294,24 +280,20 @@ void GameSession::update(float deltaTime) {
         // 更新准星指向的目标（背包关闭时显示提示）
         updateHarvestTarget();
 
-        if (!inventoryOpen_) {
-            bool curFHarvest = glfwGetKey(window_, GLFW_KEY_F) == GLFW_PRESS;
-            if (curFHarvest && !prevFHarvest_ && harvestTarget_.valid) {
-                auto harvested = resourceNodeSystem_.harvest(harvestTarget_.position);
-                if (!harvested.isEmpty()) {
-                    // 加入玩家背包
-                    auto* clientWorld = static_cast<ecs::ClientWorld*>(ecsClientWorld_.get());
-                    auto* registry = clientWorld->getRegistry();
-                    if (registry) {
-                        auto player = clientWorld->getPlayer();
-                        if (auto* inv = registry->try_get<ecs::InventoryComponent>(player)) {
-                            inv->addItem(harvested.type, harvested.count);
-                            Logger::info("[Harvest] 采集到 " + std::string(harvested.name()));
-                        }
+        if (!inventoryOpen_ && input_ && input_->isKeyJustPressed(GLFW_KEY_F) && harvestTarget_.valid) {
+            auto harvested = resourceNodeSystem_.harvest(harvestTarget_.position);
+            if (!harvested.isEmpty()) {
+                // 加入玩家背包
+                auto* clientWorld = static_cast<ecs::ClientWorld*>(ecsClientWorld_.get());
+                auto* registry = clientWorld->getRegistry();
+                if (registry) {
+                    auto player = clientWorld->getPlayer();
+                    if (auto* inv = registry->try_get<ecs::InventoryComponent>(player)) {
+                        inv->addItem(harvested.type, harvested.count);
+                        Logger::info("[Harvest] 采集到 " + std::string(harvested.name()));
                     }
                 }
             }
-            prevFHarvest_ = curFHarvest;
         }
     }
 
@@ -321,14 +303,12 @@ void GameSession::update(float deltaTime) {
         auto* registry = ecsClientWorld_ ? ecsClientWorld_->getRegistry() : nullptr;
         auto* inv = registry ? registry->try_get<ecs::InventoryComponent>(ecsClientWorld_->getPlayer()) : nullptr;
 
-        if (inv) {
+        if (inv && input_) {
             // 数字键 1-5 直接选择
             for (int i = 0; i < 5; i++) {
-                bool cur = glfwGetKey(window_, hotbarKeys[i]) == GLFW_PRESS;
-                if (cur && !prevHotbarKeys_[i]) {
+                if (input_->isKeyJustPressed(hotbarKeys[i])) {
                     inv->selectedHotbarIndex = static_cast<uint32_t>(i);
                 }
-                prevHotbarKeys_[i] = cur;
             }
 
             // 滚轮切换（仅在背包关闭时生效，避免与背包内滚动冲突）

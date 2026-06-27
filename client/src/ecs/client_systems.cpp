@@ -26,7 +26,7 @@ InputSystem::InputSystem(World& world, GLFWwindow* window)
     : world_(world), window_(window) {
     // 设置 GLFW 回调，保存前一个回调（引擎 Input → ImGui 的链）
     glfwSetWindowUserPointer(window, this);
-    glfwSetKeyCallback(window, keyCallback);
+    prevKeyCallback_ = glfwSetKeyCallback(window, keyCallback);
     prevMouseButtonCallback_ = glfwSetMouseButtonCallback(window, mouseButtonCallback);
     prevCursorPosCallback_ = glfwSetCursorPosCallback(window, cursorPosCallback);
 
@@ -107,7 +107,11 @@ void InputSystem::resetFrameState() {
 }
 
 void InputSystem::keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods) {
+    // 先链式转发给前一个回调（引擎 Input），再处理本系统状态
     auto* inputSystem = static_cast<InputSystem*>(glfwGetWindowUserPointer(window));
+    if (inputSystem && inputSystem->prevKeyCallback_) {
+        inputSystem->prevKeyCallback_(window, key, scancode, action, mods);
+    }
     if (inputSystem && key >= 0 && key <= GLFW_KEY_LAST) {
         if (action == GLFW_PRESS) {
             inputSystem->keys_[key] = true;

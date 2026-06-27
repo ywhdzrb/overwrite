@@ -214,12 +214,7 @@ private:
     int fpsFrameCount_ = 0;
     float fpsTimer_ = 0.0f;
 
-    // 按键状态跟踪（原静态局部变量）
-    bool prevR_ = false;
-    bool prevE_ = false;
-    bool prevEsc_ = false;
-    bool prevFHarvest_ = false;
-    bool prevHotbarKeys_[5] = {false};
+    // 按键状态跟踪 — 已迁移至 core::Input（isKeyJustPressed 机制）
 
 public:
     /** @brief 背包是否打开（供 Renderer 绘制 ImGui 窗口） */

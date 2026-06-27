@@ -37,7 +37,6 @@ private:
     VkPipeline pipeline;
     VkPipelineLayout pipelineLayout;
     
-    VkCommandPool commandPool;
     std::vector<VkCommandBuffer> commandBuffers;
 };
 

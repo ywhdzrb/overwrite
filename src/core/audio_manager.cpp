@@ -1,8 +1,8 @@
 // 音频管理器实现
-// 使用 miniaudio 引擎（单头文件库，CMake 构建时自动下载到 external/）
+// 使用 miniaudio 引擎（单头文件库，Git Submodule 管理，位于 external/miniaudio/）
 // 提供：音效加载、3D 空间音频、背景音乐循环、全局音量控制
 #define MINIAUDIO_IMPLEMENTATION
-#include "miniaudio.h"
+#include "miniaudio/miniaudio.h"
 
 #include "core/audio_manager.hpp"
 #include "utils/logger.hpp"

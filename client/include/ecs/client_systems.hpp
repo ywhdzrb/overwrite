@@ -63,6 +63,7 @@ private:
     static void cursorPosCallback(GLFWwindow* window, double xpos, double ypos);
 
     // 前一个 GLFW 回调（用于链式转发到引擎 Input → ImGui）
+    GLFWkeyfun prevKeyCallback_ = nullptr;
     GLFWmousebuttonfun prevMouseButtonCallback_ = nullptr;
     GLFWcursorposfun prevCursorPosCallback_ = nullptr;
 };

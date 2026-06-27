@@ -8,6 +8,7 @@
 #include <iostream>
 #include <set>
 #include <stdexcept>
+#include <unordered_set>
 
 #include <GLFW/glfw3.h>
 #include "utils/logger.hpp"
@@ -242,6 +243,12 @@ void VulkanInstance::createLogicalDevice() {
     deviceFeatures.samplerAnisotropy = VK_TRUE;  // 启用各向异性过滤
     deviceFeatures.fragmentStoresAndAtomics = VK_TRUE;  // 片段着色器 SSBO 访问（光源动态数组）
     
+    // 启用 BufferDeviceAddress（VMA 需要，通过 VkPhysicalDeviceBufferDeviceAddressFeatures 显式启用）
+    VkPhysicalDeviceBufferDeviceAddressFeatures bufferDeviceAddrFeatures{};
+    bufferDeviceAddrFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BUFFER_DEVICE_ADDRESS_FEATURES;
+    bufferDeviceAddrFeatures.bufferDeviceAddress = VK_TRUE;
+    void* nextFeature = &bufferDeviceAddrFeatures;
+    
     VkDeviceCreateInfo createInfo{};
     createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
     createInfo.queueCreateInfoCount = static_cast<uint32_t>(queueCreateInfos.size());
@@ -262,6 +269,16 @@ void VulkanInstance::createLogicalDevice() {
         createInfo.enabledLayerCount = 0;
     }
     
+    // 将 bufferDeviceAddrFeatures 挂载到 pNext 链
+    VkDebugUtilsMessengerCreateInfoEXT debugCreateInfo{};
+    if (enableValidationLayers_) {
+        populateDebugMessengerCreateInfo(debugCreateInfo);
+        debugCreateInfo.pNext = nextFeature;
+        createInfo.pNext = &debugCreateInfo;
+    } else {
+        createInfo.pNext = nextFeature;
+    }
+    
     VkResult _vr = vkCreateDevice(physicalDevice_, &createInfo, nullptr, &device_);
     if (_vr != VK_SUCCESS) {
         throw std::runtime_error(std::string("failed to create logical device! ") + vkResultToString(_vr));
@@ -273,8 +290,37 @@ void VulkanInstance::createLogicalDevice() {
 
 bool VulkanInstance::isDeviceSuitable(VkPhysicalDevice device) {
     QueueFamilyIndices indices = findQueueFamilies(device);
+    if (!indices.isComplete()) return false;
     
-    return indices.isComplete();
+    // 检查设备是否支持所需扩展（VK_KHR_swapchain）
+    if (!checkDeviceExtensionSupport(device)) return false;
+    
+    // 检查交换链表面能力（格式和呈现模式列表不为空）
+    uint32_t formatCount;
+    vkGetPhysicalDeviceSurfaceFormatsKHR(device, surface_, &formatCount, nullptr);
+    uint32_t presentModeCount;
+    vkGetPhysicalDeviceSurfacePresentModesKHR(device, surface_, &presentModeCount, nullptr);
+    if (formatCount == 0 || presentModeCount == 0) return false;
+    
+    return true;
+}
+
+bool VulkanInstance::checkDeviceExtensionSupport(VkPhysicalDevice device) {
+    uint32_t extensionCount;
+    vkEnumerateDeviceExtensionProperties(device, nullptr, &extensionCount, nullptr);
+    
+    std::vector<VkExtensionProperties> availableExtensions(extensionCount);
+    vkEnumerateDeviceExtensionProperties(device, nullptr, &extensionCount, availableExtensions.data());
+    
+    std::unordered_set<std::string> requiredExtensions = {
+        VK_KHR_SWAPCHAIN_EXTENSION_NAME
+    };
+    
+    for (const auto& ext : availableExtensions) {
+        requiredExtensions.erase(ext.extensionName);
+    }
+    
+    return requiredExtensions.empty();
 }
 
 QueueFamilyIndices VulkanInstance::findQueueFamilies(VkPhysicalDevice device) {

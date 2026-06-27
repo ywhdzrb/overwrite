@@ -21,12 +21,12 @@ VulkanCommandBuffer::~VulkanCommandBuffer() {
 // 创建命令缓冲
 // 为每个交换链图像创建对应的命令缓冲
 void VulkanCommandBuffer::create(size_t imageCount) {
-    commandPool = device->getCommandPool();
+    VkCommandPool cmdPool = device->getCommandPool();
     commandBuffers.resize(imageCount);
     
     VkCommandBufferAllocateInfo allocInfo{};
     allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-    allocInfo.commandPool = commandPool;
+    allocInfo.commandPool = cmdPool;
     allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
     allocInfo.commandBufferCount = (uint32_t) commandBuffers.size();
     
@@ -37,8 +37,11 @@ void VulkanCommandBuffer::create(size_t imageCount) {
 }
 
 void VulkanCommandBuffer::cleanup() {
-    if (!commandBuffers.empty() && commandPool != VK_NULL_HANDLE) {
-        vkFreeCommandBuffers(device->getDevice(), commandPool, static_cast<uint32_t>(commandBuffers.size()), commandBuffers.data());
+    if (!commandBuffers.empty()) {
+        VkCommandPool cmdPool = device->getCommandPool();
+        if (cmdPool != VK_NULL_HANDLE) {
+            vkFreeCommandBuffers(device->getDevice(), cmdPool, static_cast<uint32_t>(commandBuffers.size()), commandBuffers.data());
+        }
     }
     commandBuffers.clear();
 }

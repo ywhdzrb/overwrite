@@ -39,6 +39,7 @@ shaders/*.spv
 
 # Dependencies (使用 git submodules 管理)
 third_party/
+external/miniaudio.h
 
 # Assets cache
 assets/cache/
