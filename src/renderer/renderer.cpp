@@ -128,18 +128,19 @@ void Renderer::initVulkan() {
     // 创建描述符集布局（必须在 graphicsPipeline_ 之前）
     createDescriptorSetLayouts();
 
+    // 初始化光源管理器（阴影系统作为光照系统的子模块，由 LightManager 统一管理生命周期）
+    lightManager_ = std::make_unique<LightManager>();
+
     // 初始化阴影映射器（方向光阴影贴图，分辨率 2048×2048）
     // 阴影管线布局只需要 set=0（纹理），因为阴影 pass 中只有纹理描述符集被绑定
-    shadowMapper_ = std::make_unique<ShadowMapper>();
-    shadowMapper_->init(vulkanDevice_, 2048, {textureDescriptorSetLayout_});
+    lightManager_->initShadow(vulkanDevice_, 2048, {textureDescriptorSetLayout_});
 
-    // 阴影描述符集布局（set=2），加入管线布局供主着色器采样阴影贴图
-    shadowDescriptorSetLayout_ = shadowMapper_->getDescriptorSetLayout();
+    // 阴影描述符集布局（set=2）通过 LightManager 获取，供主着色器采样阴影贴图
 
     std::vector<VkDescriptorSetLayout> descriptorSetLayouts = {
         textureDescriptorSetLayout_,
         lightDescriptorSetLayout_,
-        shadowDescriptorSetLayout_
+        lightManager_->getShadowDescriptorSetLayout()
     };
     graphicsPipeline_ = std::make_shared<VulkanPipeline>(
         vulkanDevice_,
@@ -191,8 +192,7 @@ void Renderer::initVulkan() {
     textureLoader_ = std::make_shared<TextureLoader>(vulkanDevice_);
     shaderManager_ = std::make_unique<ShaderManager>(vulkanDevice_);
 
-    // 初始化光源管理器
-    lightManager_ = std::make_unique<LightManager>();
+    // 光源管理器已在 createDescriptorSetLayouts() 之后初始化，此处不再重复创建
 
     // 初始化天空盒渲染器（程序化渐变色，无需纹理加载）
     skyboxRenderer_ = std::make_unique<SkyboxRenderer>(vulkanDevice_);
@@ -1065,18 +1065,18 @@ void Renderer::drawFrame() {
     // 阶段 1：阴影渲染通道
     // 从光源视角渲染场景深度到阴影贴图，供主渲染通道采样
     // ================================================================
-    if (shadowMapper_ && shadowMapper_->isInitialized() && shadowCam) {
+    if (lightManager_->isShadowInitialized() && shadowCam) {
         // 更新光源 VP 矩阵（使用当前太阳方向和相机位置）
         glm::vec3 sunDir = gameConfig_.renderer.sunDirection;
-        shadowMapper_->updateLightMatrix(sunDir, shadowCam->getPosition());
+        lightManager_->updateSunShadowMatrix(sunDir, shadowCam->getPosition());
 
         // 开始阴影渲染通道（清除深度、绑定阴影管线、设置阴影视口）
-        shadowMapper_->beginShadowPass(commandBuffer);
+        lightManager_->getShadowMapper()->beginShadowPass(commandBuffer);
 
         // 渲染所有投射阴影的物体（使用光源 VP 矩阵）
-        VkPipelineLayout shadowPL = shadowMapper_->getPipelineLayout();
-        glm::mat4 lightView = shadowMapper_->getLightView();
-        glm::mat4 lightProj = shadowMapper_->getLightProj();
+        VkPipelineLayout shadowPL = lightManager_->getShadowMapper()->getPipelineLayout();
+        glm::mat4 lightView = lightManager_->getShadowMapper()->getLightView();
+        glm::mat4 lightProj = lightManager_->getShadowMapper()->getLightProj();
 
         // 渲染地形（主要阴影投射体）
         terrainRenderer_->render(commandBuffer, shadowPL, lightView, lightProj);
@@ -1128,7 +1128,7 @@ void Renderer::drawFrame() {
         // TODO(阴影): 为 TreeSystem/StoneSystem 添加接受自定义 view/proj 的 render 重载
 
         // 结束阴影渲染通道（阴影贴图自动转换为 SHADER_READ_ONLY_OPTIMAL）
-        shadowMapper_->endShadowPass(commandBuffer);
+        lightManager_->getShadowMapper()->endShadowPass(commandBuffer);
     }
 
     // ================================================================
@@ -1225,9 +1225,7 @@ void Renderer::drawFrame() {
         // 阴影强度随昼夜因子平滑过渡：白天最强，黄昏渐弱，夜晚消失
         // 使用 smoothstep 让过渡更自然：dayFactor<0.2 时无阴影，>0.5 时达最大强度
         float shadowStr = glm::smoothstep(0.0f, 0.6f, dayFactor) * 0.7f;
-        if (shadowMapper_) {
-            shadowMapper_->setShadowIntensity(shadowStr);
-        }
+        lightManager_->setShadowIntensity(shadowStr);
     } else {
         // 昼夜循环关闭：使用配置文件中的固定方向
         glm::vec3 fixedDir = gameConfig_.renderer.sunDirection;
@@ -1247,9 +1245,7 @@ void Renderer::drawFrame() {
             if (lightManager_) grassSystem_->setAmbientColor(lightManager_->getAmbient());
         }
         // 昼夜关闭时阴影强度固定为 0.6
-        if (shadowMapper_) {
-            shadowMapper_->setShadowIntensity(0.6f);
-        }
+        lightManager_->setShadowIntensity(0.6f);
     }
 
     // 先渲染天空盒（背景，程序化渐变色+昼夜切换）
@@ -1264,8 +1260,8 @@ void Renderer::drawFrame() {
     updateLightUniformBuffer();
 
     // 更新当前帧阴影 uniform 缓冲（每帧独立以防并发读取撕裂）
-    if (shadowMapper_) {
-        shadowMapper_->updateUniformBuffer(currentFrame_);
+    if (lightManager_->isShadowInitialized()) {
+        lightManager_->getShadowMapper()->updateUniformBuffer(currentFrame_);
     }
 
     vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
@@ -1274,8 +1270,8 @@ void Renderer::drawFrame() {
                            graphicsPipeline_->getPipelineLayout(), 1, 1, &lightDescriptorSet_, 0, nullptr);
 
     // 绑定当前帧的阴影描述符集（set=2），每帧独立以防并发撕裂
-    if (shadowMapper_) {
-        VkDescriptorSet frameShadowDS = shadowMapper_->getDescriptorSet(currentFrame_);
+    if (lightManager_->isShadowInitialized()) {
+        VkDescriptorSet frameShadowDS = lightManager_->getShadowMapper()->getDescriptorSet(currentFrame_);
         if (frameShadowDS != VK_NULL_HANDLE) {
             vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
                                    graphicsPipeline_->getPipelineLayout(), 2, 1, &frameShadowDS, 0, nullptr);
@@ -1670,8 +1666,8 @@ void Renderer::cleanup() {
     // 清理 FSR1 管线
     fsr1Pass_.reset();
 
-    // 清理阴影映射器（必须在描述符池销毁前）
-    shadowMapper_.reset();  // ShadowMapper 析构自动调用 cleanup()
+    // 阴影映射器由 LightManager 统一管理，在 lightManager_.reset() 时自动析构清理
+    // 注意清理顺序：描述符池销毁前必须确保阴影描述符集不再使用
 
     // 清理着色器管理器（必须在 vulkanDevice_ 销毁前，缓存了 VkShaderModule）
     shaderManager_.reset();
@@ -1963,8 +1959,9 @@ void Renderer::createDescriptorSets() {
     updateLightUniformBuffer();
 
     // 4. 创建阴影描述符集（set=2：阴影贴图采样器 + 阴影 uniform 缓冲）
-    if (shadowMapper_) {
-        shadowMapper_->allocateDescriptorSets(descriptorPool_);
+    // 阴影描述符集由 LightManager 中的 ShadowMapper 子模块管理
+    if (lightManager_->isShadowInitialized()) {
+        lightManager_->getShadowMapper()->allocateDescriptorSets(descriptorPool_);
         Logger::info("[Renderer] 阴影描述符集已分配");
     }
 }

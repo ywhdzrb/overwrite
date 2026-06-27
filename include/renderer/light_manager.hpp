@@ -1,10 +1,16 @@
 #pragma once
 
-#include "renderer/light.hpp"
+// 标准库
 #include <vector>
 #include <memory>
 #include <map>
+
+// 第三方库
 #include <glm/glm.hpp>
+
+// 项目内部头文件
+#include "renderer/light.hpp"
+#include "renderer/shadow_mapper.hpp"
 
 namespace owengine {
 
@@ -233,6 +239,59 @@ public:
      */
     int getNextLightId() const { return nextLightId; }
 
+    // ==================== 阴影映射子模块 ====================
+
+    /**
+     * @brief 初始化阴影映射器
+     * @param device     Vulkan 设备
+     * @param mapSize    阴影贴图分辨率
+     * @param dsLayouts  主管线的描述符集布局列表
+     */
+    void initShadow(const std::shared_ptr<VulkanDevice>& device,
+                    uint32_t mapSize = 2048,
+                    const std::vector<VkDescriptorSetLayout>& dsLayouts = {});
+
+    /**
+     * @brief 获取阴影映射器指针（供 Renderer 直接访问底层 Vulkan 接口）
+     * @return ShadowMapper*，未初始化时返回 nullptr
+     */
+    ShadowMapper* getShadowMapper() const { return shadowMapper_.get(); }
+
+    /**
+     * @brief 获取阴影描述符集布局（set=2）
+     * @return VkDescriptorSetLayout，未初始化时返回 VK_NULL_HANDLE
+     */
+    VkDescriptorSetLayout getShadowDescriptorSetLayout() const {
+        return shadowMapper_ ? shadowMapper_->getDescriptorSetLayout() : VK_NULL_HANDLE;
+    }
+
+    /**
+     * @brief 获取阴影是否已初始化
+     */
+    bool isShadowInitialized() const {
+        return shadowMapper_ && shadowMapper_->isInitialized();
+    }
+
+    /**
+     * @brief 设置阴影强度
+     * @param intensity 0.0~1.0
+     */
+    void setShadowIntensity(float intensity) {
+        if (shadowMapper_) shadowMapper_->setShadowIntensity(intensity);
+    }
+
+    /**
+     * @brief 更新方向光阴影 VP 矩阵
+     * @param sunDir    太阳方向（场景→光源，归一化）
+     * @param cameraPos 相机世界坐标
+     * @param orthoSize 正交投影包围盒半边长
+     */
+    void updateSunShadowMatrix(const glm::vec3& sunDir,
+                                const glm::vec3& cameraPos,
+                                float orthoSize = 150.0f) {
+        if (shadowMapper_) shadowMapper_->updateLightMatrix(sunDir, cameraPos, orthoSize);
+    }
+
 private:
     /**
      * @brief 检查是否可以添加更多光源
@@ -248,6 +307,9 @@ private:
     // 环境光参数
     glm::vec3 ambientColor;        // 环境光颜色
     float ambientIntensity;        // 环境光强度
+
+    // 阴影映射子模块（光照系统拥有阴影，方向光阴影贴图渲染引擎）
+    std::unique_ptr<ShadowMapper> shadowMapper_;
 };
 
 } // namespace owengine

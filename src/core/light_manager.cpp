@@ -249,4 +249,12 @@ bool LightManager::canAddMoreLights() const {
     return lights.size() < static_cast<size_t>(getMaxLights());
 }
 
+void LightManager::initShadow(const std::shared_ptr<VulkanDevice>& device,
+                               uint32_t mapSize,
+                               const std::vector<VkDescriptorSetLayout>& dsLayouts) {
+    // 阴影系统作为光照系统的子模块，由 LightManager 统一管理生命周期
+    shadowMapper_ = std::make_unique<ShadowMapper>();
+    shadowMapper_->init(device, mapSize, dsLayouts);
+}
+
 } // namespace owengine

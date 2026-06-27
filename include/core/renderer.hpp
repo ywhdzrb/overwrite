@@ -46,7 +46,6 @@
 #include "renderer/fsr1_pass.hpp"
 #include "renderer/cloud_system.hpp"
 #include "renderer/shader_manager.hpp"
-#include "renderer/shadow_mapper.hpp"
 
 // 前向声明：游戏会话（Renderer 不拥有游戏逻辑，仅通过指针读取渲染所需数据）
 namespace owengine { class GameSession; }
@@ -170,8 +169,7 @@ private:
     // 体积云系统（在所有不透明物体之后、ImGui之前渲染）
     std::unique_ptr<class CloudSystem> cloudSystem_;
 
-    // 阴影映射系统（方向光阴影贴图）
-    std::unique_ptr<ShadowMapper> shadowMapper_;
+    // 阴影映射系统已整合至 LightManager，由光照系统统一管理
 
     // 半分辨率云合成管线资源
     VkRenderPass cloudCompositeRenderPass_ = VK_NULL_HANDLE;
@@ -223,7 +221,7 @@ private:
     // ========== 描述符资源 ==========
     VkDescriptorSetLayout textureDescriptorSetLayout_ = VK_NULL_HANDLE;
     VkDescriptorSetLayout lightDescriptorSetLayout_ = VK_NULL_HANDLE;
-    VkDescriptorSetLayout shadowDescriptorSetLayout_ = VK_NULL_HANDLE;
+    // shadowDescriptorSetLayout_ 已整合至 LightManager，通过 getShadowDescriptorSetLayout() 获取
     VkDescriptorPool descriptorPool_ = VK_NULL_HANDLE;
     std::mutex descriptorPoolMutex_;
     VkDescriptorSet textureDescriptorSet_ = VK_NULL_HANDLE;
