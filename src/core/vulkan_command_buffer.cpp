@@ -10,7 +10,7 @@ namespace owengine {
 // VulkanCommandBuffer构造函数
 VulkanCommandBuffer::VulkanCommandBuffer(std::shared_ptr<VulkanDevice> device, VkRenderPass renderPass,
                                          VkPipeline pipeline, VkPipelineLayout pipelineLayout)
-    : device(device), renderPass(renderPass), pipeline(pipeline), pipelineLayout(pipelineLayout) {
+    : device_(device), renderPass_(renderPass), pipeline_(pipeline), pipelineLayout_(pipelineLayout) {
 }
 
 // VulkanCommandBuffer析构函数
@@ -21,29 +21,29 @@ VulkanCommandBuffer::~VulkanCommandBuffer() {
 // 创建命令缓冲
 // 为每个交换链图像创建对应的命令缓冲
 void VulkanCommandBuffer::create(size_t imageCount) {
-    VkCommandPool cmdPool = device->getCommandPool();
-    commandBuffers.resize(imageCount);
+    VkCommandPool cmdPool = device_->getCommandPool();
+    commandBuffers_.resize(imageCount);
     
     VkCommandBufferAllocateInfo allocInfo{};
     allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
     allocInfo.commandPool = cmdPool;
     allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    allocInfo.commandBufferCount = (uint32_t) commandBuffers.size();
+    allocInfo.commandBufferCount = (uint32_t) commandBuffers_.size();
     
-    VkResult _vr = vkAllocateCommandBuffers(device->getDevice(), &allocInfo, commandBuffers.data());
+    VkResult _vr = vkAllocateCommandBuffers(device_->getDevice(), &allocInfo, commandBuffers_.data());
     if (_vr != VK_SUCCESS) {
         throw std::runtime_error(std::string("failed to allocate command buffers! ") + vkResultToString(_vr));
     }
 }
 
 void VulkanCommandBuffer::cleanup() {
-    if (!commandBuffers.empty()) {
-        VkCommandPool cmdPool = device->getCommandPool();
+    if (!commandBuffers_.empty()) {
+        VkCommandPool cmdPool = device_->getCommandPool();
         if (cmdPool != VK_NULL_HANDLE) {
-            vkFreeCommandBuffers(device->getDevice(), cmdPool, static_cast<uint32_t>(commandBuffers.size()), commandBuffers.data());
+            vkFreeCommandBuffers(device_->getDevice(), cmdPool, static_cast<uint32_t>(commandBuffers_.size()), commandBuffers_.data());
         }
     }
-    commandBuffers.clear();
+    commandBuffers_.clear();
 }
 
 void VulkanCommandBuffer::record(size_t imageIndex, VkFramebuffer framebuffer, VkExtent2D swapchainExtent,
@@ -53,14 +53,14 @@ void VulkanCommandBuffer::record(size_t imageIndex, VkFramebuffer framebuffer, V
     beginInfo.flags = 0;
     beginInfo.pInheritanceInfo = nullptr;
     
-    VkResult _vr1 = vkBeginCommandBuffer(commandBuffers[imageIndex], &beginInfo);
+    VkResult _vr1 = vkBeginCommandBuffer(commandBuffers_[imageIndex], &beginInfo);
     if (_vr1 != VK_SUCCESS) {
         throw std::runtime_error(std::string("failed to begin recording command buffer! ") + vkResultToString(_vr1));
     }
     
     VkRenderPassBeginInfo renderPassInfo{};
     renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-    renderPassInfo.renderPass = renderPass;
+    renderPassInfo.renderPass = renderPass_;
     renderPassInfo.framebuffer = framebuffer;
     renderPassInfo.renderArea.offset = {0, 0};
     renderPassInfo.renderArea.extent = swapchainExtent;
@@ -69,10 +69,10 @@ void VulkanCommandBuffer::record(size_t imageIndex, VkFramebuffer framebuffer, V
     renderPassInfo.clearValueCount = 1;
     renderPassInfo.pClearValues = &clearColor;
     
-    vkCmdBeginRenderPass(commandBuffers[imageIndex], &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
+    vkCmdBeginRenderPass(commandBuffers_[imageIndex], &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
     
     // 绑定图形管线
-    vkCmdBindPipeline(commandBuffers[imageIndex], VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
+    vkCmdBindPipeline(commandBuffers_[imageIndex], VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_);
     
     VkViewport viewport{};
     viewport.x = 0.0f;
@@ -81,16 +81,16 @@ void VulkanCommandBuffer::record(size_t imageIndex, VkFramebuffer framebuffer, V
     viewport.height = (float) swapchainExtent.height;
     viewport.minDepth = 0.0f;
     viewport.maxDepth = 1.0f;
-    vkCmdSetViewport(commandBuffers[imageIndex], 0, 1, &viewport);
+    vkCmdSetViewport(commandBuffers_[imageIndex], 0, 1, &viewport);
     
     VkRect2D scissor{};
     scissor.offset = {0, 0};
     scissor.extent = swapchainExtent;
-    vkCmdSetScissor(commandBuffers[imageIndex], 0, 1, &scissor);
+    vkCmdSetScissor(commandBuffers_[imageIndex], 0, 1, &scissor);
     
-    vkCmdEndRenderPass(commandBuffers[imageIndex]);
+    vkCmdEndRenderPass(commandBuffers_[imageIndex]);
     
-    VkResult _vr2 = vkEndCommandBuffer(commandBuffers[imageIndex]);
+    VkResult _vr2 = vkEndCommandBuffer(commandBuffers_[imageIndex]);
     if (_vr2 != VK_SUCCESS) {
         throw std::runtime_error(std::string("failed to record command buffer! ") + vkResultToString(_vr2));
     }
