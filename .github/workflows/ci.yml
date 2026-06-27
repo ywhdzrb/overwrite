@@ -25,11 +25,22 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y \
           cmake ninja-build \
-          libglfw3-dev libvulkan-dev libglm-dev libpthread-stubs0-dev \
-          mesa-vulkan-drivers glslc \
+          libglfw3-dev libvulkan-dev libglm-dev \
+          mesa-vulkan-drivers glslc libc++-dev libc++abi-dev \
           ${{ matrix.compiler }}
 
-    - name: Configure with ASan
+    - name: Configure with ASan (clang)
+      if: contains(matrix.compiler, 'clang')
+      run: |
+        mkdir -p build && cd build
+        cmake .. -GNinja \
+          -DCMAKE_CXX_COMPILER=${{ matrix.compiler }} \
+          -DCMAKE_CXX_FLAGS="-fsanitize=address -fno-omit-frame-pointer -g" \
+          -DCMAKE_THREAD_LIBS_INIT="-lpthread" \
+          -DBUILD_TESTS=ON
+
+    - name: Configure with ASan (gcc)
+      if: contains(matrix.compiler, 'gcc')
       run: |
         mkdir -p build && cd build
         cmake .. -GNinja \
