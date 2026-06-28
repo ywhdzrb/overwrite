@@ -34,7 +34,7 @@ BUILD_TESTS="OFF"
 MODE="build"
 
 # 版本号
-VERSION="$(cat VERSION 2>/dev/null || echo '0.1.1-alpha')"
+VERSION="$(cat VERSION 2>/dev/null || echo '0.1.1-beta')"
 ORIG_DIR="$(pwd)"
 
 # ====================== 打包函数 ======================

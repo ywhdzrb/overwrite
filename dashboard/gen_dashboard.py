@@ -145,7 +145,7 @@ gs = fig.add_gridspec(4, 6, hspace=0.30, wspace=0.35,
 # ---- 主标题 ----
 fig.text(0.5, 0.975, "OverWrite 引擎 · 项目仪表盘",
          ha="center", fontsize=16, fontweight="bold", color=GOLD)
-fig.text(0.5, 0.962, "v0.1.1-alpha  |  C++20 / Vulkan 1.3+ / EnTT ECS  |  131 commits  ·  35.6k lines",
+fig.text(0.5, 0.962, "v0.1.1-beta  |  C++20 / Vulkan 1.3+ / EnTT ECS  |  131 commits  ·  35.6k lines",
          ha="center", fontsize=7, color="#888899")
 
 # ==================== (0,0:2) 代码构成饼图 ====================
@@ -340,7 +340,7 @@ else:
 info_sections = [
     ("基础信息", [
         ("项目", "OverWrite Engine"),
-        ("版本", "v0.1.1-alpha"),
+        ("版本", "v0.1.1-beta"),
         ("技术栈", "C++20 / Vulkan 1.3+ / EnTT ECS"),
     ]),
     ("源文件", [
