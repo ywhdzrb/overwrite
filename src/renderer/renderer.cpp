@@ -851,6 +851,14 @@ void Renderer::recreateSwapchain() {
     // 仅重初始化 ImGui Vulkan 后端（保留 GLFW 回调，防止 ECS InputSystem 回调链丢失）
     imguiManager_->reinitVulkan();
 
+    // 用 swapchain 实际尺寸同步相机和 Renderer 的窗口尺寸
+    // toggleFullscreen 中 monitor mode 可能与实际 framebuffer 不一致（缩放/窗口管理器差异）
+    windowWidth_ = renderExt.width;
+    windowHeight_ = renderExt.height;
+    if (gameSession_ && gameSession_->getCamera()) {
+        gameSession_->getCamera()->setWindowSize(windowWidth_, windowHeight_);
+    }
+
     // 重新初始化云系统（包含半分辨率资源）
     if (hadCloudHalfRes && cloudSystem_) {
         cloudSystem_->init(renderPass_->getRenderPass(), swapchain_->getExtent(), msaaSamples_,
