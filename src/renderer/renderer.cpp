@@ -851,10 +851,11 @@ void Renderer::recreateSwapchain() {
     // 仅重初始化 ImGui Vulkan 后端（保留 GLFW 回调，防止 ECS InputSystem 回调链丢失）
     imguiManager_->reinitVulkan();
 
-    // 用 swapchain 实际尺寸同步相机和 Renderer 的窗口尺寸
-    // toggleFullscreen 中 monitor mode 可能与实际 framebuffer 不一致（缩放/窗口管理器差异）
-    windowWidth_ = renderExt.width;
-    windowHeight_ = renderExt.height;
+    // 用实际渲染尺寸同步相机和 Renderer 的窗口尺寸
+    // FSR 启用时视口使用 FSR1 的缩小尺寸，相机宽高比必须匹配 FSR render extent
+    VkExtent2D actualExt = fsr1Pass_ ? fsr1Pass_->getRenderExtent() : renderExt;
+    windowWidth_ = actualExt.width;
+    windowHeight_ = actualExt.height;
     if (gameSession_ && gameSession_->getCamera()) {
         gameSession_->getCamera()->setWindowSize(windowWidth_, windowHeight_);
     }
