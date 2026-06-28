@@ -1,7 +1,7 @@
 #pragma once
 
 /**
- * @file physics.h
+ * @file physics.hpp
  * @brief 物理系统 — 重力/地面碰撞/墙体碰撞/AABB碰撞检测
  *
  * 归属模块：core

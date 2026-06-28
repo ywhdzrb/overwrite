@@ -33,19 +33,19 @@ private:
     void createFramebuffers();
     void createCommandBuffers();
 
-    std::shared_ptr<VulkanDevice> vulkanDevice;
-    std::shared_ptr<VulkanSwapchain> swapchain;
-    std::shared_ptr<VulkanRenderPass> mainRenderPass;
-    GLFWwindow* window;
-    VkInstance instance;
-    VkSampleCountFlagBits msaaSamples;
+    std::shared_ptr<VulkanDevice> vulkanDevice_;
+    std::shared_ptr<VulkanSwapchain> swapchain_;
+    std::shared_ptr<VulkanRenderPass> mainRenderPass_;
+    GLFWwindow* window_;
+    VkInstance instance_;
+    VkSampleCountFlagBits msaaSamples_;
 
-    VkDescriptorPool descriptorPool = VK_NULL_HANDLE;
-    VkRenderPass imguiRenderPass = VK_NULL_HANDLE;
-    std::vector<VkFramebuffer> framebuffers;
-    std::vector<VkCommandBuffer> commandBuffers;
+    VkDescriptorPool descriptorPool_ = VK_NULL_HANDLE;
+    VkRenderPass imguiRenderPass_ = VK_NULL_HANDLE;
+    std::vector<VkFramebuffer> framebuffers_;
+    std::vector<VkCommandBuffer> commandBuffers_;
 
-    bool initialized = false;
+    bool initialized_ = false;
 };
 
 } // namespace owengine

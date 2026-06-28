@@ -61,6 +61,8 @@ private:
     std::string fragmentShaderPath_;
     VkSampleCountFlagBits msaaSamples_;
 
+    VertexFormat vertexFormat_ = VertexFormat::POSITION_COLOR;
+
     VkPipeline graphicsPipeline_ = VK_NULL_HANDLE;
     VkPipelineLayout pipelineLayout_ = VK_NULL_HANDLE;
     std::vector<VkDescriptorSetLayout> descriptorSetLayoutsList_;

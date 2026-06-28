@@ -22,7 +22,7 @@ VulkanPipeline::VulkanPipeline(std::shared_ptr<VulkanDevice> device, VkRenderPas
                                VkSampleCountFlagBits msaaSamples)
     : device_(device), renderPass_(renderPass), swapchainExtent_(swapchainExtent),
       vertexShaderPath_(vertexShaderPath), fragmentShaderPath_(fragmentShaderPath),
-      msaaSamples_(msaaSamples) {
+      msaaSamples_(msaaSamples), vertexFormat_(format) {
     // 存储描述符集布局
     descriptorSetLayoutsList_ = descriptorSetLayouts;
 }
@@ -60,8 +60,8 @@ void VulkanPipeline::create() {
     std::vector<VkVertexInputAttributeDescription> attributeDescriptions;
     VkPipelineVertexInputStateCreateInfo vertexInputInfo{};
 
-    // 检查着色器名称来判断顶点格式（简单方法）
-    bool isSkybox = (vertexShaderPath_.find("skybox") != std::string::npos);
+    // 使用构造函数传入的顶点格式枚举，替代字符串匹配
+    bool isSkybox = (vertexFormat_ == VertexFormat::POSITION_ONLY);
 
     if (isSkybox) {
         // 天空盒：仅位置
@@ -271,9 +271,11 @@ void VulkanPipeline::create() {
 void VulkanPipeline::cleanup() {
     if (graphicsPipeline_ != VK_NULL_HANDLE) {
         vkDestroyPipeline(device_->getDevice(), graphicsPipeline_, nullptr);
+        graphicsPipeline_ = VK_NULL_HANDLE;
     }
     if (pipelineLayout_ != VK_NULL_HANDLE) {
         vkDestroyPipelineLayout(device_->getDevice(), pipelineLayout_, nullptr);
+        pipelineLayout_ = VK_NULL_HANDLE;
     }
 }
 

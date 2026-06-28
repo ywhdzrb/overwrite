@@ -23,7 +23,7 @@ glm::vec3 TransformComponent::getUp() const {
 }
 
 void TransformComponent::updateRotationFromEuler() {
-    // 反轉 yaw 以匹配 getFront() 的符號約定（正 yaw = 右轉）
+    // 反转 yaw 以匹配 getFront() 的符号约定（正 yaw = 右转）
     rotation = glm::quat(glm::vec3(glm::radians(pitch), -glm::radians(yaw), glm::radians(roll)));
 }
 

@@ -278,7 +278,7 @@ target_include_directories(${PROJECT_NAME} PRIVATE
     ${EXTERNAL_DIR}/imgui/backends
 )
 
-target_link_libraries(${PROJECT_NAME}
+target_link_libraries(${PROJECT_NAME} PRIVATE
     OverWriteShared
     OverWriteClient
     Vulkan::Vulkan

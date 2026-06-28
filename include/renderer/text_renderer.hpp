@@ -31,30 +31,30 @@ private:
                       VkBuffer& buffer, VmaAllocation& allocation);
     void copyBuffer(VkBuffer src, VkBuffer dst, VkDeviceSize size);
     
-    std::shared_ptr<VulkanDevice> vulkanDevice;
+    std::shared_ptr<VulkanDevice> vulkanDevice_;
     
     // 顶点缓冲
-    VkBuffer vertexBuffer;
-    VmaAllocation vertexBufferAllocation;
+    VkBuffer vertexBuffer_;
+    VmaAllocation vertexBufferAllocation_;
     
     // 索引缓冲
-    VkBuffer indexBuffer;
-    VmaAllocation indexBufferAllocation;
+    VkBuffer indexBuffer_;
+    VmaAllocation indexBufferAllocation_;
     
     // 纹理
-    VkImage textureImage;
-    VmaAllocation textureImageAllocation;
-    VkImageView textureImageView;
-    VkSampler textureSampler;
+    VkImage textureImage_;
+    VmaAllocation textureImageAllocation_;
+    VkImageView textureImageView_;
+    VkSampler textureSampler_;
     
     // 描述符集
-    VkDescriptorSetLayout descriptorSetLayout;
-    VkDescriptorPool descriptorPool;
-    VkDescriptorSet descriptorSet;
+    VkDescriptorSetLayout descriptorSetLayout_;
+    VkDescriptorPool descriptorPool_;
+    VkDescriptorSet descriptorSet_;
     
     // 管线布局
-    VkPipelineLayout pipelineLayout;
-    VkPipeline pipeline;
+    VkPipelineLayout pipelineLayout_;
+    VkPipeline pipeline_;
     
     static constexpr uint32_t TEXTURE_WIDTH = 256;
     static constexpr uint32_t TEXTURE_HEIGHT = 64;

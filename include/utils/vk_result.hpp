@@ -12,7 +12,39 @@
 #include <string>
 #include <vulkan/vulkan.h>
 
+#include "utils/logger.hpp"
+
 namespace owengine {
+
+/**
+ * @brief Vulkan 调试回调（共享实现）
+ *
+ * 接收验证层的调试消息，按严重级别路由到 Logger。
+ * 定义在 vk_result.hpp 中作为 inline 函数，避免在多个翻译单元中重复定义。
+ * 在 VulkanInstance 的 setupDebugMessenger() 和 VulkanDevice 的 createLogicalDevice() 中使用。
+ */
+inline VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
+    VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
+    VkDebugUtilsMessageTypeFlagsEXT /*messageType*/,
+    const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
+    void* /*pUserData*/) {
+
+    std::string msg = "[Vulkan] ";
+    if (pCallbackData->pMessageIdName) {
+        msg += pCallbackData->pMessageIdName;
+        msg += ": ";
+    }
+    msg += pCallbackData->pMessage;
+
+    if (messageSeverity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT) {
+        Logger::error(msg);
+    } else if (messageSeverity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT) {
+        Logger::warning(msg);
+    } else {
+        Logger::debug(msg);
+    }
+    return VK_FALSE;
+}
 
 /**
  * @brief VkResult → 可读字符串

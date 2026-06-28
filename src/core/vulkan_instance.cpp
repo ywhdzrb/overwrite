@@ -26,32 +26,6 @@ namespace owengine {
  * @brief Vulkan 调试回调函数
  * 按严重级别将验证层消息路由到 Logger
  */
-static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
-    VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
-    VkDebugUtilsMessageTypeFlagsEXT messageType,
-    const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
-    void* pUserData) {
-
-    (void)messageType;
-    (void)pUserData;
-
-    std::string msg = "[Vulkan] ";
-    if (pCallbackData->pMessageIdName) {
-        msg += pCallbackData->pMessageIdName;
-        msg += ": ";
-    }
-    msg += pCallbackData->pMessage;
-
-    if (messageSeverity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT) {
-        Logger::error(msg);
-    } else if (messageSeverity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT) {
-        Logger::warning(msg);
-    } else {
-        Logger::debug(msg);
-    }
-    return VK_FALSE;
-}
-
 VkResult VulkanInstance::createDebugUtilsMessengerEXT(
     VkInstance instance,
     const VkDebugUtilsMessengerCreateInfoEXT* pCreateInfo,
@@ -297,7 +271,7 @@ void VulkanInstance::populateDebugMessengerCreateInfo(VkDebugUtilsMessengerCreat
     createInfo.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT |
                              VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT |
                              VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
-    createInfo.pfnUserCallback = debugCallback;
+    createInfo.pfnUserCallback = owengine::debugCallback;
 }
 
 } // namespace owengine

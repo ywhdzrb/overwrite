@@ -14,7 +14,7 @@ ImGuiManager::ImGuiManager(std::shared_ptr<VulkanDevice> device,
                            GLFWwindow* window,
                            VkInstance instance,
                            VkSampleCountFlagBits msaaSamples)
-    : vulkanDevice(device), swapchain(swapchain), mainRenderPass(renderPass), window(window), instance(instance), msaaSamples(msaaSamples) {
+    : vulkanDevice_(device), swapchain_(swapchain), mainRenderPass_(renderPass), window_(window), instance_(instance), msaaSamples_(msaaSamples) {
 }
 
 ImGuiManager::~ImGuiManager() {
@@ -22,7 +22,7 @@ ImGuiManager::~ImGuiManager() {
 }
 
 void ImGuiManager::init() {
-    if (initialized) return;
+    if (initialized_) return;
 
     // 创建 IMGUI 上下文
     IMGUI_CHECKVERSION();
@@ -33,7 +33,7 @@ void ImGuiManager::init() {
 
     // 获取显示缩放比例（高 DPI 支持）
     float xscale, yscale;
-    glfwGetWindowContentScale(window, &xscale, &yscale);
+    glfwGetWindowContentScale(window_, &xscale, &yscale);
     float scale = (xscale + yscale) / 2.0f;
     if (scale < 1.0f) scale = 1.0f;
     
@@ -69,25 +69,25 @@ void ImGuiManager::init() {
     }
 
     // 初始化 GLFW 后端
-    ImGui_ImplGlfw_InitForVulkan(window, true);
+    ImGui_ImplGlfw_InitForVulkan(window_, true);
 
     // 创建描述符池
     createDescriptorPool();
 
     // 初始化 Vulkan 后端 (新版 ImGui API)
     ImGui_ImplVulkan_InitInfo init_info = {};
-    init_info.Instance = instance;
-    init_info.PhysicalDevice = vulkanDevice->getPhysicalDevice();
-    init_info.Device = vulkanDevice->getDevice();
-    init_info.QueueFamily = vulkanDevice->getGraphicsQueueFamily();
-    init_info.Queue = vulkanDevice->getGraphicsQueue();
+    init_info.Instance = instance_;
+    init_info.PhysicalDevice = vulkanDevice_->getPhysicalDevice();
+    init_info.Device = vulkanDevice_->getDevice();
+    init_info.QueueFamily = vulkanDevice_->getGraphicsQueueFamily();
+    init_info.Queue = vulkanDevice_->getGraphicsQueue();
     init_info.PipelineCache = VK_NULL_HANDLE;
-    init_info.DescriptorPool = descriptorPool;
-    init_info.RenderPass = mainRenderPass->getRenderPass();
+    init_info.DescriptorPool = descriptorPool_;
+    init_info.RenderPass = mainRenderPass_->getRenderPass();
     init_info.Subpass = 0;
     init_info.MinImageCount = 2;
-    init_info.ImageCount = static_cast<uint32_t>(swapchain->getImageViews().size());
-    init_info.MSAASamples = msaaSamples;
+    init_info.ImageCount = static_cast<uint32_t>(swapchain_->getImageViews().size());
+    init_info.MSAASamples = msaaSamples_;
 
     if (!ImGui_ImplVulkan_Init(&init_info)) {
         throw std::runtime_error("Failed to initialize ImGui Vulkan backend");
@@ -96,23 +96,23 @@ void ImGuiManager::init() {
     // 上传字体纹理到 GPU
     ImGui_ImplVulkan_CreateFontsTexture();
 
-    initialized = true;
-    Logger::info("[ImGuiManager] 初始化成功，MSAA: " + std::to_string(msaaSamples));
+    initialized_ = true;
+    Logger::info("[ImGuiManager] 初始化成功，MSAA: " + std::to_string(msaaSamples_));
 }
 
 void ImGuiManager::cleanup() {
-    if (!initialized) return;
+    if (!initialized_) return;
 
     ImGui_ImplVulkan_Shutdown();
     ImGui_ImplGlfw_Shutdown();
     ImGui::DestroyContext();
 
-    if (descriptorPool != VK_NULL_HANDLE) {
-        vkDestroyDescriptorPool(vulkanDevice->getDevice(), descriptorPool, nullptr);
-        descriptorPool = VK_NULL_HANDLE;
+    if (descriptorPool_ != VK_NULL_HANDLE) {
+        vkDestroyDescriptorPool(vulkanDevice_->getDevice(), descriptorPool_, nullptr);
+        descriptorPool_ = VK_NULL_HANDLE;
     }
 
-    initialized = false;
+    initialized_ = false;
 }
 
 void ImGuiManager::createDescriptorPool() {
@@ -137,14 +137,14 @@ void ImGuiManager::createDescriptorPool() {
     pool_info.poolSizeCount = static_cast<uint32_t>(IM_ARRAYSIZE(pool_sizes));
     pool_info.pPoolSizes = pool_sizes;
 
-    VkResult _vr = vkCreateDescriptorPool(vulkanDevice->getDevice(), &pool_info, nullptr, &descriptorPool);
+    VkResult _vr = vkCreateDescriptorPool(vulkanDevice_->getDevice(), &pool_info, nullptr, &descriptorPool_);
     if (_vr != VK_SUCCESS) {
         throw std::runtime_error(std::string("Failed to create descriptor pool for ImGui ") + vkResultToString(_vr));
     }
 }
 
 void ImGuiManager::newFrame() {
-    if (!initialized) return;
+    if (!initialized_) return;
 
     ImGui_ImplVulkan_NewFrame();
     ImGui_ImplGlfw_NewFrame();
@@ -152,7 +152,7 @@ void ImGuiManager::newFrame() {
 }
 
 void ImGuiManager::render(VkCommandBuffer commandBuffer) {
-    if (!initialized) return;
+    if (!initialized_) return;
 
     ImGui::Render();
     ImDrawData* draw_data = ImGui::GetDrawData();
@@ -160,8 +160,8 @@ void ImGuiManager::render(VkCommandBuffer commandBuffer) {
 }
 
 void ImGuiManager::onResize() {
-    if (!initialized) return;
-    ImGui_ImplVulkan_SetMinImageCount(static_cast<uint32_t>(swapchain->getImageViews().size()));
+    if (!initialized_) return;
+    ImGui_ImplVulkan_SetMinImageCount(static_cast<uint32_t>(swapchain_->getImageViews().size()));
 }
 
 } // namespace owengine

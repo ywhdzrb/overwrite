@@ -91,7 +91,7 @@ static void generateFontTexture(unsigned char* data, int width, int height) {
 }
 
 TextRenderer::TextRenderer(std::shared_ptr<VulkanDevice> device)
-    : vulkanDevice(device) {
+    : vulkanDevice_(device) {
 }
 
 TextRenderer::~TextRenderer() {
@@ -104,7 +104,7 @@ void TextRenderer::create() {
     VmaAllocationCreateInfo vbAllocInfo = {};
     vbAllocInfo.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
     createBuffer(vertexBufferSize, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-                 vbAllocInfo, vertexBuffer, vertexBufferAllocation);
+                 vbAllocInfo, vertexBuffer_, vertexBufferAllocation_);
     
     // 创建索引缓冲
     std::vector<uint16_t> indices = {
@@ -123,17 +123,17 @@ void TextRenderer::create() {
                  stagingAllocInfo, stagingBuffer, stagingAllocation);
     
     VmaAllocationInfo allocInfo;
-    vmaGetAllocationInfo(vulkanDevice->getAllocator(), stagingAllocation, &allocInfo);
+    vmaGetAllocationInfo(vulkanDevice_->getAllocator(), stagingAllocation, &allocInfo);
     memcpy(allocInfo.pMappedData, indices.data(), indexBufferSize);
     
     VmaAllocationCreateInfo ibAllocInfo = {};
     ibAllocInfo.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
     createBuffer(indexBufferSize, VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-                 ibAllocInfo, indexBuffer, indexBufferAllocation);
+                 ibAllocInfo, indexBuffer_, indexBufferAllocation_);
     
-    copyBuffer(stagingBuffer, indexBuffer, indexBufferSize);
+    copyBuffer(stagingBuffer, indexBuffer_, indexBufferSize);
     
-    vmaDestroyBuffer(vulkanDevice->getAllocator(), stagingBuffer, stagingAllocation);
+    vmaDestroyBuffer(vulkanDevice_->getAllocator(), stagingBuffer, stagingAllocation);
     
     // 创建字体纹理
     unsigned char textureData[TEXTURE_WIDTH * TEXTURE_HEIGHT];
@@ -144,7 +144,7 @@ void TextRenderer::create() {
     createBuffer(imageSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
                  stagingAllocInfo, stagingBuffer, stagingAllocation);
     
-    vmaGetAllocationInfo(vulkanDevice->getAllocator(), stagingAllocation, &allocInfo);
+    vmaGetAllocationInfo(vulkanDevice_->getAllocator(), stagingAllocation, &allocInfo);
     memcpy(allocInfo.pMappedData, textureData, imageSize);
     
     VkImageCreateInfo imageInfo{};
@@ -165,13 +165,13 @@ void TextRenderer::create() {
     VmaAllocationCreateInfo imgAllocInfo = {};
     imgAllocInfo.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
     
-    VkResult _vrImg = vmaCreateImage(vulkanDevice->getAllocator(), &imageInfo, &imgAllocInfo, &textureImage, &textureImageAllocation, nullptr);
+    VkResult _vrImg = vmaCreateImage(vulkanDevice_->getAllocator(), &imageInfo, &imgAllocInfo, &textureImage_, &textureImageAllocation_, nullptr);
     if (_vrImg != VK_SUCCESS) {
         throw std::runtime_error(std::string("failed to create texture image! ") + vkResultToString(_vrImg));
     }
     
     // 过渡图像布局并复制数据
-    VkCommandBuffer commandBuffer = vulkanDevice->beginSingleTimeCommands();
+    VkCommandBuffer commandBuffer = vulkanDevice_->beginSingleTimeCommands();
     
     VkImageMemoryBarrier barrier{};
     barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
@@ -179,7 +179,7 @@ void TextRenderer::create() {
     barrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
     barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
     barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    barrier.image = textureImage;
+    barrier.image = textureImage_;
     barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
     barrier.subresourceRange.baseMipLevel = 0;
     barrier.subresourceRange.levelCount = 1;
@@ -203,7 +203,7 @@ void TextRenderer::create() {
     region.imageOffset = {0, 0, 0};
     region.imageExtent = {TEXTURE_WIDTH, TEXTURE_HEIGHT, 1};
     
-    vkCmdCopyBufferToImage(commandBuffer, stagingBuffer, textureImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+    vkCmdCopyBufferToImage(commandBuffer, stagingBuffer, textureImage_, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
     
     barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
     barrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
@@ -214,14 +214,14 @@ void TextRenderer::create() {
                          VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
                          0, 0, nullptr, 0, nullptr, 1, &barrier);
     
-    vulkanDevice->endSingleTimeCommands(commandBuffer);
+    vulkanDevice_->endSingleTimeCommands(commandBuffer);
     
-    vmaDestroyBuffer(vulkanDevice->getAllocator(), stagingBuffer, stagingAllocation);
+    vmaDestroyBuffer(vulkanDevice_->getAllocator(), stagingBuffer, stagingAllocation);
     
     // 创建图像视图
     VkImageViewCreateInfo viewInfo{};
     viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-    viewInfo.image = textureImage;
+    viewInfo.image = textureImage_;
     viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
     viewInfo.format = VK_FORMAT_R8_UNORM;
     viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
@@ -230,7 +230,7 @@ void TextRenderer::create() {
     viewInfo.subresourceRange.baseArrayLayer = 0;
     viewInfo.subresourceRange.layerCount = 1;
     
-    VkResult _vrView = vkCreateImageView(vulkanDevice->getDevice(), &viewInfo, nullptr, &textureImageView);
+    VkResult _vrView = vkCreateImageView(vulkanDevice_->getDevice(), &viewInfo, nullptr, &textureImageView_);
     if (_vrView != VK_SUCCESS) {
         throw std::runtime_error(std::string("failed to create texture image view! ") + vkResultToString(_vrView));
     }
@@ -254,7 +254,7 @@ void TextRenderer::create() {
     samplerInfo.minLod = 0.0f;
     samplerInfo.maxLod = 0.0f;
     
-    VkResult _vrSampler = vkCreateSampler(vulkanDevice->getDevice(), &samplerInfo, nullptr, &textureSampler);
+    VkResult _vrSampler = vkCreateSampler(vulkanDevice_->getDevice(), &samplerInfo, nullptr, &textureSampler_);
     if (_vrSampler != VK_SUCCESS) {
         throw std::runtime_error(std::string("failed to create texture sampler! ") + vkResultToString(_vrSampler));
     }
@@ -272,7 +272,7 @@ void TextRenderer::create() {
     layoutInfo.bindingCount = 1;
     layoutInfo.pBindings = &samplerLayoutBinding;
     
-    VkResult _vrDSL = vkCreateDescriptorSetLayout(vulkanDevice->getDevice(), &layoutInfo, nullptr, &descriptorSetLayout);
+    VkResult _vrDSL = vkCreateDescriptorSetLayout(vulkanDevice_->getDevice(), &layoutInfo, nullptr, &descriptorSetLayout_);
     if (_vrDSL != VK_SUCCESS) {
         throw std::runtime_error(std::string("failed to create descriptor set layout! ") + vkResultToString(_vrDSL));
     }
@@ -288,7 +288,7 @@ void TextRenderer::create() {
     poolInfo.pPoolSizes = &poolSize;
     poolInfo.maxSets = 1;
     
-    VkResult _vrDSP = vkCreateDescriptorPool(vulkanDevice->getDevice(), &poolInfo, nullptr, &descriptorPool);
+    VkResult _vrDSP = vkCreateDescriptorPool(vulkanDevice_->getDevice(), &poolInfo, nullptr, &descriptorPool_);
     if (_vrDSP != VK_SUCCESS) {
         throw std::runtime_error(std::string("failed to create descriptor pool! ") + vkResultToString(_vrDSP));
     }
@@ -296,30 +296,30 @@ void TextRenderer::create() {
     // 创建描述符集
     VkDescriptorSetAllocateInfo allocInfoSet{};
     allocInfoSet.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-    allocInfoSet.descriptorPool = descriptorPool;
+    allocInfoSet.descriptorPool = descriptorPool_;
     allocInfoSet.descriptorSetCount = 1;
-    allocInfoSet.pSetLayouts = &descriptorSetLayout;
+    allocInfoSet.pSetLayouts = &descriptorSetLayout_;
     
-    VkResult _vrDS = vkAllocateDescriptorSets(vulkanDevice->getDevice(), &allocInfoSet, &descriptorSet);
+    VkResult _vrDS = vkAllocateDescriptorSets(vulkanDevice_->getDevice(), &allocInfoSet, &descriptorSet_);
     if (_vrDS != VK_SUCCESS) {
         throw std::runtime_error(std::string("failed to allocate descriptor sets! ") + vkResultToString(_vrDS));
     }
     
     VkDescriptorImageInfo descImageInfo{};
     descImageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-    descImageInfo.imageView = textureImageView;
-    descImageInfo.sampler = textureSampler;
+    descImageInfo.imageView = textureImageView_;
+    descImageInfo.sampler = textureSampler_;
     
     VkWriteDescriptorSet descriptorWrite{};
     descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    descriptorWrite.dstSet = descriptorSet;
+    descriptorWrite.dstSet = descriptorSet_;
     descriptorWrite.dstBinding = 0;
     descriptorWrite.dstArrayElement = 0;
     descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
     descriptorWrite.descriptorCount = 1;
     descriptorWrite.pImageInfo = &descImageInfo;
     
-    vkUpdateDescriptorSets(vulkanDevice->getDevice(), 1, &descriptorWrite, 0, nullptr);
+    vkUpdateDescriptorSets(vulkanDevice_->getDevice(), 1, &descriptorWrite, 0, nullptr);
     
     Logger::info("[TextRenderer] 创建成功");
 }
@@ -330,32 +330,32 @@ void TextRenderer::render(VkCommandBuffer commandBuffer, const std::string& text
 }
 
 void TextRenderer::cleanup() {
-    if (pipeline != VK_NULL_HANDLE) {
-        vkDestroyPipeline(vulkanDevice->getDevice(), pipeline, nullptr);
+    if (pipeline_ != VK_NULL_HANDLE) {
+        vkDestroyPipeline(vulkanDevice_->getDevice(), pipeline_, nullptr);
     }
-    if (pipelineLayout != VK_NULL_HANDLE) {
-        vkDestroyPipelineLayout(vulkanDevice->getDevice(), pipelineLayout, nullptr);
+    if (pipelineLayout_ != VK_NULL_HANDLE) {
+        vkDestroyPipelineLayout(vulkanDevice_->getDevice(), pipelineLayout_, nullptr);
     }
-    if (descriptorPool != VK_NULL_HANDLE) {
-        vkDestroyDescriptorPool(vulkanDevice->getDevice(), descriptorPool, nullptr);
+    if (descriptorPool_ != VK_NULL_HANDLE) {
+        vkDestroyDescriptorPool(vulkanDevice_->getDevice(), descriptorPool_, nullptr);
     }
-    if (descriptorSetLayout != VK_NULL_HANDLE) {
-        vkDestroyDescriptorSetLayout(vulkanDevice->getDevice(), descriptorSetLayout, nullptr);
+    if (descriptorSetLayout_ != VK_NULL_HANDLE) {
+        vkDestroyDescriptorSetLayout(vulkanDevice_->getDevice(), descriptorSetLayout_, nullptr);
     }
-    if (textureSampler != VK_NULL_HANDLE) {
-        vkDestroySampler(vulkanDevice->getDevice(), textureSampler, nullptr);
+    if (textureSampler_ != VK_NULL_HANDLE) {
+        vkDestroySampler(vulkanDevice_->getDevice(), textureSampler_, nullptr);
     }
-    if (textureImageView != VK_NULL_HANDLE) {
-        vkDestroyImageView(vulkanDevice->getDevice(), textureImageView, nullptr);
+    if (textureImageView_ != VK_NULL_HANDLE) {
+        vkDestroyImageView(vulkanDevice_->getDevice(), textureImageView_, nullptr);
     }
-    if (textureImage != VK_NULL_HANDLE) {
-        vmaDestroyImage(vulkanDevice->getAllocator(), textureImage, textureImageAllocation);
+    if (textureImage_ != VK_NULL_HANDLE) {
+        vmaDestroyImage(vulkanDevice_->getAllocator(), textureImage_, textureImageAllocation_);
     }
-    if (indexBuffer != VK_NULL_HANDLE) {
-        vmaDestroyBuffer(vulkanDevice->getAllocator(), indexBuffer, indexBufferAllocation);
+    if (indexBuffer_ != VK_NULL_HANDLE) {
+        vmaDestroyBuffer(vulkanDevice_->getAllocator(), indexBuffer_, indexBufferAllocation_);
     }
-    if (vertexBuffer != VK_NULL_HANDLE) {
-        vmaDestroyBuffer(vulkanDevice->getAllocator(), vertexBuffer, vertexBufferAllocation);
+    if (vertexBuffer_ != VK_NULL_HANDLE) {
+        vmaDestroyBuffer(vulkanDevice_->getAllocator(), vertexBuffer_, vertexBufferAllocation_);
     }
 }
 
@@ -368,14 +368,14 @@ void TextRenderer::createBuffer(VkDeviceSize size, VkBufferUsageFlags usage,
     bufferInfo.usage = usage;
     bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
     
-    VkResult _vrBuf = vmaCreateBuffer(vulkanDevice->getAllocator(), &bufferInfo, &allocInfo, &buffer, &allocation, nullptr);
+    VkResult _vrBuf = vmaCreateBuffer(vulkanDevice_->getAllocator(), &bufferInfo, &allocInfo, &buffer, &allocation, nullptr);
     if (_vrBuf != VK_SUCCESS) {
         throw std::runtime_error(std::string("failed to create buffer! ") + vkResultToString(_vrBuf));
     }
 }
 
 void TextRenderer::copyBuffer(VkBuffer src, VkBuffer dst, VkDeviceSize size) {
-    VkCommandBuffer commandBuffer = vulkanDevice->beginSingleTimeCommands();
+    VkCommandBuffer commandBuffer = vulkanDevice_->beginSingleTimeCommands();
     
     VkBufferCopy copyRegion{};
     copyRegion.srcOffset = 0;
@@ -383,7 +383,7 @@ void TextRenderer::copyBuffer(VkBuffer src, VkBuffer dst, VkDeviceSize size) {
     copyRegion.size = size;
     vkCmdCopyBuffer(commandBuffer, src, dst, 1, &copyRegion);
     
-    vulkanDevice->endSingleTimeCommands(commandBuffer);
+    vulkanDevice_->endSingleTimeCommands(commandBuffer);
 }
 
 } // namespace owengine
