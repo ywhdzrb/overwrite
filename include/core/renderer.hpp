@@ -56,6 +56,22 @@ constexpr uint32_t MAX_FRAMES_IN_FLIGHT = 2;
 constexpr float MODEL_CULLING_DISTANCE = 250.0f;   // 静态模型视锥剔除最大距离
 
 /**
+ * @brief 半分辨率云合成管线资源
+ *
+ * 封装云合成渲染通道/帧缓冲/管线/描述符等 7 个 Vulkan 句柄，
+ * 替代 renderer 中 6 个分散裸成员变量，便于批量创建/清理。
+ */
+struct CloudCompositeResources {
+    VkRenderPass renderPass = VK_NULL_HANDLE;
+    std::vector<VkFramebuffer> framebuffers;
+    VkPipelineLayout pipelineLayout = VK_NULL_HANDLE;
+    VkPipeline pipeline = VK_NULL_HANDLE;
+    VkDescriptorSetLayout dsLayout = VK_NULL_HANDLE;
+    VkDescriptorPool dsPool = VK_NULL_HANDLE;
+    VkDescriptorSet ds = VK_NULL_HANDLE;
+};
+
+/**
  * @brief 纯渲染编排器
  *
  * 职责范围：Vulkan 管线生命周期、帧缓冲、命令缓冲录制、渲染子系统调度。
@@ -105,6 +121,22 @@ private:
     // ========== 半分辨率云合成 ==========
     void createCloudCompositeResources();
     void cleanupCloudCompositeResources();
+
+    // ========== drawFrame 阶段方法 ==========
+    /** @brief 等待 fence → 获取交换链图像 → 重置 fence → 开始命令缓冲，返回 false 跳过帧 */
+    [[nodiscard]] bool beginFrame(uint32_t& imageIndex, VkCommandBuffer& commandBuffer);
+    /** @brief 从光源视角渲染阴影贴图 */
+    void recordShadowPass(VkCommandBuffer cmd, Camera* cam);
+    /** @brief 更新昼夜循环太阳方向/强度 */
+    void updateDayNightCycle();
+    /** @brief 开始主渲染通道，绑定管线和视口，返回 Camera*（nullptr 表示跳过） */
+    Camera* beginMainRenderPass(VkCommandBuffer cmd, uint32_t imageIndex);
+    /** @brief 绑定描述符集 + 渲染所有不透明几何体（地形/模型/玩家/树/石/草） */
+    void renderOpaqueGeometry(VkCommandBuffer cmd, Camera* cam);
+    /** @brief 结束主渲染通道，处理云合成 + ImGui 渲染 */
+    void renderCloudAndImGui(VkCommandBuffer cmd, Camera* cam, uint32_t imageIndex);
+    /** @brief FSR1 + vkEndCommandBuffer + 提交 + 呈现 */
+    void submitFrame(VkCommandBuffer cmd, uint32_t imageIndex);
 
     std::vector<ModelConfig> loadModelConfig(const std::string& configFile);
     void loadModelsFromConfig(const std::vector<ModelConfig>& configs);
@@ -168,14 +200,8 @@ private:
 
     // 阴影映射系统已整合至 LightManager，由光照系统统一管理
 
-    // 半分辨率云合成管线资源
-    VkRenderPass cloudCompositeRenderPass_ = VK_NULL_HANDLE;
-    std::vector<VkFramebuffer> cloudCompositeFramebuffers_;
-    VkPipelineLayout cloudCompositePipelineLayout_ = VK_NULL_HANDLE;
-    VkPipeline cloudCompositePipeline_ = VK_NULL_HANDLE;
-    VkDescriptorSetLayout cloudCompositeDSLayout_ = VK_NULL_HANDLE;
-    VkDescriptorPool cloudCompositeDSPool_ = VK_NULL_HANDLE;
-    VkDescriptorSet cloudCompositeDS_ = VK_NULL_HANDLE;
+    // 半分辨率云合成管线资源（封装为结构体，替代 7 个分散裸句柄）
+    CloudCompositeResources cloudComposite_;
 
     // ========== 游戏会话 ==========
     std::unique_ptr<GameSession> ownedGameSession_;  // 内部创建时持有

@@ -88,7 +88,7 @@ void Renderer::createCloudCompositeResources() {
     rpCi.dependencyCount = 1;
     rpCi.pDependencies = &dep;
 
-    VkResult _vrRP = vkCreateRenderPass(dev, &rpCi, nullptr, &cloudCompositeRenderPass_);
+    VkResult _vrRP = vkCreateRenderPass(dev, &rpCi, nullptr, &cloudComposite_.renderPass);
     if (_vrRP != VK_SUCCESS) {
         throw std::runtime_error(std::string("[Renderer] 创建云合成渲染通道失败 ") + vkResultToString(_vrRP));
     }
@@ -106,7 +106,7 @@ void Renderer::createCloudCompositeResources() {
     dsLayoutCi.bindingCount = 1;
     dsLayoutCi.pBindings = &samplerBinding;
 
-    VkResult _vrDSL = vkCreateDescriptorSetLayout(dev, &dsLayoutCi, nullptr, &cloudCompositeDSLayout_);
+    VkResult _vrDSL = vkCreateDescriptorSetLayout(dev, &dsLayoutCi, nullptr, &cloudComposite_.dsLayout);
     if (_vrDSL != VK_SUCCESS) {
         throw std::runtime_error(std::string("[Renderer] 创建云合成描述符集布局失败 ") + vkResultToString(_vrDSL));
     }
@@ -114,11 +114,11 @@ void Renderer::createCloudCompositeResources() {
     VkPipelineLayoutCreateInfo plCi{};
     plCi.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
     plCi.setLayoutCount = 1;
-    plCi.pSetLayouts = &cloudCompositeDSLayout_;
+    plCi.pSetLayouts = &cloudComposite_.dsLayout;
     plCi.pushConstantRangeCount = 0;
     plCi.pPushConstantRanges = nullptr;
 
-    VkResult _vrPL = vkCreatePipelineLayout(dev, &plCi, nullptr, &cloudCompositePipelineLayout_);
+    VkResult _vrPL = vkCreatePipelineLayout(dev, &plCi, nullptr, &cloudComposite_.pipelineLayout);
     if (_vrPL != VK_SUCCESS) {
         throw std::runtime_error(std::string("[Renderer] 创建云合成管线布局失败 ") + vkResultToString(_vrPL));
     }
@@ -134,7 +134,7 @@ void Renderer::createCloudCompositeResources() {
     dpCi.pPoolSizes = &poolSize;
     dpCi.maxSets = 1;
 
-    VkResult _vrDSP = vkCreateDescriptorPool(dev, &dpCi, nullptr, &cloudCompositeDSPool_);
+    VkResult _vrDSP = vkCreateDescriptorPool(dev, &dpCi, nullptr, &cloudComposite_.dsPool);
     if (_vrDSP != VK_SUCCESS) {
         throw std::runtime_error(std::string("[Renderer] 创建云合成描述符池失败 ") + vkResultToString(_vrDSP));
     }
@@ -142,11 +142,11 @@ void Renderer::createCloudCompositeResources() {
     // --- 分配和更新描述符集 ---
     VkDescriptorSetAllocateInfo dsAi{};
     dsAi.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-    dsAi.descriptorPool = cloudCompositeDSPool_;
+    dsAi.descriptorPool = cloudComposite_.dsPool;
     dsAi.descriptorSetCount = 1;
-    dsAi.pSetLayouts = &cloudCompositeDSLayout_;
+    dsAi.pSetLayouts = &cloudComposite_.dsLayout;
 
-    VkResult _vrDSA = vkAllocateDescriptorSets(dev, &dsAi, &cloudCompositeDS_);
+    VkResult _vrDSA = vkAllocateDescriptorSets(dev, &dsAi, &cloudComposite_.ds);
     if (_vrDSA != VK_SUCCESS) {
         throw std::runtime_error(std::string("[Renderer] 分配云合成描述符集失败 ") + vkResultToString(_vrDSA));
     }
@@ -159,7 +159,7 @@ void Renderer::createCloudCompositeResources() {
 
     VkWriteDescriptorSet writeDs{};
     writeDs.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    writeDs.dstSet = cloudCompositeDS_;
+    writeDs.dstSet = cloudComposite_.ds;
     writeDs.dstBinding = 0;
     writeDs.dstArrayElement = 0;
     writeDs.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
@@ -262,12 +262,12 @@ void Renderer::createCloudCompositeResources() {
     pi.pMultisampleState = &ms;
     pi.pDepthStencilState = &ds;
     pi.pColorBlendState = &cb;
-    pi.layout = cloudCompositePipelineLayout_;
-    pi.renderPass = cloudCompositeRenderPass_;
+    pi.layout = cloudComposite_.pipelineLayout;
+    pi.renderPass = cloudComposite_.renderPass;
     pi.subpass = 0;
 
     VkResult _vrGP = vkCreateGraphicsPipelines(dev, VK_NULL_HANDLE, 1, &pi, nullptr,
-                                              &cloudCompositePipeline_);
+                                              &cloudComposite_.pipeline);
     if (_vrGP != VK_SUCCESS) {
         throw std::runtime_error(std::string("[Renderer] 创建云合成管线失败 ") + vkResultToString(_vrGP));
     }
@@ -275,7 +275,7 @@ void Renderer::createCloudCompositeResources() {
     // --- 创建合成帧缓冲 ---
     VkImageView depthView = vulkanDevice_->getDepthImageView();
     size_t imageCount = swapchain_->getImageViews().size();
-    cloudCompositeFramebuffers_.resize(imageCount);
+    cloudComposite_.framebuffers.resize(imageCount);
 
     for (size_t i = 0; i < imageCount; ++i) {
         std::vector<VkImageView> fbAttachments = {
@@ -285,14 +285,14 @@ void Renderer::createCloudCompositeResources() {
 
         VkFramebufferCreateInfo fbCi{};
         fbCi.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
-        fbCi.renderPass = cloudCompositeRenderPass_;
+        fbCi.renderPass = cloudComposite_.renderPass;
         fbCi.attachmentCount = static_cast<uint32_t>(fbAttachments.size());
         fbCi.pAttachments = fbAttachments.data();
         fbCi.width = fullExt.width;
         fbCi.height = fullExt.height;
         fbCi.layers = 1;
 
-        VkResult _vrFB = vkCreateFramebuffer(dev, &fbCi, nullptr, &cloudCompositeFramebuffers_[i]);
+        VkResult _vrFB = vkCreateFramebuffer(dev, &fbCi, nullptr, &cloudComposite_.framebuffers[i]);
         if (_vrFB != VK_SUCCESS) {
             throw std::runtime_error(std::string("[Renderer] 创建云合成帧缓冲失败 ") + vkResultToString(_vrFB));
         }
@@ -304,34 +304,34 @@ void Renderer::createCloudCompositeResources() {
 void Renderer::cleanupCloudCompositeResources() {
     VkDevice dev = vulkanDevice_->getDevice();
 
-    if (cloudCompositePipeline_ != VK_NULL_HANDLE) {
-        vkDestroyPipeline(dev, cloudCompositePipeline_, nullptr);
-        cloudCompositePipeline_ = VK_NULL_HANDLE;
+    if (cloudComposite_.pipeline != VK_NULL_HANDLE) {
+        vkDestroyPipeline(dev, cloudComposite_.pipeline, nullptr);
+        cloudComposite_.pipeline = VK_NULL_HANDLE;
     }
-    if (cloudCompositePipelineLayout_ != VK_NULL_HANDLE) {
-        vkDestroyPipelineLayout(dev, cloudCompositePipelineLayout_, nullptr);
-        cloudCompositePipelineLayout_ = VK_NULL_HANDLE;
+    if (cloudComposite_.pipelineLayout != VK_NULL_HANDLE) {
+        vkDestroyPipelineLayout(dev, cloudComposite_.pipelineLayout, nullptr);
+        cloudComposite_.pipelineLayout = VK_NULL_HANDLE;
     }
-    if (cloudCompositeDSLayout_ != VK_NULL_HANDLE) {
-        vkDestroyDescriptorSetLayout(dev, cloudCompositeDSLayout_, nullptr);
-        cloudCompositeDSLayout_ = VK_NULL_HANDLE;
+    if (cloudComposite_.dsLayout != VK_NULL_HANDLE) {
+        vkDestroyDescriptorSetLayout(dev, cloudComposite_.dsLayout, nullptr);
+        cloudComposite_.dsLayout = VK_NULL_HANDLE;
     }
-    if (cloudCompositeDSPool_ != VK_NULL_HANDLE) {
-        vkDestroyDescriptorPool(dev, cloudCompositeDSPool_, nullptr);
-        cloudCompositeDSPool_ = VK_NULL_HANDLE;
+    if (cloudComposite_.dsPool != VK_NULL_HANDLE) {
+        vkDestroyDescriptorPool(dev, cloudComposite_.dsPool, nullptr);
+        cloudComposite_.dsPool = VK_NULL_HANDLE;
     }
-    cloudCompositeDS_ = VK_NULL_HANDLE;
+    cloudComposite_.ds = VK_NULL_HANDLE;
 
-    for (auto fb : cloudCompositeFramebuffers_) {
+    for (auto fb : cloudComposite_.framebuffers) {
         if (fb != VK_NULL_HANDLE) {
             vkDestroyFramebuffer(dev, fb, nullptr);
         }
     }
-    cloudCompositeFramebuffers_.clear();
+    cloudComposite_.framebuffers.clear();
 
-    if (cloudCompositeRenderPass_ != VK_NULL_HANDLE) {
-        vkDestroyRenderPass(dev, cloudCompositeRenderPass_, nullptr);
-        cloudCompositeRenderPass_ = VK_NULL_HANDLE;
+    if (cloudComposite_.renderPass != VK_NULL_HANDLE) {
+        vkDestroyRenderPass(dev, cloudComposite_.renderPass, nullptr);
+        cloudComposite_.renderPass = VK_NULL_HANDLE;
     }
 }
 

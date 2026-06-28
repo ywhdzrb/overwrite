@@ -20,6 +20,42 @@
 
 #include <GLFW/glfw3.h>
 
+namespace {
+
+/**
+ * @brief Vulkan 调试回调（静态函数）
+ *
+ * 接收验证层的调试消息，按严重级别路由到 Logger。
+ * 替代内联 lambda，避免在 createLogicalDevice() 中膨胀。
+ */
+VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
+    VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
+    VkDebugUtilsMessageTypeFlagsEXT messageType,
+    const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
+    void* pUserData) {
+
+    (void)messageType;
+    (void)pUserData;
+
+    std::string msg = "[Vulkan] ";
+    if (pCallbackData->pMessageIdName) {
+        msg += pCallbackData->pMessageIdName;
+        msg += ": ";
+    }
+    msg += pCallbackData->pMessage;
+
+    if (messageSeverity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT) {
+        owengine::Logger::error(msg);
+    } else if (messageSeverity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT) {
+        owengine::Logger::warning(msg);
+    } else {
+        owengine::Logger::debug(msg);
+    }
+    return VK_FALSE;
+}
+
+} // anonymous namespace
+
 namespace owengine {
 
 // VulkanDevice构造函数
@@ -136,27 +172,7 @@ void VulkanDevice::createLogicalDevice() {
         debugCreateInfo.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT |
                                       VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT |
                                       VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
-        debugCreateInfo.pfnUserCallback = [](VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
-                                              VkDebugUtilsMessageTypeFlagsEXT messageType,
-                                              const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
-                                              void* pUserData) -> VkBool32 {
-            (void)messageType;
-            (void)pUserData;
-            std::string msg = "[Vulkan] ";
-            if (pCallbackData->pMessageIdName) {
-                msg += pCallbackData->pMessageIdName;
-                msg += ": ";
-            }
-            msg += pCallbackData->pMessage;
-            if (messageSeverity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT) {
-                Logger::error(msg);
-            } else if (messageSeverity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT) {
-                Logger::warning(msg);
-            } else {
-                Logger::debug(msg);
-            }
-            return VK_FALSE;
-        };
+        debugCreateInfo.pfnUserCallback = ::debugCallback;
         debugCreateInfo.pNext = nextFeature;
         createInfo.pNext = &debugCreateInfo;
     } else {
