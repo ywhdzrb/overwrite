@@ -115,6 +115,44 @@ void ImGuiManager::cleanup() {
     initialized_ = false;
 }
 
+/**
+ * @brief 仅重初始化 Vulkan 后端，不触碰 GLFW 回调
+ *
+ * 交换链重建后调用：ImGui 需要更新 VkRenderPass 和 MSAA 采样数。
+ * 不允许调用 ImGui_ImplGlfw_Shutdown() / Init()，否则 GLFW 的 RestoreCallbacks()
+ * 会将所有回调置为 nullptr，导致 ECS InputSystem 的 key/mouse/cursor 回调永久丢失。
+ */
+void ImGuiManager::reinitVulkan() {
+    if (!initialized_) return;
+
+    // 仅关闭 Vulkan 后端，不动 GLFW 回调
+    ImGui_ImplVulkan_Shutdown();
+
+    // 用新参数重新初始化 Vulkan 后端
+    ImGui_ImplVulkan_InitInfo init_info{};
+    init_info.Instance = instance_;
+    init_info.PhysicalDevice = vulkanDevice_->getPhysicalDevice();
+    init_info.Device = vulkanDevice_->getDevice();
+    init_info.QueueFamily = vulkanDevice_->getGraphicsQueueFamily();
+    init_info.Queue = vulkanDevice_->getGraphicsQueue();
+    init_info.PipelineCache = VK_NULL_HANDLE;
+    init_info.DescriptorPool = descriptorPool_;
+    init_info.RenderPass = mainRenderPass_->getRenderPass();
+    init_info.Subpass = 0;
+    init_info.MinImageCount = 2;
+    init_info.ImageCount = static_cast<uint32_t>(swapchain_->getImageViews().size());
+    init_info.MSAASamples = msaaSamples_;
+
+    if (!ImGui_ImplVulkan_Init(&init_info)) {
+        throw std::runtime_error("Failed to reinitialize ImGui Vulkan backend");
+    }
+
+    ImGui_ImplVulkan_CreateFontsTexture();
+    ImGui_ImplVulkan_SetMinImageCount(static_cast<uint32_t>(swapchain_->getImageViews().size()));
+
+    Logger::info("[ImGuiManager] Vulkan 后端重初始化完成");
+}
+
 void ImGuiManager::createDescriptorPool() {
     VkDescriptorPoolSize pool_sizes[] = {
         {VK_DESCRIPTOR_TYPE_SAMPLER, 1000},

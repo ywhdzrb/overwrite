@@ -848,10 +848,8 @@ void Renderer::recreateSwapchain() {
     commandBuffers_->cleanup();
     commandBuffers_->create(swapchain_->getImageViews().size());
     
-    // 重新初始化 ImGui 以匹配新的 MSAA 设置
-    imguiManager_.reset();
-    imguiManager_ = std::make_unique<ImGuiManager>(vulkanDevice_, swapchain_, renderPass_, window_, vulkanInstance_->getInstance(), msaaSamples_);
-    imguiManager_->init();
+    // 仅重初始化 ImGui Vulkan 后端（保留 GLFW 回调，防止 ECS InputSystem 回调链丢失）
+    imguiManager_->reinitVulkan();
 
     // 重新初始化云系统（包含半分辨率资源）
     if (hadCloudHalfRes && cloudSystem_) {

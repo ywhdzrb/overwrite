@@ -23,6 +23,10 @@ public:
 
     void init();
     void cleanup();
+
+    /** @brief 仅重初始化 Vulkan 后端（交换链重建后调用），不触碰 GLFW 回调 */
+    void reinitVulkan();
+
     void newFrame();
     void render(VkCommandBuffer commandBuffer);
     void onResize();
