@@ -89,6 +89,9 @@ public:
     // ── 输入系统 ──────────────────────────────
     virtual class InputSystem* getInputSystem() const = 0;
 
+    /** @brief 从 GLFW 原始状态同步按键数组（全屏切换后调用，修复焦事件导致的状态丢失） */
+    virtual void syncKeyStates(GLFWwindow* window) = 0;
+
     // ── 网络 ──────────────────────────────────
     virtual bool connectToServer(const std::string& host, uint16_t port) = 0;
     virtual void disconnectFromServer() = 0;

@@ -141,9 +141,19 @@ void Renderer::toggleFullscreen() {
     // 窗口尺寸改变，标记交换链需要重建
     framebufferResized_ = true;
 
-    // 全屏切换后重新捕获鼠标（GLFW 可能因焦点事件重置光标模式）
+    // 立即处理 GLFW 挂起事件（窗口模式切换会产生焦点/按键释放事件队列，
+    // 必须在当前帧处理完毕，否则 key callback 状态与 GLFW 实际状态不同步）
+    glfwPollEvents();
+
+    // 重新捕获鼠标（GLFW 可能因焦点事件重置光标模式）
     if (fullscreen_ && gameSession_ && gameSession_->getInput()) {
         gameSession_->getInput()->setCursorCaptured(true);
+    }
+
+    // 同步按键状态：从 GLFW 原始状态刷新 ECS InputSystem 的 keys_ 数组，
+    // 防止窗口切换时焦点事件导致 key callback 丢失按键释放/按下事件
+    if (gameSession_ && gameSession_->getECSWorld()) {
+        gameSession_->getECSWorld()->syncKeyStates(window_);
     }
 }
 

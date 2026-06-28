@@ -493,6 +493,19 @@ void ClientWorld::syncCamera(class Camera& camera) {
     camera.setYawPitch(180.0f - camTransform.yaw, camTransform.pitch);
 }
 
+/**
+ * @brief 从 GLFW 原始状态同步按键数组
+ *
+ * 全屏切换（glfwSetWindowMonitor）后调用，GLFW 可能因焦点事件丢失按键状态。
+ * 直接遍历所有按键，从 glfwGetKey 读取原始状态刷新 ECS InputSystem 的 keys_ 数组。
+ */
+void ClientWorld::syncKeyStates(GLFWwindow* window) {
+    if (!inputSystem_) return;
+    for (int k = 0; k < GLFW_KEY_LAST; k++) {
+        inputSystem_->setKeyState(k, glfwGetKey(window, k) == GLFW_PRESS);
+    }
+}
+
 std::vector<RemotePlayerInfo> ClientWorld::getRemotePlayers() const {
     std::vector<RemotePlayerInfo> result;
     if (!networkSystem_) return result;

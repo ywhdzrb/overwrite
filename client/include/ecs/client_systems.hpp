@@ -39,6 +39,9 @@ public:
     
     // 重置帧状态
     void resetFrameState();
+
+    /** @brief 强制设置按键状态（全屏切换后同步用，避免 GLFW 焦点事件导致状态丢失） */
+    void setKeyState(int key, bool pressed) { if (key >= 0 && key <= GLFW_KEY_LAST) keys_[key] = pressed; }
     
 private:
     World& world_;
@@ -154,6 +157,7 @@ public:
     bool isPlayerFlying() const override { return isFlying_; }
     void setPlayerFlying(bool flying) override { isFlying_ = flying; }
     void syncCamera(class Camera& camera) override;
+    void syncKeyStates(GLFWwindow* window) override;
     std::vector<RemotePlayerInfo> getRemotePlayers() const override;
     std::vector<DiscoveredServerInfo> getDiscoveredServers() override;
     entt::registry* getRegistry() override { return &registry(); }
