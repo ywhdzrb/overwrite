@@ -111,7 +111,7 @@ for arg in "$@"; do
             ;;
         clean|Clean)
             echo -e "${YELLOW}Cleaning build directory...${NC}"
-            rm -rf build
+            rm -rf "${SCRIPT_DIR}/build"
             echo -e "${YELLOW}Cleaning compiled shaders (.spv files)...${NC}"
             find . -name "*.spv" -type f -delete
             echo -e "${YELLOW}Cleaning external dependencies (submodules)...${NC}"
@@ -119,7 +119,7 @@ for arg in "$@"; do
             echo -e "${YELLOW}Cleaning config files...${NC}"
             rm -f imgui.ini
             echo -e "${YELLOW}Cleaning CI build artifacts...${NC}"
-            rm -rf build-ci
+            rm -rf "${SCRIPT_DIR}/build-ci"
             echo -e "${YELLOW}Cleaning dashboard artifacts...${NC}"
             rm -f dashboard/dashboard.png
             echo -e "${GREEN}Clean completed!${NC}"
