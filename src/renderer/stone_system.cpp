@@ -181,6 +181,22 @@ void StoneSystem::render(VkCommandBuffer commandBuffer, VkPipelineLayout pipelin
     }
 }
 
+void StoneSystem::renderShadow(VkCommandBuffer commandBuffer, VkPipelineLayout pipelineLayout,
+                                const glm::mat4& lightView, const glm::mat4& lightProj) const {
+    if (!sharedStoneModel_) return;
+    const float shadowDistance = config_.renderDistance;
+    for (const auto& stone : stones_) {
+        if (stone.id.empty() || !stone.active) continue;
+        if (glm::length(stone.position) > shadowDistance) continue;
+
+        glm::mat4 modelMatrix = glm::translate(glm::mat4(1.0f), stone.position)
+                              * glm::rotate(glm::mat4(1.0f), glm::radians(stone.yaw), glm::vec3(0.0f, 1.0f, 0.0f))
+                              * glm::scale(glm::mat4(1.0f), glm::vec3(stone.scale));
+
+        sharedStoneModel_->render(commandBuffer, pipelineLayout, lightView, lightProj, modelMatrix);
+    }
+}
+
 std::vector<std::pair<glm::vec3, float>> StoneSystem::queryPositions(float x, float z, float radius) const {
     std::vector<std::pair<glm::vec3, float>> result;
     float radiusSq = radius * radius;

@@ -183,6 +183,23 @@ void TreeSystem::render(VkCommandBuffer commandBuffer, VkPipelineLayout pipeline
     }
 }
 
+void TreeSystem::renderShadow(VkCommandBuffer commandBuffer, VkPipelineLayout pipelineLayout,
+                               const glm::mat4& lightView, const glm::mat4& lightProj) const {
+    if (!sharedTreeModel_) return;
+    // 阴影pass使用光源VP矩阵，跳过视锥体裁剪，用固定大半径距离裁剪
+    const float shadowDistance = config_.renderDistance;
+    for (const auto& tree : trees_) {
+        if (tree.id.empty() || !tree.active) continue;
+        if (glm::length(tree.position) > shadowDistance) continue;
+
+        glm::mat4 modelMatrix = glm::translate(glm::mat4(1.0f), tree.position)
+                              * glm::rotate(glm::mat4(1.0f), glm::radians(tree.yaw), glm::vec3(0.0f, 1.0f, 0.0f))
+                              * glm::scale(glm::mat4(1.0f), glm::vec3(tree.scale));
+
+        sharedTreeModel_->render(commandBuffer, pipelineLayout, lightView, lightProj, modelMatrix);
+    }
+}
+
 std::vector<std::pair<glm::vec3, float>> TreeSystem::queryPositions(float x, float z, float radius) const {
     std::vector<std::pair<glm::vec3, float>> result;
     float radiusSq = radius * radius;

@@ -85,6 +85,10 @@ void Renderer::recordShadowPass(VkCommandBuffer cmd, Camera* cam) {
         }
     }
 
+    // 树木和石头投射阴影
+    if (treeSystem_) treeSystem_->renderShadow(cmd, shadowPL, lightView, lightProj);
+    if (stoneSystem_) stoneSystem_->renderShadow(cmd, shadowPL, lightView, lightProj);
+
     if (gameSession_) {
         GLTFModel* playerModel = gameSession_->getActivePlayerModel();
         if (playerModel && playerModel->getMeshCount() > 0) {

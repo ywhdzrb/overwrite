@@ -73,6 +73,10 @@ public:
     void render(VkCommandBuffer commandBuffer, VkPipelineLayout pipelineLayout,
                 const Camera& camera, float time, float windStrength) const;
 
+    /** @brief 阴影pass渲染（使用光源VP矩阵替代相机矩阵） */
+    void renderShadow(VkCommandBuffer commandBuffer, VkPipelineLayout pipelineLayout,
+                      const glm::mat4& lightView, const glm::mat4& lightProj) const;
+
     /**
      * @brief 设置地形高度采样器（注入外部高度查询委托，如 TerrainRenderer::getHeight）
      * @param sampler 输入世界坐标 x,z，返回该点地形高度 Y
