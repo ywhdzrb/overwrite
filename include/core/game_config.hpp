@@ -26,6 +26,7 @@ struct RendererConfig {
     bool dayNightCycle = true;                  // 是否启用昼夜循环（false 则固定为 sunDirection）
     bool shadowEnabled = true;                  // 是否启用方向光阴影映射
     uint32_t shadowMapSize = 2048;              // 阴影贴图分辨率
+    bool fullscreen = false;                    // 是否以全屏模式启动
 };
 
 /// 游戏全局配置，从 JSON 文件加载所有可调参数
@@ -106,6 +107,7 @@ struct GameConfig {
                 cfg.renderer.dayNightCycle = r.value("day_night_cycle", cfg.renderer.dayNightCycle);
                 cfg.renderer.shadowEnabled = r.value("shadow_enabled", cfg.renderer.shadowEnabled);
                 cfg.renderer.shadowMapSize = r.value("shadow_map_size", cfg.renderer.shadowMapSize);
+                cfg.renderer.fullscreen = r.value("fullscreen", cfg.renderer.fullscreen);
             }
         } catch (const std::exception& e) {
             Logger::error("解析配置文件失败: " + std::string(e.what()) + "，使用默认参数");

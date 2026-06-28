@@ -54,14 +54,45 @@ void Renderer::run(bool skipInit) {
 }
 
 // 初始化窗口
-// 使用GLFW创建窗口并设置回调
+// 使用GLFW创建窗口，从配置文件读取全屏标志
 void Renderer::initWindow() {
     glfwInit();
     
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
     glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);  // 暂时禁用窗口大小调整
     
-    window_ = glfwCreateWindow(windowWidth_, windowHeight_, windowTitle_.c_str(), nullptr, nullptr);
+    // 提前读取配置文件中的全屏标志，决定窗口创建模式
+    bool configFullscreen = false;
+    {
+        std::ifstream configFile(AssetPaths::GAME_CONFIG);
+        if (configFile.is_open()) {
+            try {
+                nlohmann::json j;
+                configFile >> j;
+                configFullscreen = j["renderer"].value("fullscreen", false);
+            } catch (...) {
+                // 解析失败使用默认值（窗口模式）
+            }
+        }
+    }
+    fullscreen_ = configFullscreen;
+    
+    if (fullscreen_) {
+        // 全屏模式：获取主显示器分辨率创建全屏窗口
+        GLFWmonitor* monitor = glfwGetPrimaryMonitor();
+        if (monitor) {
+            const GLFWvidmode* mode = glfwGetVideoMode(monitor);
+            windowWidth_ = mode->width;
+            windowHeight_ = mode->height;
+            window_ = glfwCreateWindow(windowWidth_, windowHeight_, windowTitle_.c_str(), monitor, nullptr);
+        } else {
+            // 找不到显示器，回退到窗口模式
+            fullscreen_ = false;
+            window_ = glfwCreateWindow(windowWidth_, windowHeight_, windowTitle_.c_str(), nullptr, nullptr);
+        }
+    } else {
+        window_ = glfwCreateWindow(windowWidth_, windowHeight_, windowTitle_.c_str(), nullptr, nullptr);
+    }
     
     if (!window_) {
         throw std::runtime_error("failed to create GLFW window!");
@@ -70,6 +101,40 @@ void Renderer::initWindow() {
     glfwSetWindowUserPointer(window_, this);
     // 暂时不设置帧缓冲区大小回调
     // glfwSetFramebufferSizeCallback(window, framebufferResizeCallback);
+}
+
+// 切换全屏/窗口模式
+// 使用 glfwSetWindowMonitor 切换，全屏时采用主显示器分辨率
+void Renderer::toggleFullscreen() {
+    if (fullscreen_) {
+        // 切换到窗口模式（取当前分辨率的 80% 作为窗口大小，居中显示）
+        int newWidth = static_cast<int>(windowWidth_ * 0.8f);
+        int newHeight = static_cast<int>(windowHeight_ * 0.8f);
+        if (newWidth < 640) newWidth = 800;
+        if (newHeight < 480) newHeight = 600;
+        int xpos = (windowWidth_ - newWidth) / 2;
+        int ypos = (windowHeight_ - newHeight) / 2;
+        glfwSetWindowMonitor(window_, nullptr, xpos, ypos, newWidth, newHeight, GLFW_DONT_CARE);
+        windowWidth_ = newWidth;
+        windowHeight_ = newHeight;
+        fullscreen_ = false;
+        Logger::info("[Renderer] 切换到窗口模式: " + std::to_string(newWidth) + "x" + std::to_string(newHeight));
+    } else {
+        // 切换到全屏模式
+        GLFWmonitor* monitor = glfwGetPrimaryMonitor();
+        if (!monitor) {
+            Logger::warning("[Renderer] 找不到显示器，无法切换全屏");
+            return;
+        }
+        const GLFWvidmode* mode = glfwGetVideoMode(monitor);
+        glfwSetWindowMonitor(window_, monitor, 0, 0, mode->width, mode->height, mode->refreshRate);
+        windowWidth_ = mode->width;
+        windowHeight_ = mode->height;
+        fullscreen_ = true;
+        Logger::info("[Renderer] 切换到全屏模式: " + std::to_string(mode->width) + "x" + std::to_string(mode->height));
+    }
+    // 窗口尺寸改变，标记交换链需要重建
+    framebufferResized_ = true;
 }
 
 void Renderer::initVulkan() {
@@ -387,6 +452,15 @@ void Renderer::mainLoop() {
         }
         
         glfwPollEvents();
+
+        // Alt+Enter 切换全屏/窗口模式
+        static bool prevAltEnter = false;
+        bool altEnter = glfwGetKey(window_, GLFW_KEY_ENTER) &&
+                        (glfwGetKey(window_, GLFW_KEY_LEFT_ALT) || glfwGetKey(window_, GLFW_KEY_RIGHT_ALT));
+        if (altEnter && !prevAltEnter) {
+            toggleFullscreen();
+        }
+        prevAltEnter = altEnter;
 
         // 第一帧后捕获鼠标
         if (firstFrame) {

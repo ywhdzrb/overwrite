@@ -102,6 +102,9 @@ public:
     /** @brief 清理所有资源，按依赖逆序 */
     void cleanup();
 
+    /** @brief 切换全屏/窗口模式（Alt+Enter） */
+    void toggleFullscreen();
+
     /** @brief 获取 GLFW 窗口指针 */
     GLFWwindow* getWindow() const { return window_; }
 
@@ -215,6 +218,9 @@ private:
 
     // ========== 游戏配置（供 drawFrame 等访问） ==========
     GameConfig gameConfig_;
+
+    // ========== 全屏状态 ==========
+    bool fullscreen_ = false;
 
     // ========== 帧率控制 ==========
     std::chrono::high_resolution_clock::time_point lastTime_;
