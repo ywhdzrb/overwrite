@@ -107,7 +107,7 @@ struct GameConfig {
                 cfg.renderer.dayNightCycle = r.value("day_night_cycle", cfg.renderer.dayNightCycle);
                 cfg.renderer.shadowEnabled = r.value("shadow_enabled", cfg.renderer.shadowEnabled);
                 cfg.renderer.shadowMapSize = r.value("shadow_map_size", cfg.renderer.shadowMapSize);
-                cfg.renderer.fullscreen = r.value("fullscreen", cfg.renderer.fullscreen);
+                cfg.renderer.fullscreen   = r.value("fullscreen",     cfg.renderer.fullscreen);
             }
         } catch (const std::exception& e) {
             Logger::error("解析配置文件失败: " + std::string(e.what()) + "，使用默认参数");

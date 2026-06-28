@@ -91,10 +91,8 @@ void GrassSystem::init(const GrassConfig& cfg, VkRenderPass renderPass,
     }
     createInstanceBuffer(config_.maxBlades);
 
-    // 生成初始区块（以原点为中心）
-    updateChunks(glm::vec3(0.0f));
-
-    Logger::info("[GrassSystem] 初始化完成, " + std::to_string(totalLoadedBlades_) + " 根草茎");
+    // 初始区块由首次 update() 根据玩家实际位置加载，避免原点预加载浪费
+    Logger::info("[GrassSystem] 初始化完成");
     initialized_ = true;
 }
 
@@ -317,7 +315,7 @@ std::vector<GrassInstanceData> GrassSystem::generateChunkBlades(
     std::uniform_real_distribution<float> jitter(-0.3f, 0.3f);
 
     for (int i = 0; i < count; i++) {
-        for (int attempt = 0; attempt < 8; attempt++) {
+        for (int attempt = 0; attempt < 4; attempt++) {
             float wx = worldX0 + posOffset(rng) + jitter(rng);
             float wz = worldZ0 + posOffset(rng) + jitter(rng);
             float y = heightSampler_ ? heightSampler_(wx, wz) : 0.0f;
@@ -436,13 +434,38 @@ std::vector<GrassInstanceData> GrassSystem::generateChunkBlades(
 }
 
 void GrassSystem::updateChunks(const glm::vec3& playerPos) {
+    bool newChunksLoaded = false;
+
+    // Step 0: 收集上一帧未完成的区块生成结果（非阻塞轮询）
+    auto it = pendingChunkFutures_.begin();
+    while (it != pendingChunkFutures_.end()) {
+        if (it->wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
+            auto result = it->get();
+            if (chunkData_.count(result.key) == 0) {
+                totalLoadedBlades_ += result.blades.size();
+                chunkData_[result.key] = std::move(result.blades);
+                newChunksLoaded = true;
+            }
+            it = pendingChunkFutures_.erase(it);
+        } else {
+            ++it;
+        }
+    }
+
     int px = static_cast<int>(std::floor(playerPos.x / config_.chunkSize));
     int pz = static_cast<int>(std::floor(playerPos.z / config_.chunkSize));
 
     // 仅在玩家跨越区块边界时更新
     if (chunkPositionInitialized_ && px == lastPlayerChunkX_ && pz == lastPlayerChunkZ_) {
+        // 新区块加载完成后强制触发 LOD 重剔除，确保草立即可见
+        if (newChunksLoaded) {
+            lastCullPlayerPos_ = glm::vec3(99999.0f);
+        }
         return;
     }
+
+    // 玩家跨越了区块边界：清理上一帧未完成的任务（旧位置的结果已无意义）
+    pendingChunkFutures_.clear();
     lastPlayerChunkX_ = px;
     lastPlayerChunkZ_ = pz;
     chunkPositionInitialized_ = true;
@@ -457,17 +480,16 @@ void GrassSystem::updateChunks(const glm::vec3& playerPos) {
     }
 
     // 卸载超出范围的区块
-    for (auto it = chunkData_.begin(); it != chunkData_.end(); ) {
-        if (!keep.count(it->first)) {
-            totalLoadedBlades_ -= it->second.size();
-            it = chunkData_.erase(it);
+    for (auto itc = chunkData_.begin(); itc != chunkData_.end(); ) {
+        if (!keep.count(itc->first)) {
+            totalLoadedBlades_ -= itc->second.size();
+            itc = chunkData_.erase(itc);
         } else {
-            ++it;
+            ++itc;
         }
     }
 
     // 加载新进入范围的区块（按距离从近到远排序，确保玩家附近优先）
-    // 且使用 std::async 并行生成，减少帧时间抖动
     std::vector<GrassChunkKey> sortedKeys;
     sortedKeys.reserve(keep.size());
     for (const auto& k : keep) sortedKeys.push_back(k);
@@ -491,16 +513,7 @@ void GrassSystem::updateChunks(const glm::vec3& playerPos) {
     }
 
     if (!newKeys.empty()) {
-        // 并行生成区块数据（线程安全：generateChunkBlades 不修改 chunkData_）
-        struct GenResult {
-            GrassChunkKey key;
-            std::vector<GrassInstanceData> blades;
-        };
-        std::vector<std::future<GenResult>> futures;
-        futures.reserve(newKeys.size());
-
         // 主线程预先查询邻近树/石位置，按区块中心分组传递（线程安全：主线程独占）
-        // 邻近查询半径：最大影响距离 ≈ 树冠茂盛区 boostR 上限 (3.5*maxScale*1.6 ≈ 11m)
         const float proximityRadius = 15.0f;
         std::vector<std::vector<std::pair<glm::vec3, float>>> treeDataPerKey(newKeys.size());
         std::vector<std::vector<std::pair<glm::vec3, float>>> stoneDataPerKey(newKeys.size());
@@ -514,12 +527,13 @@ void GrassSystem::updateChunks(const glm::vec3& playerPos) {
             }
         }
 
+        // 并行提交所有区块生成任务，全部通过 pending futures 异步收集
         for (size_t ki = 0; ki < newKeys.size(); ki++) {
             const auto& key = newKeys[ki];
             auto nearbyTrees = std::move(treeDataPerKey[ki]);
             auto nearbyStones = std::move(stoneDataPerKey[ki]);
             auto lightDir = lightDir_;
-            futures.push_back(threadPool_.enqueue(
+            pendingChunkFutures_.push_back(threadPool_.enqueue(
                 [this, key, nearbyTrees = std::move(nearbyTrees),
                  nearbyStones = std::move(nearbyStones), lightDir]() -> GenResult {
                     std::mt19937 chunkGen(key.x * 100000 + key.z);
@@ -527,13 +541,12 @@ void GrassSystem::updateChunks(const glm::vec3& playerPos) {
                                                      nearbyTrees, nearbyStones, lightDir)};
                 }));
         }
+        // 不设 newChunksLoaded—数据尚未就绪，由后续帧的 pending 轮询负责
+    }
 
-        // 主线程依次插入结果
-        for (auto& f : futures) {
-            auto result = f.get();
-            totalLoadedBlades_ += result.blades.size();
-            chunkData_[result.key] = std::move(result.blades);
-        }
+    // 新区块加载完成后强制触发 LOD 重剔除
+    if (newChunksLoaded) {
+        lastCullPlayerPos_ = glm::vec3(99999.0f);
     }
 }
 

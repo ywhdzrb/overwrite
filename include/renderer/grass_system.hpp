@@ -10,6 +10,7 @@
 #include <functional>
 #include <string>
 #include <random>
+#include <future>
 #include <cstddef>
 #include "utils/thread_pool.hpp"
 
@@ -389,6 +390,17 @@ private:
     // 状态
     bool created_ = false;
     bool initialized_ = false;
+
+    // ========== 跨帧区块加载 ==========
+
+    /** @brief 区块生成任务的返回类型 */
+    struct GenResult {
+        GrassChunkKey key;
+        std::vector<GrassInstanceData> blades;
+    };
+
+    /** @brief 上一帧未完成的区块生成任务 */
+    std::vector<std::future<GenResult>> pendingChunkFutures_;
 
     // 固定线程池：替代 std::async，复用线程避免每帧创建销毁
     ThreadPool threadPool_;
