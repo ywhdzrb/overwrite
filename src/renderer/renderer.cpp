@@ -133,8 +133,18 @@ void Renderer::toggleFullscreen() {
         fullscreen_ = true;
         Logger::info("[Renderer] 切换到全屏模式: " + std::to_string(mode->width) + "x" + std::to_string(mode->height));
     }
+    // 更新相机投影矩阵的宽高比
+    if (gameSession_ && gameSession_->getCamera()) {
+        gameSession_->getCamera()->setWindowSize(windowWidth_, windowHeight_);
+    }
+
     // 窗口尺寸改变，标记交换链需要重建
     framebufferResized_ = true;
+
+    // 全屏切换后重新捕获鼠标（GLFW 可能因焦点事件重置光标模式）
+    if (fullscreen_ && gameSession_ && gameSession_->getInput()) {
+        gameSession_->getInput()->setCursorCaptured(true);
+    }
 }
 
 void Renderer::initVulkan() {

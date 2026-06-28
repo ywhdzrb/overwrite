@@ -113,6 +113,9 @@ public:
     
     void setThirdPersonDistance(float d) noexcept { thirdPersonDistance_ = d; }
     [[nodiscard]] float getThirdPersonDistance() const noexcept { return thirdPersonDistance_; }
+
+    /** @brief 更新窗口尺寸（窗口resize/全屏切换后调用，更新投影矩阵宽高比） */
+    void setWindowSize(int w, int h) noexcept { windowWidth_ = w; windowHeight_ = h; }
     
     [[nodiscard]] const Frustum& getFrustum() const noexcept { return frustum_; }
     void updateFrustum() noexcept;
