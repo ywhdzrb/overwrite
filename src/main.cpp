@@ -104,22 +104,6 @@ int main() {
             [&]() { renderer.cleanup(); }
         );
 
-#ifdef BUILD_TYPE_UNKNOWN
-        // 8. 彩蛋服务：模拟初始化失败 → 实际成功，关闭时标记强制清理
-        lifecycle.registerService("EasterEgg", {},
-            [&]() -> bool {
-                owengine::Logger::error("????????初始化失败");
-                std::this_thread::sleep_for(std::chrono::milliseconds(2011));
-                std::cout << "\033[A\r\033[K" << std::flush;
-                owengine::Logger::info("????????初始化成功");
-                return true;
-            },
-            [&]() {
-                owengine::Logger::error("[LifecycleManager] ????????关闭失败，正在强制清理");
-            }
-        );
-#endif
-
         // ---- 按依赖拓扑顺序初始化 ----
         if (!lifecycle.initialize()) {
             owengine::Logger::error("引擎启动失败");
@@ -132,23 +116,10 @@ int main() {
         // ---- 关闭（按逆序自动清理） ----
         lifecycle.shutdown();
 
-#ifdef BUILD_TYPE_UNKNOWN
-        std::this_thread::sleep_for(std::chrono::duration<double>(1.0606));
-        owengine::Logger::error("可能是因为构建类型为 unknown，导致程序无法正常退出出出出出出出出出.出..出出出......");
-        std::this_thread::sleep_for(std::chrono::duration<double>(1.0901));
-        owengine::Logger::error("程序被意外结束，这可能是bug,请报告给开发者.......");
-        std::this_thread::sleep_for(std::chrono::seconds(14));
-        owengine::Logger::info("不要走.......");
-        return EXIT_FAILURE;
-#endif
-
         owengine::Logger::info("Application closed successfully");
     } catch (const std::exception& e) {
         owengine::Logger::error(std::string("Error: ") + e.what());
         return EXIT_FAILURE;
     }
-
-#ifndef BUILD_TYPE_UNKNOWN
     return EXIT_SUCCESS;
-#endif
 }

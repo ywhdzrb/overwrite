@@ -18,17 +18,6 @@ if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Release)
 endif()
 
-# 注册 unknown 构建类型，让 CMake 完全接受此值
-set(CMAKE_CXX_FLAGS_UNKNOWN "${CMAKE_CXX_FLAGS_RELEASE}")
-
-if(CMAKE_BUILD_TYPE STREQUAL "unknown")
-    string(TIMESTAMP CURRENT_HOUR "%H")
-    if(CURRENT_HOUR GREATER_EQUAL 20 OR CURRENT_HOUR LESS 1)
-        message("")
-        message("不要忘记我，我在未来等你 。   by 爱你的@%#$...")
-        message("")
-    endif()
-endif()
 
 # 编译选项
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
@@ -302,11 +291,6 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
     tinyobjloader
     vma
 )
-
-# 当构建类型为 unknown 时，定义宏让程序在退出时输出错误信息
-if(CMAKE_BUILD_TYPE STREQUAL "unknown")
-    target_compile_definitions(${PROJECT_NAME} PRIVATE BUILD_TYPE_UNKNOWN)
-endif()
 
 # 预编译头（加速编译：将 Vulkan/GLM/STL 等稳定大头部提前编译）
 target_precompile_headers(${PROJECT_NAME} PRIVATE
