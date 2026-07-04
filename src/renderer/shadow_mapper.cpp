@@ -3,6 +3,7 @@
 #include "renderer/shadow_mapper.hpp"
 #include "core/vulkan_device.hpp"
 #include "utils/logger.hpp"
+#include "utils/vk_result.hpp"
 #include <fstream>
 #include <vector>
 #include <array>
@@ -478,6 +479,17 @@ void ShadowMapper::createPipeline() {
     pcRange.offset = 0;
     pcRange.size = 240;
 
+    // 查询设备 maxPushConstantsSize 限制，超限时截断（与 VulkanPipeline::create() 同理）
+    VkPhysicalDeviceProperties pcProps;
+    vkGetPhysicalDeviceProperties(device_->getPhysicalDevice(), &pcProps);
+    uint32_t pcLimit = pcProps.limits.maxPushConstantsSize;
+    if (pcRange.size > pcLimit) {
+        Logger::warning("[ShadowMapper] PushConstants size " + std::to_string(pcRange.size)
+                        + " exceeds device limit of " + std::to_string(pcLimit)
+                        + ". Clamping to limit - shadow rendering may be incorrect.");
+        pcRange.size = pcLimit;
+    }
+
     VkPipelineLayoutCreateInfo plInfo{};
     plInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
     // 包含与主管线相同的描述符集布局，确保子渲染器调用 vkCmdBindDescriptorSets 时不会崩溃
@@ -490,7 +502,7 @@ void ShadowMapper::createPipeline() {
     if (_vr != VK_SUCCESS) {
         vkDestroyShaderModule(dev, vertModule, nullptr);
         vkDestroyShaderModule(dev, fragModule, nullptr);
-        throw std::runtime_error("[ShadowMapper] 创建管线布局失败");
+        throw std::runtime_error("[ShadowMapper] 创建管线布局失败：" + vkResultToString(_vr));
     }
 
     // ===== 创建图形管线 =====

@@ -1,6 +1,3 @@
-# OverWrite 游戏引擎 — 编辑器配置
-# 顶层配置文件
-
 root = true
 
 [*]

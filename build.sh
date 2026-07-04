@@ -1,10 +1,5 @@
 #!/bin/bash
 
-# OverWrite Build Script
-# 前后端分离架构构建脚本
-#
-# 依赖管理：依赖通过 Git Submodule 管理，首次构建前执行 git submodule update --init --recursive。
-#
 # Usage:
 #   ./build.sh              # 默认构建 release 版本
 #   ./build.sh release      # 构建 release 版本
@@ -16,14 +11,62 @@
 #   ./build.sh test         # 构建并运行单元测试（需联网下载 GTest）
 #   ./build.sh package      # 打包为可分发 tar.xz
 #   ./build.sh dashboard    # 生成项目综合仪表盘（Python3 + matplotlib）
+#   ./build.sh unknown      # 构建？？？错误...
 
 # Colors for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-CYAN='\033[0;36m'
-NC='\033[0m' # No Color
+RED=$'\033[0;31m'
+GREEN=$'\033[0;32m'
+YELLOW=$'\033[1;33m'
+BLUE=$'\033[0;34m'
+CYAN=$'\033[0;36m'
+NC=$'\033[0m'
+
+typewriter() {
+    local text="$1"
+    local color="$2"
+    local delay="${3:-0.05}"
+    printf "%s" "$color"
+    for (( i=0; i<${#text}; i++ )); do
+        printf "%s" "${text:i:1}"
+        sleep "$delay"
+    done
+    printf "%s" "$NC"          # 重置颜色，不换行
+}
+
+
+glitch_effect() {
+    local duration="${1:-1.0}"
+    local cols=$(tput cols)
+    local bg_colors=(41 42 43 44 45 46 47 101 102 103 104 105 106 107)
+
+    tput civis                  # 隐藏光标
+    tput cr                     # 回车到行首（当前行）
+
+    if command -v bc &>/dev/null; then
+        local end_time=$(bc <<< "$(date +%s.%N) + $duration")
+        while (( $(bc <<< "$(date +%s.%N) < $end_time") )); do
+            local col=$(( RANDOM % cols ))
+            tput hpa "$col"      # 水平移动到随机列（行不变）
+            local bg=${bg_colors[RANDOM % ${#bg_colors[@]}]}
+            printf "\033[%sm  \033[0m" "$bg"   # 两个空格作为色块
+            sleep 0.03
+        done
+    else
+        # 降级：固定循环约 1 秒（50 次 × 0.02 秒）
+        for ((i=0; i<50; i++)); do
+            local col=$(( RANDOM % cols ))
+            tput hpa "$col"
+            local bg=${bg_colors[RANDOM % ${#bg_colors[@]}]}
+            printf "\033[%sm  \033[0m" "$bg"
+            sleep 0.02
+        done
+    fi
+
+    tput cr                     # 回到行首
+    tput el                     # 清除整行（从行首到行尾）
+    tput cnorm                  # 恢复光标显示
+}
+# =====================================================================
 
 # 默认构建类型和目标
 BUILD_TYPE="Release"
@@ -34,7 +77,7 @@ BUILD_TESTS="OFF"
 MODE="build"
 
 # 版本号
-VERSION="$(cat VERSION 2>/dev/null || echo '0.1.1-beta')"
+VERSION="$(cat VERSION 2>/dev/null || echo 'unknown')"
 ORIG_DIR="$(pwd)"
 
 # ====================== 打包函数 ======================
@@ -126,6 +169,13 @@ for arg in "$@"; do
             exit 0
             ;;
         run|Run)
+            if [ -f "${ORIG_DIR}/build/OverWrite" ]; then
+                echo -e "${BLUE}发现已有编译结果，直接运行...${NC}"
+                cd "${ORIG_DIR}"
+                unset GLFW_PLATFORM
+                ./build/OverWrite
+                exit $?
+            fi
             RUN_AFTER_BUILD=true
             ;;
         run-server|server)
@@ -173,6 +223,13 @@ echo "  test         构建并运行单元测试"
             echo -e "  ${CYAN}overwrite-server${NC} - 服务端（WebSocket）"
             echo ""
             exit 0
+            ;;
+        unknown)
+            typewriter "警告：未知构建类型，将使用默认值 release" "$YELLOW"
+            glitch_effect
+            typewriter "一切正常，继续构建..." "$YELLOW"
+            echo -e "\n"
+            BUILD_TYPE="unknown"
             ;;
         *)
             echo -e "${RED}Unknown option: $arg${NC}"
