@@ -86,8 +86,9 @@ void Input::update() {
     // 检测"刚刚按下"状态（在这一帧开始时）
     jumpJustPressed_ = isKeyJustPressed(GLFW_KEY_SPACE);
     
-    // 在帧结束时，将当前状态保存到 previousKeys_（为下一帧做准备）
-    updatePreviousStates();
+    // 注意：updatePreviousStates() 已被移出此处，
+    // 改为在 glfwPollEvents() 之前由调用方主动调用，
+    // 确保 isKeyJustPressed 在按键第一帧正确返回 true。
 }
 
 void Input::resetJustPressedFlags() noexcept {

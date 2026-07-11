@@ -56,6 +56,9 @@ public:
     
     // 重置"刚刚按下"标志（在帧结束时调用）
     void resetJustPressedFlags() noexcept;
+
+    /** @brief 保存当前状态到"上一帧"快照（必须在 glfwPollEvents 之前调用） */
+    void updatePreviousStates() noexcept;
     
     // 便捷方法：常用的按键状态
     [[nodiscard]] bool isForwardPressed() const noexcept { return keys_[GLFW_KEY_W] || keys_[GLFW_KEY_UP]; }
@@ -70,9 +73,6 @@ public:
     }
 
 private:
-    // 更新上一帧的状态
-    void updatePreviousStates() noexcept;
-    
     // 手动检查鼠标移动（用于禁用模式）
     void checkMouseMovement() noexcept;
     

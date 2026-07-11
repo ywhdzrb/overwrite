@@ -400,6 +400,11 @@ void Renderer::mainLoop() {
             setMsaaSamples(pendingMsaaSamples_);
         }
         
+        // 必须在 glfwPollEvents 之前快照上一帧状态，确保 isKeyJustPressed 正确
+        if (gameSession_ && gameSession_->getInput()) {
+            gameSession_->getInput()->updatePreviousStates();
+        }
+
         glfwPollEvents();
 
         // 第一帧后捕获鼠标
