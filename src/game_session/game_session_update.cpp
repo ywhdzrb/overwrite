@@ -339,15 +339,14 @@ void GameSession::injectCollisionBoxes(const glm::vec3& playerPos) {
                 float dz = transComp.position.z - playerPos.z;
                 if (dx * dx + dz * dz > 25.0f * 25.0f) continue;
 
-                float r = 0.4f;
-                float h = 0.8f;
+                glm::vec3 boxSize = furnaceCollisionSize_;
                 glm::vec3 boxPos = transComp.position;
-                boxPos.y += PLAYER_Y_OFFSET;
-                moveSys->addCollisionBox(boxPos, glm::vec3(r * 2, h, r * 2));
+                boxPos.y += boxSize.y * 0.5f;
+                moveSys->addCollisionBox(boxPos, boxSize);
                 if (physSys) {
                     glm::vec3 physPos = transComp.position;
-                    physPos.y += h * 0.5f;
-                    physSys->addCollisionBox(physPos, glm::vec3(r * 2, h, r * 2));
+                    physPos.y += boxSize.y * 0.5f;
+                    physSys->addCollisionBox(physPos, boxSize);
                 }
             }
         }

@@ -74,6 +74,22 @@ void GameSession::init(const GameSessionInitParams& params) {
     // 加载玩家模型
     loadPlayerModels();
 
+    // 预加载熔炉模型并获取实际包围盒尺寸（用于碰撞箱）
+    {
+        auto* furnaceModel = modelCache_->getOrLoadModel("assets/models/furnace.glb");
+        if (furnaceModel) {
+            auto bbox = furnaceModel->getBoundingBox();
+            glm::vec3 size = bbox.second - bbox.first;
+            if (size.x > 0.01f && size.y > 0.01f && size.z > 0.01f) {
+                furnaceCollisionSize_ = size;
+                Logger::info("[Furnace] 模型实际尺寸: (" +
+                             std::to_string(size.x) + ", " +
+                             std::to_string(size.y) + ", " +
+                             std::to_string(size.z) + ")");
+            }
+        }
+    }
+
     // 从现有树/石系统填充资源节点
     resourceNodeSystem_.init(treeSystem_, stoneSystem_);
 
