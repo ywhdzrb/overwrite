@@ -340,7 +340,7 @@ void GameSession::injectCollisionBoxes(const glm::vec3& playerPos) {
                 if (dx * dx + dz * dz > 25.0f * 25.0f) continue;
 
                 float r = 0.4f;
-                float h = 1.0f;
+                float h = 0.8f;
                 glm::vec3 boxPos = transComp.position;
                 boxPos.y += PLAYER_Y_OFFSET;
                 moveSys->addCollisionBox(boxPos, glm::vec3(r * 2, h, r * 2));
