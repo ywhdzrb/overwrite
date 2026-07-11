@@ -325,6 +325,34 @@ void GameSession::injectCollisionBoxes(const glm::vec3& playerPos) {
         }
     }
 
+    // 查询玩家附近 ECS 静态实体（熔炉等）
+    {
+        auto* registry = ecsClientWorld_->getRegistry();
+        if (registry) {
+            auto ecsView = registry->view<ecs::EntityTypeComponent, ecs::TransformComponent>();
+            for (auto entity : ecsView) {
+                const auto& typeComp = ecsView.get<ecs::EntityTypeComponent>(entity);
+                if (typeComp.type != ecs::EntityType::Furnace) continue;
+
+                const auto& transComp = ecsView.get<ecs::TransformComponent>(entity);
+                float dx = transComp.position.x - playerPos.x;
+                float dz = transComp.position.z - playerPos.z;
+                if (dx * dx + dz * dz > 25.0f * 25.0f) continue;
+
+                float r = 0.4f;
+                float h = 1.0f;
+                glm::vec3 boxPos = transComp.position;
+                boxPos.y += PLAYER_Y_OFFSET;
+                moveSys->addCollisionBox(boxPos, glm::vec3(r * 2, h, r * 2));
+                if (physSys) {
+                    glm::vec3 physPos = transComp.position;
+                    physPos.y += h * 0.5f;
+                    physSys->addCollisionBox(physPos, glm::vec3(r * 2, h, r * 2));
+                }
+            }
+        }
+    }
+
     // 查询玩家附近石头
     if (stoneSystem_) {
         auto stones = stoneSystem_->queryPositions(playerPos.x, playerPos.z, 25.0f);
