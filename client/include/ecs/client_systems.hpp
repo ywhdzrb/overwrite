@@ -1,9 +1,20 @@
 #pragma once
 
-#include <entt/entt.hpp>
-#include <GLFW/glfw3.h>
+/**
+ * @file client_systems.hpp
+ * @brief 客户端 ECS 系统声明 — 相机控制/输入同步/动画
+ *
+ * 归属模块：client/ecs
+ * 核心职责：定义客户端独占的 ECS 系统类
+ * 依赖关系：entt, 共享 systems.hpp, IGameWorld
+ */
+
 #include <memory>
+
+#include <GLFW/glfw3.h>
+#include <entt/entt.hpp>
 #include <glm/glm.hpp>
+
 #include "ecs/client_components.hpp"
 #include "ecs/systems.hpp"  // 共享系统
 #include "ecs/i_game_world.hpp"  // 游戏世界接口
@@ -181,7 +192,7 @@ private:
     std::unique_ptr<MovementSystem> movementSystem_;
     std::unique_ptr<PhysicsSystem> physicsSystem_;
     std::unique_ptr<client::NetworkSystem> networkSystem_;
-    std::unique_ptr<ServerDiscoveryScanner> discoveryScanner_;
+    std::unique_ptr<network::ServerDiscoveryScanner> discoveryScanner_;
     int viewportWidth_{800};
     int viewportHeight_{600};
     bool isFlying_ = false;

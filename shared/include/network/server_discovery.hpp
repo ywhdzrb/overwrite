@@ -21,7 +21,7 @@
 #define SOCKET_ERROR -1
 #endif
 
-namespace owengine {
+namespace owengine::network {
 
 /**
  * @brief 服务器发现广播器（服务端）
@@ -102,4 +102,4 @@ private:
     static constexpr int STALE_TIMEOUT_MS = 3000;
 };
 
-} // namespace owengine
+} // namespace owengine::network

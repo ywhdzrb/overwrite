@@ -1,5 +1,14 @@
 #pragma once
 
+/**
+ * @file camera_controller_system.hpp
+ * @brief 相机控制器系统 — 从 ECS InputState 驱动相机位置/视角
+ *
+ * 归属模块：client/ecs
+ * 核心职责：将 InputStateComponent 映射为 Camera 更新
+ * 依赖关系：Camera 类, ClientWorld
+ */
+
 #include <entt/entt.hpp>
 #include <glm/glm.hpp>
 #include "ecs/client_components.hpp"

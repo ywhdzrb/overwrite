@@ -1,5 +1,14 @@
 #pragma once
 
+/**
+ * @file i_game_entity.hpp
+ * @brief 游戏实体接口 — 实体属性/组件访问/物品栏/背包
+ *
+ * 归属模块：ecs
+ * 核心职责：定义 IGameEntity 抽象接口，解耦 ECS 实现细节
+ * 关键设计：PIMPL 隐藏 entt::entity 内部实现
+ */
+
 // 标准库
 #include <memory>
 #include <string>

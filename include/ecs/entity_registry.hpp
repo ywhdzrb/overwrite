@@ -1,5 +1,14 @@
 #pragma once
 
+/**
+ * @file entity_registry.hpp
+ * @brief ECS 实体注册表 — 封装 entt::registry 生命周期管理
+ *
+ * 归属模块：ecs
+ * 核心职责：管理所有游戏实体的创建/查询/销毁
+ * 依赖关系：entt, EntityFactory
+ */
+
 // 标准库
 #include <memory>
 #include <string>

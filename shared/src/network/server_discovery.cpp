@@ -19,7 +19,7 @@ typedef int socklen_t;
 #include <fcntl.h>
 #endif
 
-namespace owengine {
+namespace owengine::network {
 
 using json = nlohmann::json;
 
@@ -335,4 +335,4 @@ void ServerDiscoveryScanner::handleBroadcast(const std::string& message, const s
     }
 }
 
-} // namespace owengine
+} // namespace owengine::network

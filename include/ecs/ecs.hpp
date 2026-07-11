@@ -1,7 +1,13 @@
 #pragma once
 
-// ECS 模块主头文件
-// 包含所有共享 ECS 接口，客户端专用头文件需单独包含
+/**
+ * @file ecs.hpp
+ * @brief ECS 模块主头文件 — 聚合共享 ECS 组件/系统/资源类型
+ *
+ * 归属模块：ecs
+ * 核心职责：一键包含所有共享 ECS 接口
+ * 关键设计：客户端专用组件需单独包含 client_components.hpp
+ */
 
 // 共享 ECS（shared library）
 #include "ecs/components.hpp"

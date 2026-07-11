@@ -14,11 +14,11 @@ namespace owengine {
  * 低于该级别的日志将被过滤掉。
  */
 enum class LogLevel : int {
-    DEBUG   = 0,
-    INFO    = 1,
-    WARNING = 2,
-    ERROR   = 3,
-    FATAL   = 4,  // 不可恢复错误，输出到 stderr，触发 abort
+    Debug   = 0,
+    Info    = 1,
+    Warning = 2,
+    Error   = 3,
+    Fatal   = 4,  // 不可恢复错误，输出到 stderr，触发 abort
 };
 
 /**
@@ -31,7 +31,7 @@ enum class LogLevel : int {
  * 
  * 使用示例：
  * @code
- * Logger::setMinLevel(LogLevel::INFO);   // 过滤 DEBUG
+ * Logger::setMinLevel(LogLevel::Info);   // 过滤 Debug
  * Logger::debug("这个不会输出");           // 被过滤
  * Logger::info("查看所有光源已加载");       // 输出
  * @endcode

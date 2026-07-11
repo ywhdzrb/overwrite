@@ -1,11 +1,22 @@
 #pragma once
 
+/**
+ * @file i_game_world.hpp
+ * @brief 游戏世界接口 — ECS 世界容器/玩家管理/查询
+ *
+ * 归属模块：ecs
+ * 核心职责：定义 IGameWorld 抽象接口，客户端/服务端共享
+ * 依赖关系：entt, Camera, 共享组件
+ */
+
+#include <cstdint>
+#include <functional>
 #include <string>
 #include <vector>
-#include <functional>
-#include <cstdint>
-#include <glm/glm.hpp>
+
 #include <entt/entt.hpp>
+#include <glm/glm.hpp>
+
 #include "core/camera.hpp"
 
 // 前向声明

@@ -1,7 +1,7 @@
 #pragma once
 
 /**
- * @file input.h
+ * @file input.hpp
  * @brief 输入模块 — 键盘/鼠标状态管理、按键按下/释放/刚刚按下检测
  *
  * 归属模块：core

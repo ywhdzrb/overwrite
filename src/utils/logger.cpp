@@ -5,7 +5,7 @@
 
 namespace owengine {
 
-std::atomic<LogLevel> Logger::minLevel_{LogLevel::DEBUG};
+std::atomic<LogLevel> Logger::minLevel_{LogLevel::Debug};
 std::ostream* Logger::outputStream_ = &std::cout;
 
 void Logger::setMinLevel(LogLevel level) {
@@ -32,19 +32,19 @@ void Logger::log(LogLevel level, const std::string& message) {
 }
 
 void Logger::debug(const std::string& message) {
-    log(LogLevel::DEBUG, message);
+    log(LogLevel::Debug, message);
 }
 
 void Logger::info(const std::string& message) {
-    log(LogLevel::INFO, message);
+    log(LogLevel::Info, message);
 }
 
 void Logger::warning(const std::string& message) {
-    log(LogLevel::WARNING, message);
+    log(LogLevel::Warning, message);
 }
 
 void Logger::error(const std::string& message) {
-    log(LogLevel::ERROR, message);
+    log(LogLevel::Error, message);
 }
 
 void Logger::fatal(const std::string& message) {
@@ -56,11 +56,11 @@ void Logger::fatal(const std::string& message) {
 
 std::string Logger::getLevelString(LogLevel level) {
     switch (level) {
-        case LogLevel::DEBUG:   return "DEBUG";
-        case LogLevel::INFO:    return "INFO";
-        case LogLevel::WARNING: return "WARNING";
-        case LogLevel::ERROR:   return "ERROR";
-        case LogLevel::FATAL:   return "FATAL";
+        case LogLevel::Debug:   return "DEBUG";
+        case LogLevel::Info:    return "INFO";
+        case LogLevel::Warning: return "WARNING";
+        case LogLevel::Error:   return "ERROR";
+        case LogLevel::Fatal:   return "FATAL";
         default:                return "UNKNOWN";
     }
 }

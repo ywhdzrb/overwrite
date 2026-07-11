@@ -1,10 +1,11 @@
-#include "server/websocket_server.hpp"
-#include "network/protocol.hpp"
-#include "utils/logger.hpp"
-#include <sstream>
 #include <iomanip>
 #include <random>
+#include <sstream>
 #include <vector>
+
+#include "network/protocol.hpp"
+#include "server/websocket_server.hpp"
+#include "utils/logger.hpp"
 
 namespace owengine {
 namespace server {
@@ -56,7 +57,7 @@ void WebSocketGameServer::start() {
                 
                 // 发送欢迎消息
                 json welcome = {
-                    {"t", network::MSG_WELCOME},
+                    {"t", static_cast<int>(network::MessageType::MsgWelcome)},
                     {"type", "welcome"},
                     {"clientId", clientId},
                     {"message", "Welcome to OverWrite Server!"},
@@ -88,7 +89,7 @@ void WebSocketGameServer::start() {
                 if (world_.registry().valid(newPlayerEntity)) {
                     auto& transform = world_.registry().get<ecs::TransformComponent>(newPlayerEntity);
                     json joinMsg = {
-                        {"t", network::MSG_PLAYER_JOIN},
+                        {"t", static_cast<int>(network::MessageType::MsgPlayerJoin)},
                         {"type", "playerJoin"},
                         {"clientId", clientId},
                         {"position", {transform.position.x, transform.position.y, transform.position.z}},
@@ -137,7 +138,7 @@ void WebSocketGameServer::start() {
                             world_.applyPlayerInput(clientId, input, cameraFront, cameraRight);
                             
                             if (onMessage_) {
-                                json cbMsg = {{"t", network::MSG_INPUT}, {"type", "input"}};
+                                json cbMsg = {{"t", static_cast<int>(network::MessageType::MsgInput)}, {"type", "input"}};
                                 onMessage_(clientId, cbMsg);
                             }
                         }
@@ -146,14 +147,14 @@ void WebSocketGameServer::start() {
                         json message = json::parse(msg->str);
                         
                         // 优先读整型 "t" 字段，回退到字符串 "type"
-                        network::MessageType mType = network::MSG_UNKNOWN;
+                        network::MessageType mType = network::MessageType::MsgUnknown;
                         if (message.contains("t") && message["t"].is_number_integer()) {
                             mType = static_cast<network::MessageType>(message["t"].get<int>());
                         } else {
                             mType = network::messageTypeFromName(message.value("type", ""));
                         }
                         
-                        if (mType == network::MSG_INPUT) {
+                        if (mType == network::MessageType::MsgInput) {
                             // JSON 格式输入（向后兼容）
                             ecs::InputStateComponent input;
                             input.setMoveForward(message.value("moveForward", false));
@@ -179,8 +180,8 @@ void WebSocketGameServer::start() {
                             }
                             world_.applyPlayerInput(clientId, input, cameraFront, cameraRight);
                             
-                        } else if (mType == network::MSG_PING) {
-                            webSocket->send(json{{"t", network::MSG_PONG}, {"type", "pong"}, {"time", message.value("time", 0.0)}}.dump());
+                        } else if (mType == network::MessageType::MsgPing) {
+                            webSocket->send(json{{"t", static_cast<int>(network::MessageType::MsgPong)}, {"type", "pong"}, {"time", message.value("time", 0.0)}}.dump());
                         }
                         
                         // 回调
@@ -202,7 +203,7 @@ void WebSocketGameServer::start() {
                 
                 // 广播玩家离开
                 json leaveMsg = {
-                    {"t", network::MSG_PLAYER_LEAVE},
+                    {"t", static_cast<int>(network::MessageType::MsgPlayerLeave)},
                     {"type", "playerLeave"},
                     {"clientId", clientId}
                 };
@@ -233,7 +234,7 @@ void WebSocketGameServer::start() {
     Logger::info("[WebSocketServer] 服务器启动，监听端口: " + std::to_string(port_));
     
     // 启动服务器发现广播
-    discovery_ = std::make_unique<ServerDiscoveryBroadcaster>(port_, "OverWrite Server");
+    discovery_ = std::make_unique<network::ServerDiscoveryBroadcaster>(port_, "OverWrite Server");
     discovery_->start();
 }
 
@@ -334,7 +335,7 @@ void WebSocketGameServer::broadcastState() {
     
     // 构建状态消息
     json stateMsg = {
-        {"t", network::MSG_STATE},
+        {"t", static_cast<int>(network::MessageType::MsgState)},
         {"type", "state"},
         {"players", json::array()}
     };

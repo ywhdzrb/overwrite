@@ -1,5 +1,14 @@
 #pragma once
 
+/**
+ * @file network_system.hpp
+ * @brief 客户端网络系统 — WebSocket 连接/消息队列/远程玩家插值
+ *
+ * 归属模块：client/network
+ * 核心职责：封装 ixwebsocket 客户端，提供线程安全的消息收发
+ * 关键设计：PIMPL 隐藏 ixwebsocket 实现细节；二进制输入消息（32B）替代 JSON
+ */
+
 #include <string>
 #include <functional>
 #include <memory>

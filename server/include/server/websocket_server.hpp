@@ -67,7 +67,7 @@ private:
     
     ix::WebSocketServer server_;
     ServerWorld world_;
-    std::unique_ptr<ServerDiscoveryBroadcaster> discovery_;
+    std::unique_ptr<network::ServerDiscoveryBroadcaster> discovery_;
     std::atomic<bool> running_{false};
     
     // 连接映射

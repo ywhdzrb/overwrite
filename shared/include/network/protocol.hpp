@@ -26,15 +26,15 @@ namespace network {
  * JSON 消息写入 "t" 字段（如 {"t":1, "type":"input", ...}），
  * 接收方优先读取整型 t，回退到字符串 type 保证向后兼容。
  */
-enum MessageType : uint8_t {
-    MSG_UNKNOWN     = 0,
-    MSG_INPUT       = 1,   // C→S 输入同步
-    MSG_PING        = 2,   // C→S 心跳
-    MSG_PONG        = 3,   // S→C 心跳回声
-    MSG_WELCOME     = 4,   // S→C 欢迎 + 客户端ID + 现有玩家
-    MSG_PLAYER_JOIN = 5,   // S→C 新玩家加入
-    MSG_PLAYER_LEAVE= 6,   // S→C 玩家离开
-    MSG_STATE       = 7,   // S→C 状态广播
+enum class MessageType : uint8_t {
+    MsgUnknown     = 0,
+    MsgInput       = 1,   // C→S 输入同步
+    MsgPing        = 2,   // C→S 心跳
+    MsgPong        = 3,   // S→C 心跳回声
+    MsgWelcome     = 4,   // S→C 欢迎 + 客户端ID + 现有玩家
+    MsgPlayerJoin  = 5,   // S→C 新玩家加入
+    MsgPlayerLeave = 6,   // S→C 玩家离开
+    MsgState       = 7,   // S→C 状态广播
 };
 
 // ==================== 二进制输入消息（32 字节） ====================
@@ -46,7 +46,7 @@ enum MessageType : uint8_t {
  * 每帧发送，是网络协议中最高频的消息类型。
  */
 struct InputMessage {
-    uint8_t type;            // = MSG_INPUT
+    uint8_t type;            // = MessageType::MsgInput
     uint8_t buttons;         // 位域: bit0=forward, bit1=backward, bit2=left, bit3=right,
                              //       bit4=jump, bit5=sprint, bit6=spaceHeld, bit7=shiftHeld
     int16_t mouseDeltaX;     // 量化: 2π/65536 ≈ 0.000096 rad/步
@@ -106,7 +106,7 @@ inline std::string packInputMessage(const InputMessage& msg) noexcept {
  */
 inline bool unpackInputMessage(const std::string& data, InputMessage& msg) noexcept {
     if (data.size() < sizeof(InputMessage)) return false;
-    if (static_cast<uint8_t>(data[0]) != MSG_INPUT) return false;
+    if (static_cast<uint8_t>(data[0]) != static_cast<uint8_t>(MessageType::MsgInput)) return false;
     std::memcpy(&msg, data.data(), sizeof(InputMessage));
     return true;
 }
@@ -116,13 +116,13 @@ inline bool unpackInputMessage(const std::string& data, InputMessage& msg) noexc
  */
 inline const char* messageTypeName(MessageType type) noexcept {
     switch (type) {
-        case MSG_INPUT:        return "input";
-        case MSG_PING:         return "ping";
-        case MSG_PONG:         return "pong";
-        case MSG_WELCOME:      return "welcome";
-        case MSG_PLAYER_JOIN:  return "playerJoin";
-        case MSG_PLAYER_LEAVE: return "playerLeave";
-        case MSG_STATE:        return "state";
+        case MessageType::MsgInput:        return "input";
+        case MessageType::MsgPing:         return "ping";
+        case MessageType::MsgPong:         return "pong";
+        case MessageType::MsgWelcome:      return "welcome";
+        case MessageType::MsgPlayerJoin:   return "playerJoin";
+        case MessageType::MsgPlayerLeave:  return "playerLeave";
+        case MessageType::MsgState:        return "state";
         default:               return "unknown";
     }
 }
@@ -131,14 +131,14 @@ inline const char* messageTypeName(MessageType type) noexcept {
  * @brief 字符串类型名 → 枚举值（JSON 向后兼容用）
  */
 inline MessageType messageTypeFromName(const std::string& name) noexcept {
-    if (name == "input")        return MSG_INPUT;
-    if (name == "ping")         return MSG_PING;
-    if (name == "pong")         return MSG_PONG;
-    if (name == "welcome")      return MSG_WELCOME;
-    if (name == "playerJoin")   return MSG_PLAYER_JOIN;
-    if (name == "playerLeave")  return MSG_PLAYER_LEAVE;
-    if (name == "state")        return MSG_STATE;
-    return MSG_UNKNOWN;
+    if (name == "input")        return MessageType::MsgInput;
+    if (name == "ping")         return MessageType::MsgPing;
+    if (name == "pong")         return MessageType::MsgPong;
+    if (name == "welcome")      return MessageType::MsgWelcome;
+    if (name == "playerJoin")   return MessageType::MsgPlayerJoin;
+    if (name == "playerLeave")  return MessageType::MsgPlayerLeave;
+    if (name == "state")        return MessageType::MsgState;
+    return MessageType::MsgUnknown;
 }
 
 } // namespace network

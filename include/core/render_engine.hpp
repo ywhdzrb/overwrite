@@ -1,5 +1,15 @@
 #pragma once
 
+/**
+ * @file render_engine.hpp
+ * @brief 渲染引擎 — 窗口/交换链/管线生命周期顶层编排
+ *
+ * 归属模块：core
+ * 核心职责：管理 GLFW 窗口、Vulkan 交换链、渲染管线创建/销毁
+ * 依赖关系：所有 Vulkan 封装类, GLFW
+ * 关键设计：包含 ImGui 初始化与清理，与主 Renderer 配合工作
+ */
+
 #include <vulkan/vulkan.h>
 #include <vk_mem_alloc.h>
 #include <GLFW/glfw3.h>

@@ -1,7 +1,7 @@
 #pragma once
 
 /**
- * @file thread_pool.h
+ * @file thread_pool.hpp
  * @brief 固定线程池 — 替代 std::async 批量任务场景
  *
  * 核心设计：

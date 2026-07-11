@@ -1,5 +1,14 @@
 #pragma once
 
+/**
+ * @file client_components.hpp
+ * @brief 客户端专用 ECS 组件 — 相机/渲染/光源/控制器
+ *
+ * 归属模块：client/ecs
+ * 核心职责：定义仅在客户端存在的 ECS 组件类型
+ * 关键设计：所有组件为纯数据结构体，无业务逻辑
+ */
+
 #include <glm/glm.hpp>
 #include <glm/gtc/quaternion.hpp>
 #include <string>
@@ -20,7 +29,7 @@ struct CameraComponent {
     int viewportWidth{800};
     int viewportHeight{600};
     
-    // 缓存的矩阵
+    // 缓存的矩阵（mutable：由 const getter 懒更新）
     mutable glm::mat4 viewMatrix{1.0f};
     mutable glm::mat4 projectionMatrix{1.0f};
     mutable bool dirty{true};

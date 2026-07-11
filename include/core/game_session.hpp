@@ -1,13 +1,14 @@
 #pragma once
 
-#include <vulkan/vulkan.h>
-#include <GLFW/glfw3.h>
+#include <chrono>
+#include <functional>
 #include <memory>
 #include <string>
 #include <unordered_map>
-#include <chrono>
-#include <functional>
+
+#include <GLFW/glfw3.h>
 #include <glm/glm.hpp>
+#include <vulkan/vulkan.h>
 
 #include "core/resource_node_system.hpp"
 #include "renderer/model_cache.hpp"

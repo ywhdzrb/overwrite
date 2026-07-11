@@ -1,5 +1,14 @@
 #pragma once
 
+/**
+ * @file client_entity_factory.hpp
+ * @brief 客户端实体工厂 — 创建玩家/相机/远程玩家实体
+ *
+ * 归属模块：client/ecs
+ * 核心职责：封装 entt::registry 实体创建逻辑
+ * 依赖关系：共享 EntityFactory, 客户端专用组件
+ */
+
 // 标准库
 #include <memory>
 #include <string>

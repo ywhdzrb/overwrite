@@ -1,29 +1,32 @@
 // 渲染器实现 — 纯渲染编排器
 // 负责 Vulkan 管线生命周期、帧缓冲、命令缓冲录制、渲染子系统调度。
 // 游戏逻辑（ECS/物理/碰撞/网络/玩家动画）已提取至 GameSession。
-#include "imgui.h"
-#include "core/renderer.hpp"
-#include "core/camera.hpp"
-#include "core/input.hpp"
-#include "core/game_session.hpp"
-#include "ecs/i_game_world.hpp"
-#include "core/scene_config.hpp"
-#include "utils/logger.hpp"
-#include "utils/asset_paths.hpp"
-#include <nlohmann/json.hpp>
-#include <fstream>
-#include <stdexcept>
-#include <set>
 #include <algorithm>
+#include <fstream>
+#include <future>
 #include <limits>
 #include <random>
+#include <set>
+#include <stdexcept>
 #include <thread>
-#include <future>
-#include "renderer/tree_system.hpp"
-#include "renderer/stone_system.hpp"
-#include "renderer/grass_system.hpp"
+
+#include <nlohmann/json.hpp>
+
+#include "imgui.h"
+
+#include "core/camera.hpp"
 #include "core/game_config.hpp"
+#include "core/game_session.hpp"
+#include "core/input.hpp"
+#include "core/renderer.hpp"
+#include "core/scene_config.hpp"
 #include "ecs/ecs.hpp"
+#include "ecs/i_game_world.hpp"
+#include "renderer/grass_system.hpp"
+#include "renderer/stone_system.hpp"
+#include "renderer/tree_system.hpp"
+#include "utils/asset_paths.hpp"
+#include "utils/logger.hpp"
 #include "utils/vk_result.hpp"
 
 namespace owengine {

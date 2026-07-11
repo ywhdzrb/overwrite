@@ -89,7 +89,7 @@ TEST(NetworkProtocolTest, InputMessageDefaults) {
 
 TEST(NetworkProtocolTest, PackInputMessageRoundTrip) {
     InputMessage msg;
-    msg.type = MSG_INPUT;
+    msg.type = static_cast<uint8_t>(MessageType::MsgInput);
     msg.buttons = packButtons(true, false, true, false, false, true, false, false);
     msg.mouseDeltaX = 1234;
     msg.mouseDeltaY = -567;
@@ -102,7 +102,7 @@ TEST(NetworkProtocolTest, PackInputMessageRoundTrip) {
     InputMessage msg2{};
     bool ok = unpackInputMessage(wire, msg2);
     EXPECT_TRUE(ok);
-    EXPECT_EQ(msg2.type, MSG_INPUT);
+    EXPECT_EQ(msg2.type, static_cast<uint8_t>(MessageType::MsgInput));
     EXPECT_EQ(msg2.buttons, msg.buttons);
     EXPECT_EQ(msg2.mouseDeltaX, 1234);
     EXPECT_EQ(msg2.mouseDeltaY, -567);
@@ -118,7 +118,7 @@ TEST(NetworkProtocolTest, UnpackInputMessageTooShort) {
 
 TEST(NetworkProtocolTest, UnpackInputMessageWrongType) {
     InputMessage msg{};
-    // MSG_UNKNOWN (0) 不匹配 MSG_INPUT (1)
+    // MessageType::MsgUnknown (0) 不匹配 MessageType::MsgInput (1)
     std::string data(32, '\0');
     EXPECT_FALSE(unpackInputMessage(data, msg));
 }
@@ -131,27 +131,27 @@ TEST(NetworkProtocolTest, UnpackInputMessageEmpty) {
 // ==================== messageTypeName 测试 ====================
 
 TEST(NetworkProtocolTest, MessageTypeName) {
-    EXPECT_STREQ(messageTypeName(MSG_INPUT),        "input");
-    EXPECT_STREQ(messageTypeName(MSG_PING),         "ping");
-    EXPECT_STREQ(messageTypeName(MSG_PONG),         "pong");
-    EXPECT_STREQ(messageTypeName(MSG_WELCOME),      "welcome");
-    EXPECT_STREQ(messageTypeName(MSG_PLAYER_JOIN),  "playerJoin");
-    EXPECT_STREQ(messageTypeName(MSG_PLAYER_LEAVE), "playerLeave");
-    EXPECT_STREQ(messageTypeName(MSG_STATE),        "state");
-    EXPECT_STREQ(messageTypeName(MSG_UNKNOWN),      "unknown");
+    EXPECT_STREQ(messageTypeName(MessageType::MsgInput),        "input");
+    EXPECT_STREQ(messageTypeName(MessageType::MsgPing),         "ping");
+    EXPECT_STREQ(messageTypeName(MessageType::MsgPong),         "pong");
+    EXPECT_STREQ(messageTypeName(MessageType::MsgWelcome),      "welcome");
+    EXPECT_STREQ(messageTypeName(MessageType::MsgPlayerJoin),  "playerJoin");
+    EXPECT_STREQ(messageTypeName(MessageType::MsgPlayerLeave), "playerLeave");
+    EXPECT_STREQ(messageTypeName(MessageType::MsgState),        "state");
+    EXPECT_STREQ(messageTypeName(MessageType::MsgUnknown),      "unknown");
     EXPECT_STREQ(messageTypeName(static_cast<MessageType>(99)), "unknown");
 }
 
 // ==================== messageTypeFromName 测试 ====================
 
 TEST(NetworkProtocolTest, MessageTypeFromName) {
-    EXPECT_EQ(messageTypeFromName("input"),        MSG_INPUT);
-    EXPECT_EQ(messageTypeFromName("ping"),         MSG_PING);
-    EXPECT_EQ(messageTypeFromName("pong"),         MSG_PONG);
-    EXPECT_EQ(messageTypeFromName("welcome"),      MSG_WELCOME);
-    EXPECT_EQ(messageTypeFromName("playerJoin"),   MSG_PLAYER_JOIN);
-    EXPECT_EQ(messageTypeFromName("playerLeave"),  MSG_PLAYER_LEAVE);
-    EXPECT_EQ(messageTypeFromName("state"),        MSG_STATE);
-    EXPECT_EQ(messageTypeFromName("nonexistent"),  MSG_UNKNOWN);
-    EXPECT_EQ(messageTypeFromName(""),             MSG_UNKNOWN);
+    EXPECT_EQ(messageTypeFromName("input"),        MessageType::MsgInput);
+    EXPECT_EQ(messageTypeFromName("ping"),         MessageType::MsgPing);
+    EXPECT_EQ(messageTypeFromName("pong"),         MessageType::MsgPong);
+    EXPECT_EQ(messageTypeFromName("welcome"),      MessageType::MsgWelcome);
+    EXPECT_EQ(messageTypeFromName("playerJoin"),   MessageType::MsgPlayerJoin);
+    EXPECT_EQ(messageTypeFromName("playerLeave"),  MessageType::MsgPlayerLeave);
+    EXPECT_EQ(messageTypeFromName("state"),        MessageType::MsgState);
+    EXPECT_EQ(messageTypeFromName("nonexistent"),  MessageType::MsgUnknown);
+    EXPECT_EQ(messageTypeFromName(""),             MessageType::MsgUnknown);
 }

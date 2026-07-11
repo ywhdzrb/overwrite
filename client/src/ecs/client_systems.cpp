@@ -306,7 +306,7 @@ bool ClientWorld::isConnectedToServer() const {
 
 bool ClientWorld::startServerDiscovery() {
     if (!discoveryScanner_) {
-        discoveryScanner_ = std::make_unique<ServerDiscoveryScanner>();
+        discoveryScanner_ = std::make_unique<network::ServerDiscoveryScanner>();
     }
     return discoveryScanner_->start();
 }

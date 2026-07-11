@@ -1,17 +1,15 @@
 #pragma once
 
+#include <fstream>
 #include <string>
+
 #include <glm/glm.hpp>
 #include <nlohmann/json.hpp>
-#include <fstream>
-#include "utils/logger.hpp"
 
-// TreeConfig 定义在 tree_system.h 中，本文件直接使用
-#include "renderer/tree_system.hpp"
-// GrassConfig 定义在 grass_system.h 中
 #include "renderer/grass_system.hpp"
-// StoneConfig 定义在 stone_system.h 中
 #include "renderer/stone_system.hpp"
+#include "renderer/tree_system.hpp"
+#include "utils/logger.hpp"
 
 namespace owengine {
 

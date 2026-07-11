@@ -1,9 +1,11 @@
 // 摄像机实现
 // 处理第一人称和第三人称视角的摄像机控制
+#include <cmath>
+
+#include <glm/gtc/type_ptr.hpp>
+
 #include "core/camera.hpp"
 #include "utils/logger.hpp"
-#include <glm/gtc/type_ptr.hpp>
-#include <cmath>
 
 namespace owengine {
 
@@ -111,43 +113,43 @@ void Frustum::update(const glm::mat4& viewProjection) noexcept {
     const float* m = glm::value_ptr(viewProjection);
     
     // Left plane
-    planes_[0].normal.x = m[3] + m[0];
-    planes_[0].normal.y = m[7] + m[4];
-    planes_[0].normal.z = m[11] + m[8];
-    planes_[0].distance = m[15] + m[12];
+    planes[0].normal.x = m[3] + m[0];
+    planes[0].normal.y = m[7] + m[4];
+    planes[0].normal.z = m[11] + m[8];
+    planes[0].distance = m[15] + m[12];
     
     // Right plane
-    planes_[1].normal.x = m[3] - m[0];
-    planes_[1].normal.y = m[7] - m[4];
-    planes_[1].normal.z = m[11] - m[8];
-    planes_[1].distance = m[15] - m[12];
+    planes[1].normal.x = m[3] - m[0];
+    planes[1].normal.y = m[7] - m[4];
+    planes[1].normal.z = m[11] - m[8];
+    planes[1].distance = m[15] - m[12];
     
     // Bottom plane
-    planes_[2].normal.x = m[3] + m[1];
-    planes_[2].normal.y = m[7] + m[5];
-    planes_[2].normal.z = m[11] + m[9];
-    planes_[2].distance = m[15] + m[13];
+    planes[2].normal.x = m[3] + m[1];
+    planes[2].normal.y = m[7] + m[5];
+    planes[2].normal.z = m[11] + m[9];
+    planes[2].distance = m[15] + m[13];
     
     // Top plane
-    planes_[3].normal.x = m[3] - m[1];
-    planes_[3].normal.y = m[7] - m[5];
-    planes_[3].normal.z = m[11] - m[9];
-    planes_[3].distance = m[15] - m[13];
+    planes[3].normal.x = m[3] - m[1];
+    planes[3].normal.y = m[7] - m[5];
+    planes[3].normal.z = m[11] - m[9];
+    planes[3].distance = m[15] - m[13];
     
     // Near plane
-    planes_[4].normal.x = m[3] + m[2];
-    planes_[4].normal.y = m[7] + m[6];
-    planes_[4].normal.z = m[11] + m[10];
-    planes_[4].distance = m[15] + m[14];
+    planes[4].normal.x = m[3] + m[2];
+    planes[4].normal.y = m[7] + m[6];
+    planes[4].normal.z = m[11] + m[10];
+    planes[4].distance = m[15] + m[14];
     
     // Far plane
-    planes_[5].normal.x = m[3] - m[2];
-    planes_[5].normal.y = m[7] - m[6];
-    planes_[5].normal.z = m[11] - m[10];
-    planes_[5].distance = m[15] - m[14];
+    planes[5].normal.x = m[3] - m[2];
+    planes[5].normal.y = m[7] - m[6];
+    planes[5].normal.z = m[11] - m[10];
+    planes[5].distance = m[15] - m[14];
     
     // 归一化平面
-    for (auto& plane : planes_) {
+    for (auto& plane : planes) {
         float length = glm::length(plane.normal);
         if (length > 0.0001f) {
             plane.normal /= length;
@@ -157,7 +159,7 @@ void Frustum::update(const glm::mat4& viewProjection) noexcept {
 }
 
 bool Frustum::isPointInside(const glm::vec3& point) const noexcept {
-    for (const auto& plane : planes_) {
+    for (const auto& plane : planes) {
         if (plane.distanceToPoint(point) < 0.0f) {
             return false;
         }
@@ -166,7 +168,7 @@ bool Frustum::isPointInside(const glm::vec3& point) const noexcept {
 }
 
 bool Frustum::isSphereInside(const glm::vec3& center, float radius) const noexcept {
-    for (const auto& plane : planes_) {
+    for (const auto& plane : planes) {
         if (plane.distanceToPoint(center) < -radius) {
             return false;
         }
@@ -175,7 +177,7 @@ bool Frustum::isSphereInside(const glm::vec3& center, float radius) const noexce
 }
 
 bool Frustum::isAABBInside(const glm::vec3& min, const glm::vec3& max) const noexcept {
-    for (const auto& plane : planes_) {
+    for (const auto& plane : planes) {
         glm::vec3 positiveVertex = min;
         if (plane.normal.x >= 0) positiveVertex.x = max.x;
         if (plane.normal.y >= 0) positiveVertex.y = max.y;

@@ -35,7 +35,7 @@ struct FrustumPlane {
  */
 class Frustum {
 public:
-    std::array<FrustumPlane, 6> planes_; // left, right, bottom, top, near, far
+    std::array<FrustumPlane, 6> planes; // left, right, bottom, top, near, far
     
     void update(const glm::mat4& viewProjection) noexcept;
     [[nodiscard]] bool isPointInside(const glm::vec3& point) const noexcept;

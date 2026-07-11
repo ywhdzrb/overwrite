@@ -127,7 +127,7 @@ void NetworkSystem::sendInput(
 
     // 使用二进制格式发送输入（32 字节，替代 ~250 字节 JSON）
     network::InputMessage msg;
-    msg.type = network::MSG_INPUT;
+    msg.type = static_cast<uint8_t>(network::MessageType::MsgInput);
     msg.buttons = network::packButtons(moveForward, moveBackward, moveLeft, moveRight,
                                        jump, sprint, spaceHeld, shiftHeld);
     // 量化鼠标增量: float → int16 (±32767 对应约 ±3.28 弧度)
