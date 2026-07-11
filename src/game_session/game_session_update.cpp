@@ -247,8 +247,8 @@ void GameSession::update(float deltaTime) {
         }
     }
 
-    // === Phase 12.5: 放置熔炉（Q 键，背包关闭时有效） ===
-    if (input_ && input_->isKeyJustPressed(GLFW_KEY_Q) && !inventoryOpen_) {
+    // === Phase 12.5: 放置熔炉（鼠标右键，背包关闭时有效） ===
+    if (input_ && input_->isMouseButtonJustPressed(GLFW_MOUSE_BUTTON_RIGHT) && !inventoryOpen_) {
         glm::vec3 camPos = camera_->getPosition();
         glm::vec3 camFront = camera_->getFront();
         camFront.y = 0.0f;
