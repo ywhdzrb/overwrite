@@ -207,9 +207,9 @@ void RenderSystem::loadModelForEntity(entt::entity entity,
     loaded.model = model;
     loaded.visible = renderComp.visible;
 
-    // 创建模型描述符集（使用模型第一个纹理）
-    loaded.descriptorSet = modelCache_->createModelDescriptorSet(
-        model, textureDSLayout_, descriptorPool_);
+    // 确保模型有 per-mesh 纹理描述符集（供 GLTFModel::renderNode 内部绑定）
+    model->createMeshDescriptorSets(textureDSLayout_, descriptorPool_);
+    loaded.descriptorSet = VK_NULL_HANDLE;  // 由模型内部管理，外部不绑定
 
     // 设置 GLTFModel 的基本变换
     model->setPosition(renderComp.position);
