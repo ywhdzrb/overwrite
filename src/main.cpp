@@ -106,7 +106,7 @@ int main() {
 
         // ---- 按依赖拓扑顺序初始化 ----
         if (!lifecycle.initialize()) {
-            owengine::Logger::error("引擎启动失败");
+            owengine::Logger::error("启动失败");
             return EXIT_FAILURE;
         }
 
