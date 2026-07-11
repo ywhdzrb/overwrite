@@ -267,21 +267,38 @@ void GameSession::update(float deltaTime) {
 
         auto* registry = ecsClientWorld_->getRegistry();
         if (registry) {
-            auto entity = registry->create();
-            auto& transform = registry->emplace<ecs::TransformComponent>(entity);
-            transform.position = placePos;
+            // 检查目标位置附近是否已有熔炉，防止重叠放置
+            constexpr float MIN_FURNACE_DIST = 1.2f;
+            bool overlap = false;
+            auto furnaceView = registry->view<ecs::TransformComponent, ecs::EntityTypeComponent>();
+            for (auto e : furnaceView) {
+                auto& ft = furnaceView.get<ecs::TransformComponent>(e);
+                auto& et = furnaceView.get<ecs::EntityTypeComponent>(e);
+                if (et.type != ecs::EntityType::Furnace) continue;
+                if (glm::distance(glm::vec2(ft.position.x, ft.position.z),
+                                  glm::vec2(placePos.x, placePos.z)) < MIN_FURNACE_DIST) {
+                    overlap = true;
+                    break;
+                }
+            }
 
-            registry->emplace<ecs::EntityTypeComponent>(entity, ecs::EntityType::Furnace);
+            if (!overlap) {
+                auto entity = registry->create();
+                auto& transform = registry->emplace<ecs::TransformComponent>(entity);
+                transform.position = placePos;
 
-            auto& render = registry->emplace<ecs::RenderComponent>(entity);
-            render.modelPath = "assets/models/furnace.glb";
-            render.position = placePos;
-            render.dirty = true;
+                registry->emplace<ecs::EntityTypeComponent>(entity, ecs::EntityType::Furnace);
 
-            std::string posStr = "(" + std::to_string(placePos.x) + ", "
-                               + std::to_string(placePos.y) + ", "
-                               + std::to_string(placePos.z) + ")";
-            Logger::info("[Placement] 熔炉已放置于 " + posStr);
+                auto& render = registry->emplace<ecs::RenderComponent>(entity);
+                render.modelPath = "assets/models/furnace.glb";
+                render.position = placePos;
+                render.dirty = true;
+
+                std::string posStr = "(" + std::to_string(placePos.x) + ", "
+                                   + std::to_string(placePos.y) + ", "
+                                   + std::to_string(placePos.z) + ")";
+                Logger::info("[Placement] 熔炉已放置于 " + posStr);
+            }
         }
     }
 
