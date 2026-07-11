@@ -82,6 +82,7 @@ void GameSession::init(const GameSessionInitParams& params) {
             glm::vec3 size = bbox.second - bbox.first;
             if (size.x > 0.01f && size.y > 0.01f && size.z > 0.01f) {
                 furnaceCollisionSize_ = size;
+                furnaceBboxMin_ = bbox.first;
                 Logger::info("[Furnace] 模型实际尺寸: (" +
                              std::to_string(size.x) + ", " +
                              std::to_string(size.y) + ", " +

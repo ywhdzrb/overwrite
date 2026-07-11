@@ -203,8 +203,9 @@ private:
     // 地形高度查询回调
     std::function<float(float, float)> terrainHeightQuery_;
 
-    // 熔炉碰撞箱尺寸（从模型包围盒计算）
+    // 熔炉碰撞箱尺寸和偏移（从模型包围盒计算）
     glm::vec3 furnaceCollisionSize_{0.8f, 0.8f, 0.8f};
+    glm::vec3 furnaceBboxMin_{-0.4f, -0.4f, -0.4f};
 
     // 时间与性能
     std::chrono::high_resolution_clock::time_point lastTime_;
