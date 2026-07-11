@@ -641,6 +641,11 @@ void Renderer::mainLoop() {
             prevInvOpen_ = false;
         }
 
+        // === 更新输入状态（previousKeys_ 快照，为 isKeyJustPressed 提供准确前一帧状态） ===
+        if (gameSession_ && gameSession_->getInput()) {
+            gameSession_->getInput()->update();
+        }
+
         // === 更新游戏逻辑（委托给 GameSession） ===
         if (gameSession_) {
             float scaledDt = gameSession_->pauseGame ? 0.0f : deltaTime * gameSession_->timeScale;
