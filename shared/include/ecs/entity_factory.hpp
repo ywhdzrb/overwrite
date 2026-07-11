@@ -90,6 +90,7 @@ enum class EntityArchetype {
     Explosive,
     SoundSource,
     Zone,
+    Furnace,
 };
 
 // ============================================================
@@ -240,6 +241,9 @@ public:
     /** @brief 创建区域（安全区/战斗区/触发区） */
     virtual std::unique_ptr<IEntityHandle> createZone(const EntityConfig& config = {}) = 0;
 
+    /** @brief 创建熔炉 */
+    virtual std::unique_ptr<IEntityHandle> createFurnace(const EntityConfig& config = {}) = 0;
+
     /** @brief 从蓝图创建实体 */
     virtual std::unique_ptr<IEntityHandle> createFromArchetype(
         EntityArchetype archetype, const EntityConfig& config = {}) = 0;
@@ -330,6 +334,7 @@ public:
     std::unique_ptr<IEntityHandle> createExplosive(const EntityConfig& config = {}) override;
     std::unique_ptr<IEntityHandle> createSoundSource(const EntityConfig& config = {}) override;
     std::unique_ptr<IEntityHandle> createZone(const EntityConfig& config = {}) override;
+    std::unique_ptr<IEntityHandle> createFurnace(const EntityConfig& config = {}) override;
     std::unique_ptr<IEntityHandle> createFromArchetype(
         EntityArchetype archetype, const EntityConfig& config = {}) override;
     void destroy(entt::entity entity) override;

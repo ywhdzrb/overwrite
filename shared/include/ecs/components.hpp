@@ -200,6 +200,7 @@ enum class EntityType : uint8_t {
     Explosive = 14,
     SoundSource = 15,
     Zone = 16,
+    Furnace = 17,
 };
 
 /**

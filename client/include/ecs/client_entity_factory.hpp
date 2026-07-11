@@ -56,6 +56,7 @@ public:
     std::unique_ptr<IEntityHandle> createExplosive(const EntityConfig& config = {}) override;
     std::unique_ptr<IEntityHandle> createSoundSource(const EntityConfig& config = {}) override;
     std::unique_ptr<IEntityHandle> createZone(const EntityConfig& config = {}) override;
+    std::unique_ptr<IEntityHandle> createFurnace(const EntityConfig& config = {}) override;
     std::unique_ptr<IEntityHandle> createFromArchetype(
         EntityArchetype archetype, const EntityConfig& config = {}) override;
 

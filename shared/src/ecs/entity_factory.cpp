@@ -270,6 +270,13 @@ std::unique_ptr<IEntityHandle> EntityFactory::createBuilding(const EntityConfig&
     return std::make_unique<EntityHandle>(&registry_, entity);
 }
 
+std::unique_ptr<IEntityHandle> EntityFactory::createFurnace(const EntityConfig& config) {
+    auto entity = registry_.create();
+    applyBaseConfig(entity, config);
+    registry_.emplace<EntityTypeComponent>(entity, EntityType::Furnace);
+    return std::make_unique<EntityHandle>(&registry_, entity);
+}
+
 std::unique_ptr<IEntityHandle> EntityFactory::createItem(const EntityConfig& config) {
     auto entity = registry_.create();
     applyBaseConfig(entity, config);
@@ -346,6 +353,7 @@ std::unique_ptr<IEntityHandle> EntityFactory::createFromArchetype(
         case EntityArchetype::Explosive:    return createExplosive(config);
         case EntityArchetype::SoundSource:  return createSoundSource(config);
         case EntityArchetype::Zone:         return createZone(config);
+        case EntityArchetype::Furnace:      return createFurnace(config);
         default:                            return createEmpty(config);
     }
 }

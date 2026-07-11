@@ -17,6 +17,7 @@
 #include "renderer/stone_system.hpp"
 #include "renderer/grass_system.hpp"
 #include "ecs/client_systems.hpp"
+#include "ecs/client_components.hpp"
 #include "ecs/ecs.hpp"
 #include "utils/logger.hpp"
 #include <future>
@@ -243,6 +244,44 @@ void GameSession::update(float deltaTime) {
                         : inv->selectedHotbarIndex + 1;
                 }
             }
+        }
+    }
+
+    // === Phase 12.5: 放置熔炉（Q 键，背包关闭时有效） ===
+    if (input_ && input_->isKeyJustPressed(GLFW_KEY_Q) && !inventoryOpen_) {
+        glm::vec3 camPos = camera_->getPosition();
+        glm::vec3 camFront = camera_->getFront();
+        camFront.y = 0.0f;
+        if (glm::length(camFront) > 0.001f) {
+            camFront = glm::normalize(camFront);
+        } else {
+            camFront = glm::vec3(0.0f, 0.0f, -1.0f);
+        }
+
+        glm::vec3 placePos = camPos + camFront * 4.0f;
+
+        // 采样地形高度得到 Y
+        if (terrainHeightQuery_) {
+            placePos.y = terrainHeightQuery_(placePos.x, placePos.z);
+        }
+
+        auto* registry = ecsClientWorld_->getRegistry();
+        if (registry) {
+            auto entity = registry->create();
+            auto& transform = registry->emplace<ecs::TransformComponent>(entity);
+            transform.position = placePos;
+
+            registry->emplace<ecs::EntityTypeComponent>(entity, ecs::EntityType::Furnace);
+
+            auto& render = registry->emplace<ecs::RenderComponent>(entity);
+            render.modelPath = "assets/models/furnace.glb";
+            render.position = placePos;
+            render.dirty = true;
+
+            std::string posStr = "(" + std::to_string(placePos.x) + ", "
+                               + std::to_string(placePos.y) + ", "
+                               + std::to_string(placePos.z) + ")";
+            Logger::info("[Placement] 熔炉已放置于 " + posStr);
         }
     }
 

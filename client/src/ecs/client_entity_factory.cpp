@@ -272,6 +272,14 @@ std::unique_ptr<IEntityHandle> ClientEntityFactory::createZone(const EntityConfi
     return handle;
 }
 
+std::unique_ptr<IEntityHandle> ClientEntityFactory::createFurnace(const EntityConfig& config) {
+    EntityConfig cfg = config;
+    if (!cfg.modelPath.has_value()) cfg.modelPath = modelDir_ + "furnace.glb";
+    auto handle = EntityFactory::createFurnace(cfg);
+    if (handle && handle->valid()) applyRenderComponent(handle->getEntity(), cfg);
+    return handle;
+}
+
 // ============================================================
 // createFromArchetype
 // ============================================================
@@ -300,6 +308,7 @@ std::unique_ptr<IEntityHandle> ClientEntityFactory::createFromArchetype(
         case EntityArchetype::Explosive:    return createExplosive(config);
         case EntityArchetype::SoundSource:  return createSoundSource(config);
         case EntityArchetype::Zone:         return createZone(config);
+        case EntityArchetype::Furnace:      return createFurnace(config);
         default:                            return createEmpty(config);
     }
 }
