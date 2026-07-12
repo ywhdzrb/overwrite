@@ -172,10 +172,10 @@ void VulkanPipeline::create() {
         depthStencil.depthWriteEnable = VK_FALSE;
         depthStencil.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
     } else {
-        // 标准物体：启用深度测试和写入
+        // 标准物体：启用深度测试和写入，LEQUAL 防止相邻区块共享顶点处的裂缝
         depthStencil.depthTestEnable = VK_TRUE;
         depthStencil.depthWriteEnable = VK_TRUE;
-        depthStencil.depthCompareOp = VK_COMPARE_OP_LESS;
+        depthStencil.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
     }
     depthStencil.depthBoundsTestEnable = VK_FALSE;
     depthStencil.minDepthBounds = 0.0f;

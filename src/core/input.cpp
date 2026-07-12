@@ -43,7 +43,8 @@ Input::Input(GLFWwindow* window)
         glfwSetInputMode(window, GLFW_RAW_MOUSE_MOTION, GLFW_TRUE);
     }
     
-    glfwSetKeyCallback(window, keyCallback);
+    // 保存前一个 key callback（ImGui 注册的），然后设置自己的 callback
+    prevKeyCallback_ = glfwSetKeyCallback(window, keyCallback);
     // 保存前一个回调（ImGui 注册的），后续回调函数会自动链式转发
     prevMouseButtonCallback_ = glfwSetMouseButtonCallback(window, mouseButtonCallback);
     prevCursorPosCallback_ = glfwSetCursorPosCallback(window, cursorPosCallback);
@@ -220,6 +221,10 @@ void Input::setCursorCaptured(bool captured) {
 
 // GLFW回调函数实现
 void Input::keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods) {
+    // 链式转发给前一个回调（ImGui 的键盘回调），确保 ImGui 能收到按键事件
+    if (s_instance && s_instance->prevKeyCallback_) {
+        s_instance->prevKeyCallback_(window, key, scancode, action, mods);
+    }
     // 使用 s_instance 而非 glfwGetWindowUserPointer
     // （ECS InputSystem 会覆盖 user pointer，与 scrollCallback 同理）
     if (s_instance) {

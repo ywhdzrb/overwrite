@@ -1,52 +1,106 @@
 {
+    // ==========================================
+    //  环境：草地
+    // ==========================================
     "grass": {
-        "chunk_size":         16.0,
-        "load_radius":        5,
-        "max_blades":         300000,
-        "density":            8.0,
-        "render_distance":    120.0,
-        "blade_height_min":   0.15,
-        "blade_height_max":   1.5,
-        "segments_per_blade": 4,
-        "blade_width":        0.04,
-        "wind_strength":      0.5,
-        "player_radius":      2.5,
-        "player_force":       1.5
+        "chunk_size":         16.0,    // 区块大小（世界单位）
+        "load_radius":        5,       // 加载半径（区块数）
+        "max_blades":         300000,  // 最大草叶数
+        "density":            8.0,     // 密度倍率
+        "render_distance":    120.0,   // 渲染距离
+        "blade_height_min":   0.15,   // 最小草高
+        "blade_height_max":   1.5,    // 最大草高
+        "segments_per_blade": 4,      // 每片草的细分段数
+        "blade_width":        0.04,   // 草叶宽度
+        "wind_strength":      0.5,    // 风力强度
+        "player_radius":      2.5,    // 玩家踩踏影响半径
+        "player_force":       1.5     // 玩家踩踏力度
     },
 
+    // ==========================================
+    //  环境：树木
+    // ==========================================
     "tree": {
         "chunk_size":       16.0,
-        "load_radius":      6,
-        "max_total":        300,
-        "min_scale":        0.2,
-        "max_scale":        0.5,
-        "density":          0.15,
-        "render_distance":  250.0,
-        "height_threshold": -2.0,
-        "wind_strength":    0.5
+        "load_radius":      8,         // 加载半径
+        "max_total":        800,       // 总数上限
+        "min_scale":        0.2,       // 最小缩放
+        "max_scale":        0.5,       // 最大缩放
+        "density":          0.4,       // 分布密度（0~1）
+        "render_distance":  250.0,     // 渲染距离
+        "height_threshold": -2.0,      // 低于此高度不生成（水中）
+        "wind_strength":    0.5        // 风力强度
     },
 
+    // ==========================================
+    //  环境：石头
+    // ==========================================
     "stone": {
         "chunk_size":       16.0,
-        "load_radius":      6,
-        "max_stones":       500,
+        "load_radius":      8,
+        "max_stones":       1200,
         "min_scale":        0.3,
         "max_scale":        1.5,
-        "density":          0.3,
+        "density":          0.6,
         "render_distance":  200.0,
         "height_threshold": -2.0
     },
 
+    // ==========================================
+    //  地形生成参数（调节地貌起伏与特征）
+    // ==========================================
+    //
+    //  核心架构：
+    //    最终高度 = 大陆基底(continent)
+    //             + 双频地形噪声(smooth + rough) × 幅值(plainAmp + mountainMask × mountainAmp)
+    //
+    //  山脉掩码用的噪声频率 = mountainSeedFreq
+    //  海岸过渡用 continentFactor = (continentRaw + continentRawBase) / continentRawSpan
+    //  再以 smoothstep(coastBlendStart, coastBlendEnd, factor) 混合海床与陆地
+    //
+    //  调参建议：
+    //    - 想要明显起伏 → 加大 plainAmp / mountainAmp，加大 smoothFreq
+    //    - 想要平滑缓坡 → 降低全程振幅，降低频率
+    //    - 海岸太陡 → 加大 coastBlendEnd（过渡变宽）
+    //
+    "terrain": {
+        // -- 大陆结构 --
+        "continent_scale":        0.001,   // 大陆噪声频率（越小大陆越大）
+        "continent_height":       12.0,    // 大陆抬升幅度
+        "continent_bias":         0.3,     // 偏置（>0 使原点附近为陆地）
+        "sea_level":              -2.0,    // 海平面高度
+
+        "continent_raw_base":     0.2,     // 噪声→大陆因子映射偏移
+        "continent_raw_span":     0.6,     // 噪声→大陆因子映射跨度
+
+        // -- 海岸过渡 --
+        "coast_blend_start":      0.2,     // 大陆因子≥此值开始抬升为陆地
+        "coast_blend_end":        0.6,     // 大陆因子≥此值完全为陆地
+        "ocean_depth":            5.0,     // 海岸处海床最大深度
+
+        // -- 地形起伏 --
+        "smooth_freq":            0.008,   // 平滑地形频率（越大起伏越密集）
+        "rough_freq":             0.025,   // 粗糙地形频率（山区细节）
+        "plain_amp":              16.0,    // 平原起伏幅度
+        "mountain_amp":           32.0,    // 山脉附加幅度（总幅值 = plain_amp + mountain_amp）
+
+        "mountain_rough_blend":   0.6,     // 山区混合到粗糙噪声的比例（0=全平滑，1=全粗糙）
+        "mountain_seed_freq":     0.0024   // 山脉区域判定噪声频率（越小山脉区块越大）
+    },
+
+    // ==========================================
+    //  渲染器
+    // ==========================================
     "renderer": {
-        "target_fps":         0.0,
-        "movement_speed":     5.0,
-        "mouse_sensitivity":  0.1,
-        "msaa_samples":       4,
-        "fly_speed":          10.0,
-        "sun_direction":      [0.01, 0.05, 0.02],
+        "target_fps":         0.0,         // 0 = 不限制
+        "movement_speed":     5.0,         // 移动速度
+        "mouse_sensitivity":  0.1,         // 鼠标灵敏度
+        "msaa_samples":       4,           // MSAA 采样数
+        "fly_speed":          100.0,        // 飞行速度
+        "sun_direction":      [0.01, 0.05, 0.02],  // 太阳方向
         "day_night_cycle":    true,
-        "shadow_enabled":     true,
-        "shadow_map_size":    2048,
-        "fullscreen":         true
+        "shadow_enabled":     true,        // 阴影
+        "shadow_map_size":    2048,        // 阴影贴图分辨率
+        "fullscreen":         true         // 全屏
     }
 }

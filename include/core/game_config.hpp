@@ -9,9 +9,29 @@
 #include "renderer/grass_system.hpp"
 #include "renderer/stone_system.hpp"
 #include "renderer/tree_system.hpp"
+#include "renderer/terrain_renderer.hpp"
 #include "utils/logger.hpp"
 
 namespace owengine {
+
+/// 地形生成配置（与 TerrainParams 字段一一对应）
+struct TerrainConfig {
+    float continentScale = 0.001f;
+    float continentHeight = 12.0f;
+    float seaLevel = -2.0f;
+    float smoothFreq = 0.008f;
+    float roughFreq = 0.025f;
+    float plainAmp = 8.0f;
+    float mountainAmp = 16.0f;
+    float mountainRoughBlend = 0.6f;
+    float mountainSeedFreq = 0.0024f;
+    float continentRawBase = 0.2f;
+    float continentRawSpan = 0.6f;
+    float coastBlendStart = 0.2f;
+    float coastBlendEnd = 0.6f;
+    float oceanDepth = 5.0f;
+    float continentBias = 0.3f;
+};
 
 /// 渲染器配置
 struct RendererConfig {
@@ -32,7 +52,35 @@ struct GameConfig {
     TreeConfig tree;
     StoneConfig stone;
     GrassConfig grass;
+    TerrainConfig terrain;
     RendererConfig renderer;
+
+    /** @brief 预处理 JSON 文本：移除 // 行注释和(斜杠* *斜杠)块注释 */
+    static std::string stripJsonComments(const std::string& input) {
+        std::string out;
+        out.reserve(input.size());
+        bool inStr = false, inLine = false, inBlock = false;
+        char prev = 0;
+        for (size_t i = 0; i < input.size(); ++i) {
+            char c = input[i];
+            char n = (i + 1 < input.size()) ? input[i + 1] : 0;
+            if (inStr) {
+                if (c == '"' && prev != '\\') inStr = false;
+                out += c;
+            } else if (inLine) {
+                if (c == '\n') { inLine = false; out += c; }
+            } else if (inBlock) {
+                if (c == '*' && n == '/') { inBlock = false; ++i; }
+            } else {
+                if (c == '"') { inStr = true; out += c; }
+                else if (c == '/' && n == '/') { inLine = true; ++i; }
+                else if (c == '/' && n == '*') { inBlock = true; ++i; }
+                else { out += c; }
+            }
+            prev = c;
+        }
+        return out;
+    }
 
     /// 从 JSON 文件加载配置；文件缺失或字段不存在时使用 C++ 默认值
     static GameConfig load(const std::string& path) {
@@ -43,8 +91,10 @@ struct GameConfig {
             return cfg;
         }
         try {
-            nlohmann::json j;
-            file >> j;
+            std::string content((std::istreambuf_iterator<char>(file)),
+                                 std::istreambuf_iterator<char>());
+            content = stripJsonComments(content);
+            nlohmann::json j = nlohmann::json::parse(content);
 
             // 草丛参数
             auto& g = j["grass"];
@@ -87,6 +137,26 @@ struct GameConfig {
                 cfg.stone.density         = s.value("density",           cfg.stone.density);
                 cfg.stone.renderDistance  = s.value("render_distance",   cfg.stone.renderDistance);
                 cfg.stone.heightThreshold = s.value("height_threshold",  cfg.stone.heightThreshold);
+            }
+
+            // 地形参数
+            auto& tn = j["terrain"];
+            if (!tn.is_null()) {
+                cfg.terrain.continentScale     = tn.value("continent_scale",     cfg.terrain.continentScale);
+                cfg.terrain.continentHeight    = tn.value("continent_height",    cfg.terrain.continentHeight);
+                cfg.terrain.seaLevel           = tn.value("sea_level",           cfg.terrain.seaLevel);
+                cfg.terrain.smoothFreq         = tn.value("smooth_freq",         cfg.terrain.smoothFreq);
+                cfg.terrain.roughFreq          = tn.value("rough_freq",          cfg.terrain.roughFreq);
+                cfg.terrain.plainAmp           = tn.value("plain_amp",           cfg.terrain.plainAmp);
+                cfg.terrain.mountainAmp        = tn.value("mountain_amp",        cfg.terrain.mountainAmp);
+                cfg.terrain.mountainRoughBlend = tn.value("mountain_rough_blend", cfg.terrain.mountainRoughBlend);
+                cfg.terrain.mountainSeedFreq   = tn.value("mountain_seed_freq",  cfg.terrain.mountainSeedFreq);
+                cfg.terrain.continentRawBase   = tn.value("continent_raw_base",  cfg.terrain.continentRawBase);
+                cfg.terrain.continentRawSpan   = tn.value("continent_raw_span",  cfg.terrain.continentRawSpan);
+                cfg.terrain.coastBlendStart    = tn.value("coast_blend_start",   cfg.terrain.coastBlendStart);
+                cfg.terrain.coastBlendEnd      = tn.value("coast_blend_end",     cfg.terrain.coastBlendEnd);
+                cfg.terrain.oceanDepth         = tn.value("ocean_depth",         cfg.terrain.oceanDepth);
+                cfg.terrain.continentBias      = tn.value("continent_bias",      cfg.terrain.continentBias);
             }
 
             // 渲染器参数

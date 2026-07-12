@@ -225,12 +225,12 @@ void Renderer::createCloudCompositeResources() {
     ms.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
     ms.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
 
-    // 深度测试：对深度缓冲启用 LESS 比较，使近处不透明物体遮挡云
+    // 深度测试：不透明地形写入深度，使区块间正确遮挡
     VkPipelineDepthStencilStateCreateInfo ds{};
     ds.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
     ds.depthTestEnable = VK_TRUE;
-    ds.depthWriteEnable = VK_FALSE;
-    ds.depthCompareOp = VK_COMPARE_OP_LESS;
+    ds.depthWriteEnable = VK_TRUE;
+    ds.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
     ds.depthBoundsTestEnable = VK_FALSE;
     ds.stencilTestEnable = VK_FALSE;
 

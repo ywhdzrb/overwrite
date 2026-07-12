@@ -1,29 +1,30 @@
 #pragma once
 
-// 地形渲染器 — 基于 Perlin 噪声的过程化地形
-//
-// 架构设计（异步生成管线）：
-//   update() 每帧分四阶段：
-//     Phase 1: 收集中已完成的异步任务 → 主线程上传 Vulkan 缓冲
-//     Phase 2: 扫描 generationRadius 范围内缺失区块 → 去重（已存在/已排队）
-//     Phase 3: 按距离排序，每帧最多启动 maxChunksPerFrame 个异步任务（线程池）
-//     Phase 4: 移除 renderRadius + 2 范围外的旧区块
-//
-//   computeChunkMesh()：纯计算（噪声采样 + 顶点/索引生成），无 Vulkan 调用，线程安全
-//   uploadChunk()：    Vulkan 缓冲创建 + 数据上传，必须在主线程调用
-//
-// 关键常量（构造函数默认值）：
-//   chunkSize=16         区块边长（世界单位）
-//   renderRadius=10       渲染/碰撞检测半径（~314 区块）
-//   generationRadius=13   预生成半径 = renderRadius + 3（提前生成边界外区块）
-//   maxChunksPerFrame=4   每帧最多启动的异步任务数（削峰填谷）
-//   noiseScale=0.08, heightScale=5.0, 3-octave FBM
-//
-// 线程安全（verified）：
-//   - perlinNoise/fbm/getHeight/computeChunkMesh 均为 const，只读 perm + 局部变量
-//   - perm 向量在构造函数中一次性初始化，之后永不修改 → 任意线程数并发读安全
-//   - update() 修改 chunks/pendingChunks_ 仅在主线程，与上述 const 方法无数据重叠
-//   - uploadChunk() 涉及 Vulkan 调用，必须在主线程
+/**
+ * @file terrain_renderer.hpp
+ * @brief 多地貌地形渲染器 — 山川/河流/丘陵/平原/高原程序化生成
+ *
+ * 归属模块：renderer
+ * 核心职责：基于多层噪声混合的过程化地形生成 + 异步区块加载/卸载管线
+ * 依赖关系：VulkanDevice, ThreadPool
+ *
+ * 多地貌算法概述：
+ *   最终高度 = 大陆基底 + 山脉脊线(域扭曲Ridged) + 丘陵起伏 + 高原削平 - 河流侵蚀 + 细节
+ *   通过多层噪声按权重混合，产生自然过渡的山川/河流/丘陵/平原/高原等地貌。
+ *
+ * 架构设计（异步生成管线）：
+ *   update() 每帧分四阶段：
+ *     Phase 1: 收集中已完成的异步任务 → 主线程上传 Vulkan 缓冲
+ *     Phase 2: 扫描 generationRadius 范围内缺失区块 → 去重
+ *     Phase 3: 按距离排序，每帧最多启动 maxChunksPerFrame 个异步任务（线程池）
+ *     Phase 4: 移除 renderRadius + 2 范围外的旧区块
+ *
+ * 线程安全：
+ *   - perlinNoise/fbm/getHeight/computeChunkMesh 均为 const，只读 perm + 局部变量
+ *   - perm 向量在构造函数中一次性初始化，之后永不修改
+ *   - update() 修改 chunks/pendingChunks_ 仅在主线程
+ *   - uploadChunk() 涉及 Vulkan 调用，必须在主线程
+ */
 
 #include <vulkan/vulkan.h>
 #include <vk_mem_alloc.h>
@@ -33,6 +34,7 @@
 #include <vector>
 #include <future>
 #include "utils/thread_pool.hpp"
+#include "utils/logger.hpp"
 
 namespace owengine {
 
@@ -46,9 +48,57 @@ struct TerrainVertex {
     glm::vec2 texCoord;
 };
 
-// 每个区块的固定缓冲大小（17×17 顶点，16×16 四边形 × 2 三角形 × 3 索引）
-constexpr VkDeviceSize CHUNK_VERTEX_BUFFER_SIZE = (17 * 17) * sizeof(TerrainVertex);
-constexpr VkDeviceSize CHUNK_INDEX_BUFFER_SIZE = (16 * 16 * 6) * sizeof(uint32_t);
+/**
+ * @brief 多地貌地形生成参数
+ *
+ * 控制大陆/山脉/丘陵/河流/高原等不同地貌特征的噪声参数。
+ * 客户端与服务端使用完全相同的参数以保证联机一致性。
+ */
+/**
+ * @brief 多地貌地形生成参数
+ *
+ * 经过调优的参数组合，产生自然过渡的山川/河流/丘陵/平原/高原等地貌。
+ * 核心原则：脊线噪声不做平方锐化（避免针尖突起），山脉幅度适中，
+ * 域扭曲控制在不产生畸变的范围内。
+ */
+struct TerrainParams {
+    float continentScale = 0.001f;     // 大陆噪声频率
+    float continentHeight = 12.0f;     // 大陆抬升幅度
+    float seaLevel = -2.0f;            // 海平面高度
+    float smoothFreq = 0.008f;         // 平滑地形噪声频率
+    float roughFreq = 0.025f;          // 粗糙地形噪声频率
+    float plainAmp = 8.0f;             // 平原地形起伏幅度
+    float mountainAmp = 16.0f;         // 山脉附加起伏幅度
+    float mountainRoughBlend = 0.6f;   // 山区粗糙噪声混合比例
+    float mountainSeedFreq = 0.0024f;  // 山脉区域判定噪声频率
+    float continentRawBase = 0.2f;      // 大陆噪声基底偏移（factor=(raw+base)/span）
+    float continentRawSpan = 0.6f;      // 大陆噪声映射跨度
+    float coastBlendStart = 0.2f;       // 海岸过渡的 continentFactor 起始
+    float coastBlendEnd = 0.6f;         // 海岸过渡的 continentFactor 结束
+    float oceanDepth = 5.0f;            // 海洋最大深度
+    float continentBias = 0.3f;         // 大陆偏置（使中心区域为陆地）
+
+    void applyFromConfig(const class TerrainConfig& cfg);
+};
+
+// 生物群落枚举（用于顶点着色）
+enum class TerrainBiome : uint8_t {
+    Ocean = 0,       // 海洋
+    Beach = 1,       // 沙滩
+    Plains = 2,      // 平原
+    Forest = 3,      // 森林
+    Hills = 4,       // 丘陵
+    Mountains = 5,   // 山脉
+    Snow = 6,        // 雪顶
+    River = 7,       // 河流
+    Plateau = 8,     // 高原
+    Badlands = 9,    // 荒漠/不毛之地
+};
+
+// 每个区块的固定缓冲大小（18×18 顶点，17×17 四边形 × 2 三角形 × 3 索引）
+// 多一行/列使相邻区块边界重叠 1 格，彻底消除裂缝
+constexpr VkDeviceSize CHUNK_VERTEX_BUFFER_SIZE = (18 * 18) * sizeof(TerrainVertex);
+constexpr VkDeviceSize CHUNK_INDEX_BUFFER_SIZE = (17 * 17 * 6) * sizeof(uint32_t);
 
 // Vulkan 侧的已就绪区块（含 GPU 缓冲句柄，来自缓冲池）
 struct TerrainChunk {
@@ -89,6 +139,9 @@ public:
 
     /** @brief 设置地形纹理描述符集（指向草地 BaseColor 纹理） */
     void setTexture(VkDescriptorSet descSet) { terrainTexDescSet_ = descSet; }
+
+    /** @brief 从配置加载地形生成参数 */
+    void applyConfig(const TerrainConfig& cfg) { terrainParams_.applyFromConfig(cfg); }
     
     struct PushConstants {
         glm::mat4 model;
@@ -126,10 +179,18 @@ private:
         std::future<ChunkMesh> future;  // 异步任务句柄，Phase 1 轮询就绪，Phase 2 用于去重
     };
 
+    // ========== 噪声基础方法 ==========
     float perlinNoise(float x, float z) const;
     float fbm(float x, float z, int octaves) const;
+
+    // ========== 地形辅助方法 ==========
+    float getSlope(float x, float z) const;
+    TerrainBiome getBiome(float x, float z, float height, float slope) const;
+    glm::vec3 getBiomeColor(TerrainBiome biome, float height, float slope) const;
+
     // 纯 CPU 网格生成（无 Vulkan 调用），在 std::async 后台线程中安全执行
     ChunkMesh computeChunkMesh(int chunkX, int chunkZ) const;
+    ChunkMesh generateFlatChunk(int chunkX, int chunkZ) const;
     // 将已计算的网格数据上传到 Vulkan 缓冲（从缓冲池取用，必须在主线程调用）
     void uploadChunk(const ChunkMesh& mesh);
     // 同步备用路径：直接 computeChunkMesh + uploadChunk（不经过异步管线）
@@ -163,10 +224,7 @@ private:
     int renderRadius_;            // 渲染/卸载边界（卸载范围 = renderRadius + 2）
     int generationRadius_;        // 预生成扫描半径（renderRadius + 3，提前生成边界外区块）
     int maxChunksPerFrame_;       // 每帧异步任务上限，削去区块生成峰值
-    float noiseScale_;
-    float heightScale_;
-    float baseHeight_;
-    glm::vec3 terrainColor_;
+    TerrainParams terrainParams_; // 多地貌地形生成参数
     
     bool created_;
     

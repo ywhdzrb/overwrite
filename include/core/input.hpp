@@ -111,6 +111,7 @@ private:
     double scrollY_;
     
     // 前一个回调（由 ImGui 注册，Input 创建后自动链式转发）
+    GLFWkeyfun prevKeyCallback_ = nullptr;
     GLFWmousebuttonfun prevMouseButtonCallback_ = nullptr;
     GLFWcursorposfun prevCursorPosCallback_ = nullptr;
     GLFWscrollfun prevScrollCallback_ = nullptr;

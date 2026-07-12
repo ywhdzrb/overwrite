@@ -16,8 +16,37 @@ bool ConfigManager::loadFile(const std::string& path) {
     }
 
     try {
-        nlohmann::json j;
-        file >> j;
+        // 先读为字符串，移除 // 和 /* */ 注释后再解析
+        std::string content((std::istreambuf_iterator<char>(file)),
+                             std::istreambuf_iterator<char>());
+        // 简单注释剥离器：处理 // 行注释和 /* 块注释
+        {
+            std::string clean;
+            clean.reserve(content.size());
+            bool inStr = false, inLine = false, inBlock = false;
+            char prev = 0;
+            for (size_t i = 0; i < content.size(); ++i) {
+                char c = content[i];
+                char n = (i + 1 < content.size()) ? content[i + 1] : 0;
+                if (inStr) {
+                    if (c == '"' && prev != '\\') inStr = false;
+                    clean += c;
+                } else if (inLine) {
+                    if (c == '\n') { inLine = false; clean += c; }
+                } else if (inBlock) {
+                    if (c == '*' && n == '/') { inBlock = false; ++i; }
+                } else {
+                    if (c == '"') { inStr = true; clean += c; }
+                    else if (c == '/' && n == '/') { inLine = true; ++i; }
+                    else if (c == '/' && n == '*') { inBlock = true; ++i; }
+                    else { clean += c; }
+                }
+                prev = c;
+            }
+            content = std::move(clean);
+        }
+
+        nlohmann::json j = nlohmann::json::parse(content);
 
         // 首次加载：直接赋值
         // 后续加载：merge_patch 递归合并，顶级字段覆盖/新增

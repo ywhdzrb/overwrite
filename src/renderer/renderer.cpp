@@ -186,6 +186,11 @@ void Renderer::initVulkan() {
     terrainRenderer_ = std::make_shared<TerrainRenderer>(vulkanDevice_);
     terrainRenderer_->create();
 
+    // 提前加载配置，确保区块使用正确的参数（必须在 update 之前）
+    gameConfig_ = GameConfig::load(AssetPaths::GAME_CONFIG);
+    targetFPS_ = gameConfig_.renderer.targetFPS;
+    terrainRenderer_->applyConfig(gameConfig_.terrain);
+
     // 初始更新地形区块（玩家位置随后由 GameSession 驱动）
     terrainRenderer_->update(glm::vec3(0.0f, 0.0f, 5.0f));
 
@@ -287,10 +292,6 @@ void Renderer::initVulkan() {
             Logger::warning("地形草地纹理加载失败，地形和草将使用程序化颜色");
         }
     }
-
-    // 加载渲染器配置
-    gameConfig_ = GameConfig::load(AssetPaths::GAME_CONFIG);
-    targetFPS_ = gameConfig_.renderer.targetFPS;
 
     // 初始化树系统
     treeSystem_ = std::make_unique<TreeSystem>(vulkanDevice_, textureLoader_, textureDescriptorSetLayout_);
