@@ -131,6 +131,15 @@ void Mesh::draw(VkCommandBuffer commandBuffer) const {
     vkCmdDrawIndexed(commandBuffer, indexCount, 1, 0, 0, 0);
 }
 
+void Mesh::bindAndDrawInstanced(VkCommandBuffer commandBuffer, VkBuffer instanceBuffer,
+                                 uint32_t instanceCount, VkDeviceSize instanceBufferOffset) const {
+    VkBuffer vertexBuffers[] = {vertexBuffer, instanceBuffer};
+    VkDeviceSize offsets[] = {0, instanceBufferOffset};
+    vkCmdBindVertexBuffers(commandBuffer, 0, 2, vertexBuffers, offsets);
+    vkCmdBindIndexBuffer(commandBuffer, indexBuffer, 0, VK_INDEX_TYPE_UINT32);
+    vkCmdDrawIndexed(commandBuffer, indexCount, instanceCount, 0, 0, 0);
+}
+
 void Mesh::cleanup() {
     // 检查 device 是否有效
     if (!device) {

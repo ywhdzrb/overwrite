@@ -7,7 +7,7 @@
  * 归属模块：core
  * 核心职责：封装 glTF 模型和纹理的加载、缓存、引用计数、自动释放
  * 依赖关系：VulkanDevice、TextureLoader、GLTFModel
- * 关键设计：句柄模式（ModelHandle/TextureHandle）解耦调用方与资源存储，
+ * 关键设计：句柄模式（ModelHandle）解耦调用方与资源存储，
  *           支持按 id 去重缓存，避免同一资源重复加载
  */
 
@@ -21,7 +21,6 @@ namespace owengine {
 
 class VulkanDevice;
 class TextureLoader;
-class Texture;
 class GLTFModel;
 
 /**
@@ -33,15 +32,6 @@ struct ModelHandle {
     std::string id;
     bool valid() const { return !id.empty(); }
     bool operator==(const ModelHandle& other) const { return id == other.id; }
-};
-
-/**
- * @brief 纹理句柄
- */
-struct TextureHandle {
-    std::string id;
-    bool valid() const { return !id.empty(); }
-    bool operator==(const TextureHandle& other) const { return id == other.id; }
 };
 
 /**
@@ -109,26 +99,6 @@ public:
                                    VkDescriptorSetLayout layout,
                                    VkDescriptorPool pool);
     
-    // ========== 纹理管理 ==========
-    
-    /**
-     * @brief 加载纹理
-     * @param id 纹理唯一标识
-     * @param filePath 纹理文件路径
-     * @return 纹理句柄
-     */
-    TextureHandle loadTexture(const std::string& id, const std::string& filePath);
-    
-    /**
-     * @brief 获取纹理指针
-     */
-    std::shared_ptr<Texture> getTexture(TextureHandle handle) const;
-    
-    /**
-     * @brief 检查纹理是否已加载
-     */
-    bool hasTexture(const std::string& id) const;
-    
     // ========== 批量操作 ==========
     
     /**
@@ -145,11 +115,6 @@ public:
      * @brief 获取已加载模型数量
      */
     size_t getModelCount() const { return models_.size(); }
-    
-    /**
-     * @brief 获取已加载纹理数量
-     */
-    size_t getTextureCount() const { return textures_.size(); }
 
 private:
     std::shared_ptr<VulkanDevice> device_;
@@ -158,9 +123,6 @@ private:
     // 模型存储
     std::unordered_map<std::string, std::unique_ptr<GLTFModel>> models_;
     std::unordered_map<std::string, VkDescriptorSet> modelDescriptorSets_;
-    
-    // 纹理存储
-    std::unordered_map<std::string, std::shared_ptr<Texture>> textures_;
 };
 
 } // namespace owengine

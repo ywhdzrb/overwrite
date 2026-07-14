@@ -37,6 +37,7 @@ struct GrassConfig {
     float bladeWidth = 0.12f;         // 草茎基部宽度（米，0.12 配合降密度保持视觉填充）
     float bladeThickness = 0.008f;    // 草茎基部厚度（米）
     float windStrength = 0.5f;        // 风场强度系数
+    float heightThreshold = -2.0f;    // 高度阈值，低于此值（海平面）不生成草
     float playerRadius = 2.5f;        // 角色交互半径（米）
     float playerForce = 1.5f;         // 角色下压力度
     int   lodSegments = 2;            // 未使用（LOD 由几何体层数决定）

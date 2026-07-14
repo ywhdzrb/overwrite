@@ -161,6 +161,34 @@ public:
                    float windTime = 0.0f,
                    float windStrength = 0.0f);
 
+    /** @brief 阴影 LOD 等级 */
+    enum class ShadowLOD {
+        Full,        // 全部网格节点（近距：0~50m）
+        TrunkOnly    // 仅树干（跳过树叶节点，中距：50~120m）
+    };
+
+    /** @brief 实例化阴影渲染：所有实例共享同一组 mesh，每实例的模型矩阵从 instanceBuffer 读取 */
+    void renderShadowInstanced(VkCommandBuffer commandBuffer,
+                               VkPipelineLayout pipelineLayout,
+                               const glm::mat4& lightView,
+                               const glm::mat4& lightProj,
+                               VkBuffer instanceBuffer,
+                               uint32_t instanceCount,
+                               VkDeviceSize instanceBufferOffset = 0,
+                               ShadowLOD lod = ShadowLOD::Full);
+
+    /** @brief 递归处理实例化阴影渲染的单个节点 */
+    void renderShadowInstancedNode(VkCommandBuffer commandBuffer,
+                                   VkPipelineLayout pipelineLayout,
+                                   const glm::mat4& lightView,
+                                   const glm::mat4& lightProj,
+                                   VkBuffer instanceBuffer,
+                                   uint32_t instanceCount,
+                                   VkDeviceSize instanceBufferOffset,
+                                   size_t nodeIndex,
+                                   const glm::mat4& parentMatrix,
+                                   ShadowLOD lod = ShadowLOD::Full);
+
     /**
      * @brief 获取模型的包围盒
      * @return 包围盒的 min 和 max 坐标

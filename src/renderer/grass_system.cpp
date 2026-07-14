@@ -319,6 +319,7 @@ std::vector<GrassInstanceData> GrassSystem::generateChunkBlades(
             float wx = worldX0 + posOffset(rng) + jitter(rng);
             float wz = worldZ0 + posOffset(rng) + jitter(rng);
             float y = heightSampler_ ? heightSampler_(wx, wz) : 0.0f;
+            if (y < cfg.heightThreshold) continue; // 低于海平面不生成草
 
             // 坡度驱动密度：缓坡/平地草密，陡坡草稀，连续变化网格不可见
             float slope = sampleSlope(wx, wz);
@@ -627,13 +628,6 @@ void GrassSystem::uploadVisibleToGpu(const glm::vec3& playerPos, float deltaTime
     void* mappedBuf = mappedInstanceDatas_[currentInstanceBuffer_];
     if (mappedBuf == nullptr) return;
 
-    // 推压参数（与 updatePushStates 保持一致）
-    float playerRadius = config_.playerRadius * 1.5f;
-    float radiusSq = playerRadius * playerRadius;
-    float attackSpeed = 5.0f;
-    float decayFactor = std::exp(-3.0f * deltaTime);
-    bool isMoving = speed > 0.1f;
-
     // 统计上传总量用于超限检查
     VkDeviceSize totalUpload = 0;
     for (int lod = 0; lod < LOD_COUNT; lod++) {
@@ -653,45 +647,16 @@ void GrassSystem::uploadVisibleToGpu(const glm::vec3& playerPos, float deltaTime
         }
     }
 
-    // 为每根可见草刷新推压状态后上传
+    // 上传可见草茎到 GPU 缓冲（推压状态已在 Phase 2 updatePushStates 中每帧更新，
+    // Phase 3 复制时已包含最新状态，此处直接 memcpy 不再重复计算）
     VkDeviceSize offset = 0;
     for (int lod = 0; lod < LOD_COUNT; lod++) {
         lodInstanceOffsets_[lod] = offset;
         size_t count = lodVisibleInstances_[lod].size();
         if (count > 0) {
-            GrassInstanceData* instances = lodVisibleInstances_[lod].data();
-            for (size_t i = 0; i < count; i++) {
-                auto& inst = instances[i];
-                float dx = inst.position.x - playerPos.x;
-                float dy = inst.position.y - playerPos.y;
-                float dz = inst.position.z - playerPos.z;
-                float distSq = dx * dx + dy * dy + dz * dz;
-
-                if (distSq < radiusSq) {
-                    float dist = std::sqrt(distSq);
-                    float influence = 1.0f - (dist / playerRadius);
-                    float target = influence * influence;
-
-                    // 与 updatePushStates 一致的方向权重
-                    if (isMoving) {
-                        float hDist = std::sqrt(dx * dx + dz * dz);
-                        if (hDist > 0.3f) {
-                            float dot = (dx / hDist) * moveDir.x + (dz / hDist) * moveDir.z;
-                            float frontWeight = std::pow(std::max(0.0f, dot), 0.4f);
-                            target *= 0.15f + 0.85f * frontWeight;
-                        }
-                    }
-
-                    inst.pushState = std::min(1.0f,
-                        inst.pushState + (target - inst.pushState) * attackSpeed * deltaTime);
-                } else if (inst.pushState >= 0.0001f) {
-                    inst.pushState *= decayFactor;
-                    if (inst.pushState < 0.0001f) inst.pushState = 0.0f;
-                } else {
-                    inst.pushState = 0.0f;
-                }
-            }
-            memcpy(static_cast<char*>(mappedBuf) + offset, instances, count * sizeof(GrassInstanceData));
+            memcpy(static_cast<char*>(mappedBuf) + offset,
+                   lodVisibleInstances_[lod].data(),
+                   count * sizeof(GrassInstanceData));
         }
         offset += count * sizeof(GrassInstanceData);
     }

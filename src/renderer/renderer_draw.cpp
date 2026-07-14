@@ -14,6 +14,47 @@
 
 namespace owengine {
 
+namespace {
+// 简易阶段计时器：记录各阶段耗时到静态变量，每秒汇总打印一次
+struct PhaseTimer {
+    // 阶段索引
+    enum Phase {
+        PHASE_BEGIN_FRAME,    // beginFrame (fence wait 外的开销)
+        PHASE_SHADOW_PASS,    // recordShadowPass
+        PHASE_BEGIN_RP,       // beginMainRenderPass
+        PHASE_DAY_NIGHT,      // updateDayNightCycle
+        PHASE_OPAQUE,         // renderOpaqueGeometry
+        PHASE_CLOUD_IMGUI,    // renderCloudAndImGui
+        PHASE_SUBMIT,         // submitFrame
+        PHASE_COUNT
+    };
+    static const char* names[PHASE_COUNT];
+    double accum[PHASE_COUNT] = {};
+    int frameCount = 0;
+    
+    void record(Phase p, double ms) { accum[p] += ms; }
+    
+    void flush() {
+        if (frameCount == 0) return;
+        Logger::info(std::string("[DrawProfile] ") +
+            names[0] + "=" + std::to_string((int)(accum[0]/frameCount)) + " " +
+            names[1] + "=" + std::to_string((int)(accum[1]/frameCount)) + " " +
+            names[2] + "=" + std::to_string((int)(accum[2]/frameCount)) + " " +
+            names[3] + "=" + std::to_string((int)(accum[3]/frameCount)) + " " +
+            names[4] + "=" + std::to_string((int)(accum[4]/frameCount)) + " " +
+            names[5] + "=" + std::to_string((int)(accum[5]/frameCount)) + " " +
+            names[6] + "=" + std::to_string((int)(accum[6]/frameCount)) + "ms"
+        );
+        for (auto& a : accum) a = 0.0;
+        frameCount = 0;
+    }
+};
+const char* PhaseTimer::names[PhaseTimer::PHASE_COUNT] = {
+    "BF", "Shd", "RP", "DN", "Opa", "Cld", "Sub"
+};
+static PhaseTimer s_pt;
+} // anonymous namespace
+
 /**
  * @brief Phase 0: 帧同步 — 等待 fence → 获取交换链图像 → 重置 fence → 开始命令缓冲
  * @return false 表示窗口应跳过此帧（交换链过期或窗口关闭）
@@ -85,8 +126,15 @@ void Renderer::recordShadowPass(VkCommandBuffer cmd, Camera* cam) {
         }
     }
 
-    // 树木和石头投射阴影
-    if (treeSystem_) treeSystem_->renderShadow(cmd, shadowPL, lightView, lightProj);
+    // 树木投射阴影（使用实例化管线，所有树一批绘制）
+    if (treeSystem_) {
+        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                          lightManager_->getShadowMapper()->getInstancedPipeline());
+        treeSystem_->renderShadow(cmd, shadowPL, lightView, lightProj);
+        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                          lightManager_->getShadowMapper()->getPipeline());
+    }
+    // 石头投射阴影
     if (stoneSystem_) stoneSystem_->renderShadow(cmd, shadowPL, lightView, lightProj);
 
     if (gameSession_) {
@@ -324,7 +372,19 @@ void Renderer::renderOpaqueGeometry(VkCommandBuffer cmd, Camera* cam) {
     treeSystem_->render(cmd, graphicsPipeline_->getPipelineLayout(), *cam,
                         totalTime_, gameConfig_.tree.windStrength);
     if (stoneSystem_) stoneSystem_->render(cmd, graphicsPipeline_->getPipelineLayout(), *cam);
+    // 绑定水下草地纹理后渲染草
+    if (grassWaterDescriptorSet_ != VK_NULL_HANDLE) {
+        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                graphicsPipeline_->getPipelineLayout(), 0, 1,
+                                &grassWaterDescriptorSet_, 0, nullptr);
+    }
     if (grassSystem_) grassSystem_->render(cmd, *cam);
+    // 恢复主纹理描述符集
+    if (grassWaterDescriptorSet_ != VK_NULL_HANDLE) {
+        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                graphicsPipeline_->getPipelineLayout(), 0, 1,
+                                &textureDescriptorSet_, 0, nullptr);
+    }
 
     // 远程玩家模型
     if (gameSession_) {
@@ -336,6 +396,14 @@ void Renderer::renderOpaqueGeometry(VkCommandBuffer cmd, Camera* cam) {
                             activeModel->getModelMatrix());
             }
         }
+    }
+
+    // 水面（在所有不透明物体之后渲染，半透明混合叠加在深度缓冲之上）
+    if (waterRenderer_) {
+        waterRenderer_->render(cmd, cam->getViewMatrix(),
+                               cam->getProjectionMatrix(), cam->getPosition());
+        // 恢复主图形管线，供后续渲染（云/ImGui 等）使用
+        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline_->getPipeline());
     }
 }
 
@@ -513,30 +581,54 @@ void Renderer::submitFrame(VkCommandBuffer cmd, uint32_t imageIndex) {
  *   Phase 3: FSR1 → 提交 → 呈现
  */
 void Renderer::drawFrame() {
+    auto pf0 = std::chrono::high_resolution_clock::now();
     uint32_t imageIndex;
     VkCommandBuffer commandBuffer;
     if (!beginFrame(imageIndex, commandBuffer)) return;
+    s_pt.record(PhaseTimer::PHASE_BEGIN_FRAME,
+        std::chrono::duration<double, std::milli>(std::chrono::high_resolution_clock::now() - pf0).count());
 
     Camera* cam = gameSession_ ? gameSession_->getCamera() : nullptr;
 
-    // Phase 1: 阴影渲染通道
+    auto pf1 = std::chrono::high_resolution_clock::now();
     recordShadowPass(commandBuffer, cam);
+    s_pt.record(PhaseTimer::PHASE_SHADOW_PASS,
+        std::chrono::duration<double, std::milli>(std::chrono::high_resolution_clock::now() - pf1).count());
 
-    // Phase 2a: 开始主渲染通道
+    auto pf2 = std::chrono::high_resolution_clock::now();
     Camera* mainCam = beginMainRenderPass(commandBuffer, imageIndex);
     if (!mainCam) return;
+    s_pt.record(PhaseTimer::PHASE_BEGIN_RP,
+        std::chrono::duration<double, std::milli>(std::chrono::high_resolution_clock::now() - pf2).count());
 
-    // Phase 2b: 更新昼夜循环
+    auto pf3 = std::chrono::high_resolution_clock::now();
     updateDayNightCycle();
+    s_pt.record(PhaseTimer::PHASE_DAY_NIGHT,
+        std::chrono::duration<double, std::milli>(std::chrono::high_resolution_clock::now() - pf3).count());
 
-    // Phase 2c: 渲染场景几何体
+    auto pf4 = std::chrono::high_resolution_clock::now();
     renderOpaqueGeometry(commandBuffer, mainCam);
+    s_pt.record(PhaseTimer::PHASE_OPAQUE,
+        std::chrono::duration<double, std::milli>(std::chrono::high_resolution_clock::now() - pf4).count());
 
-    // Phase 2d: 云合成 + ImGui
+    auto pf5 = std::chrono::high_resolution_clock::now();
     renderCloudAndImGui(commandBuffer, mainCam, imageIndex);
+    s_pt.record(PhaseTimer::PHASE_CLOUD_IMGUI,
+        std::chrono::duration<double, std::milli>(std::chrono::high_resolution_clock::now() - pf5).count());
 
-    // Phase 3: FSR1 + 提交 + 呈现
+    auto pf6 = std::chrono::high_resolution_clock::now();
     submitFrame(commandBuffer, imageIndex);
+    s_pt.record(PhaseTimer::PHASE_SUBMIT,
+        std::chrono::duration<double, std::milli>(std::chrono::high_resolution_clock::now() - pf6).count());
+
+    // 每秒汇总打印阶段耗时
+    s_pt.frameCount++;
+    static auto s_lastPt = std::chrono::high_resolution_clock::now();
+    auto now = std::chrono::high_resolution_clock::now();
+    if (std::chrono::duration<double>(now - s_lastPt).count() >= 1.0) {
+        s_pt.flush();
+        s_lastPt = now;
+    }
 }
 
 } // namespace owengine

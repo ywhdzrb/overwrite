@@ -36,7 +36,6 @@ add_test(NAME Transform COMMAND test_transform)
 add_executable(test_inventory test_inventory.cpp)
 target_link_libraries(test_inventory GTest::gtest_main)
 target_include_directories(test_inventory PRIVATE
-    ${CMAKE_SOURCE_DIR}/shared/include
     ${CMAKE_SOURCE_DIR}/include
 )
 add_test(NAME Inventory COMMAND test_inventory)
@@ -73,11 +72,11 @@ add_test(NAME PhysicsSystem COMMAND test_physics_system)
 # 测试：网络协议序列化/反序列化（纯 header-only inline 函数）
 add_executable(test_network_protocol test_network_protocol.cpp)
 target_link_libraries(test_network_protocol GTest::gtest_main)
-target_include_directories(test_network_protocol PRIVATE ${CMAKE_SOURCE_DIR}/shared/include ${CMAKE_SOURCE_DIR}/include)
+target_include_directories(test_network_protocol PRIVATE ${CMAKE_SOURCE_DIR}/include)
 add_test(NAME NetworkProtocol COMMAND test_network_protocol)
 
 # 测试：ECS 系统集成（MovementSystem + PhysicsSystem 组合 + 异步线程安全）
 add_executable(test_ecs_integration test_ecs_integration.cpp)
 target_link_libraries(test_ecs_integration GTest::gtest_main OverWriteShared)
-target_include_directories(test_ecs_integration PRIVATE ${CMAKE_SOURCE_DIR}/shared/include ${CMAKE_SOURCE_DIR}/include)
+target_include_directories(test_ecs_integration PRIVATE ${CMAKE_SOURCE_DIR}/include)
 add_test(NAME ECSIntegration COMMAND test_ecs_integration)

@@ -46,6 +46,7 @@
 #include "renderer/fsr1_pass.hpp"
 #include "renderer/cloud_system.hpp"
 #include "renderer/shader_manager.hpp"
+#include "renderer/water_renderer.hpp"
 
 // 前向声明：游戏会话（Renderer 不拥有游戏逻辑，仅通过指针读取渲染所需数据）
 namespace owengine { class GameSession; }
@@ -180,6 +181,11 @@ private:
     std::unique_ptr<ModelRenderer> modelRenderer_;
     std::unique_ptr<ImGuiManager> imguiManager_;
     std::shared_ptr<TextureLoader> textureLoader_;
+
+    // 水下草地
+    std::shared_ptr<Texture> grassWaterTexture_;
+    VkDescriptorSet grassWaterDescriptorSet_ = VK_NULL_HANDLE;
+
     std::unique_ptr<LightManager> lightManager_;
 
     // 动态加载的静态模型（不含玩家模型，玩家模型由 GameSession 管理）
@@ -197,6 +203,9 @@ private:
 
     // 体积云系统（在所有不透明物体之后、ImGui之前渲染）
     std::unique_ptr<class CloudSystem> cloudSystem_;
+
+    // 水面渲染器（在地形之后、半透明物体之前渲染）
+    std::unique_ptr<WaterRenderer> waterRenderer_;
 
     // 阴影映射系统已整合至 LightManager，由光照系统统一管理
 

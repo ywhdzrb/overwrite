@@ -21,6 +21,9 @@ public:
 
     void bind(VkCommandBuffer commandBuffer) const;
     void draw(VkCommandBuffer commandBuffer) const;
+    /** @brief 实例化绘制：同时绑定顶点缓冲和实例缓冲，然后绘制 instanceCount 个实例 */
+    void bindAndDrawInstanced(VkCommandBuffer commandBuffer, VkBuffer instanceBuffer,
+                              uint32_t instanceCount, VkDeviceSize instanceBufferOffset = 0) const;
     void cleanup();
 
 private:

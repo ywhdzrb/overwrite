@@ -76,6 +76,7 @@ void ShadowMapper::init(const std::shared_ptr<VulkanDevice>& device, uint32_t ma
     // 放在 createPipeline 之前，以便在管线布局中包含它
     createDescriptorSetLayout();
     createPipeline();
+    createInstancedPipeline();
     createUniformBuffer();
 
     initialized_ = true;
@@ -89,6 +90,10 @@ void ShadowMapper::cleanup() {
     if (shadowPipeline_ != VK_NULL_HANDLE) {
         vkDestroyPipeline(dev, shadowPipeline_, nullptr);
         shadowPipeline_ = VK_NULL_HANDLE;
+    }
+    if (instancedShadowPipeline_ != VK_NULL_HANDLE) {
+        vkDestroyPipeline(dev, instancedShadowPipeline_, nullptr);
+        instancedShadowPipeline_ = VK_NULL_HANDLE;
     }
     if (shadowPipelineLayout_ != VK_NULL_HANDLE) {
         vkDestroyPipelineLayout(dev, shadowPipelineLayout_, nullptr);
@@ -530,6 +535,190 @@ void ShadowMapper::createPipeline() {
     if (_vr != VK_SUCCESS) {
         throw std::runtime_error("[ShadowMapper] 创建阴影管线失败");
     }
+}
+
+/**
+ * @brief 创建实例化阴影管线（树木专用）
+ *
+ * 与常规阴影管线共享相同的管线布局（push constants + 描述符集），
+ * 但使用不同的顶点着色器（shadow_instanced.vert），额外添加
+ * binding 1（VK_VERTEX_INPUT_RATE_INSTANCE）用于传入每棵树的模型矩阵。
+ */
+void ShadowMapper::createInstancedPipeline() {
+    VkDevice dev = device_->getDevice();
+
+    // 加载着色器
+    auto vertCode = readShaderFile("shaders/shadow_instanced.vert.spv");
+    auto fragCode = readShaderFile("shaders/shadow.frag.spv");
+    if (vertCode.empty() || fragCode.empty()) {
+        throw std::runtime_error("[ShadowMapper] 实例化阴影着色器文件缺失");
+    }
+
+    VkShaderModule vertModule = createShaderModule(dev, vertCode);
+    VkShaderModule fragModule = createShaderModule(dev, fragCode);
+    if (vertModule == VK_NULL_HANDLE || fragModule == VK_NULL_HANDLE) {
+        throw std::runtime_error("[ShadowMapper] 创建实例化阴影着色器模块失败");
+    }
+
+    VkPipelineShaderStageCreateInfo vertStage{};
+    vertStage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    vertStage.stage = VK_SHADER_STAGE_VERTEX_BIT;
+    vertStage.module = vertModule;
+    vertStage.pName = "main";
+
+    VkPipelineShaderStageCreateInfo fragStage{};
+    fragStage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    fragStage.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+    fragStage.module = fragModule;
+    fragStage.pName = "main";
+
+    VkPipelineShaderStageCreateInfo stages[] = {vertStage, fragStage};
+
+    // ===== 顶点输入（binding 0 常规顶点 + binding 1 实例化数据） =====
+    std::array<VkVertexInputBindingDescription, 2> bindingDescs{};
+    bindingDescs[0].binding = 0;
+    bindingDescs[0].stride = sizeof(glm::vec3) * 3 + sizeof(glm::vec2);
+    bindingDescs[0].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+    bindingDescs[1].binding = 1;
+    bindingDescs[1].stride = sizeof(glm::mat4);  // 64 bytes: 每棵树的完整模型矩阵
+    bindingDescs[1].inputRate = VK_VERTEX_INPUT_RATE_INSTANCE;
+
+    // Locations 0-3: 常规顶点属性（位置/法线/颜色/UV）
+    // Locations 4-7: 实例模型矩阵（4 × vec4）
+    std::array<VkVertexInputAttributeDescription, 8> attrDescs{};
+    attrDescs[0].binding = 0;
+    attrDescs[0].location = 0;
+    attrDescs[0].format = VK_FORMAT_R32G32B32_SFLOAT;
+    attrDescs[0].offset = 0;
+    attrDescs[1].binding = 0;
+    attrDescs[1].location = 1;
+    attrDescs[1].format = VK_FORMAT_R32G32B32_SFLOAT;
+    attrDescs[1].offset = sizeof(glm::vec3);
+    attrDescs[2].binding = 0;
+    attrDescs[2].location = 2;
+    attrDescs[2].format = VK_FORMAT_R32G32B32_SFLOAT;
+    attrDescs[2].offset = sizeof(glm::vec3) * 2;
+    attrDescs[3].binding = 0;
+    attrDescs[3].location = 3;
+    attrDescs[3].format = VK_FORMAT_R32G32_SFLOAT;
+    attrDescs[3].offset = sizeof(glm::vec3) * 3;
+
+    attrDescs[4].binding = 1;
+    attrDescs[4].location = 4;
+    attrDescs[4].format = VK_FORMAT_R32G32B32A32_SFLOAT;
+    attrDescs[4].offset = 0;
+    attrDescs[5].binding = 1;
+    attrDescs[5].location = 5;
+    attrDescs[5].format = VK_FORMAT_R32G32B32A32_SFLOAT;
+    attrDescs[5].offset = 16;
+    attrDescs[6].binding = 1;
+    attrDescs[6].location = 6;
+    attrDescs[6].format = VK_FORMAT_R32G32B32A32_SFLOAT;
+    attrDescs[6].offset = 32;
+    attrDescs[7].binding = 1;
+    attrDescs[7].location = 7;
+    attrDescs[7].format = VK_FORMAT_R32G32B32A32_SFLOAT;
+    attrDescs[7].offset = 48;
+
+    VkPipelineVertexInputStateCreateInfo vi{};
+    vi.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+    vi.vertexBindingDescriptionCount = static_cast<uint32_t>(bindingDescs.size());
+    vi.pVertexBindingDescriptions = bindingDescs.data();
+    vi.vertexAttributeDescriptionCount = static_cast<uint32_t>(attrDescs.size());
+    vi.pVertexAttributeDescriptions = attrDescs.data();
+
+    // 以下所有管线状态与常规阴影管线完全相同
+    VkPipelineInputAssemblyStateCreateInfo ia{};
+    ia.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+    ia.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+    ia.primitiveRestartEnable = VK_FALSE;
+
+    VkPipelineViewportStateCreateInfo vpState{};
+    vpState.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+    vpState.viewportCount = 1;
+    vpState.scissorCount = 1;
+
+    VkPipelineRasterizationStateCreateInfo raster{};
+    raster.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+    raster.depthClampEnable = VK_FALSE;
+    raster.rasterizerDiscardEnable = VK_FALSE;
+    raster.polygonMode = VK_POLYGON_MODE_FILL;
+    raster.lineWidth = 1.0f;
+    raster.cullMode = VK_CULL_MODE_NONE;
+    raster.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+    raster.depthBiasEnable = VK_FALSE;
+
+    VkPipelineMultisampleStateCreateInfo ms{};
+    ms.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+    ms.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+
+    VkPipelineColorBlendAttachmentState colorBlendAttachment{};
+    colorBlendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT;
+    colorBlendAttachment.blendEnable = VK_FALSE;
+
+    VkPipelineColorBlendStateCreateInfo colorBlending{};
+    colorBlending.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+    colorBlending.logicOpEnable = VK_FALSE;
+    colorBlending.attachmentCount = 1;
+    colorBlending.pAttachments = &colorBlendAttachment;
+
+    VkPipelineDepthStencilStateCreateInfo ds{};
+    ds.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+    ds.depthTestEnable = VK_FALSE;
+    ds.depthWriteEnable = VK_FALSE;
+    ds.depthCompareOp = VK_COMPARE_OP_ALWAYS;
+    ds.depthBoundsTestEnable = VK_FALSE;
+    ds.stencilTestEnable = VK_FALSE;
+
+    std::array<VkDynamicState, 2> dynamicStates = {
+        VK_DYNAMIC_STATE_VIEWPORT,
+        VK_DYNAMIC_STATE_SCISSOR
+    };
+    VkPipelineDynamicStateCreateInfo dynamic{};
+    dynamic.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
+    dynamic.dynamicStateCount = static_cast<uint32_t>(dynamicStates.size());
+    dynamic.pDynamicStates = dynamicStates.data();
+
+    // Push Constants — 与常规阴影管线完全相同的范围和布局
+    VkPushConstantRange pcRange{};
+    pcRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+    pcRange.offset = 0;
+    pcRange.size = 240;
+
+    VkPhysicalDeviceProperties pcProps;
+    vkGetPhysicalDeviceProperties(device_->getPhysicalDevice(), &pcProps);
+    uint32_t pcLimit = pcProps.limits.maxPushConstantsSize;
+    if (pcRange.size > pcLimit) {
+        pcRange.size = pcLimit;
+    }
+
+    // 复用常规阴影管线的管线布局（push constants + 描述符集相同）
+    VkGraphicsPipelineCreateInfo gpInfo{};
+    gpInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+    gpInfo.stageCount = 2;
+    gpInfo.pStages = stages;
+    gpInfo.pVertexInputState = &vi;
+    gpInfo.pInputAssemblyState = &ia;
+    gpInfo.pViewportState = &vpState;
+    gpInfo.pRasterizationState = &raster;
+    gpInfo.pMultisampleState = &ms;
+    gpInfo.pDepthStencilState = &ds;
+    gpInfo.pColorBlendState = &colorBlending;
+    gpInfo.pDynamicState = &dynamic;
+    gpInfo.layout = shadowPipelineLayout_;  // 复用同一 layout
+    gpInfo.renderPass = shadowRenderPass_;
+    gpInfo.subpass = 0;
+
+    VkResult _vr = vkCreateGraphicsPipelines(dev, VK_NULL_HANDLE, 1, &gpInfo, nullptr,
+                                             &instancedShadowPipeline_);
+
+    vkDestroyShaderModule(dev, vertModule, nullptr);
+    vkDestroyShaderModule(dev, fragModule, nullptr);
+
+    if (_vr != VK_SUCCESS) {
+        throw std::runtime_error("[ShadowMapper] 创建实例化阴影管线失败");
+    }
+    Logger::info("[ShadowMapper] 实例化阴影管线创建完成");
 }
 
 // ============================================================

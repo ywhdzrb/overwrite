@@ -62,8 +62,12 @@ layout(set = 2, binding = 1) uniform ShadowUniform {
 // ---- 来自顶点着色器的输入 ----
 layout(location = 0) in vec3 fragWorldPos;
 layout(location = 1) in float fragHeight;
+layout(location = 2) in vec2 fragUV;
 
 layout(location = 0) out vec4 outColor;
+
+// Set=0: 纹理（绑定时由 Renderer 切换为 grass_water 纹理）
+layout(set = 0, binding = 0) uniform sampler2D grassTexture;
 
 // push constants 与顶点着色器共享同一块内存，必须结构一致
 // lightDir/ambientIntensity 保留以维持内存布局兼容，但不再用于光照
@@ -130,22 +134,31 @@ vec3 calcDirectionalLight(Light light, vec3 albedo, vec3 worldPos) {
 }
 
 void main() {
-    // 基于高度渐变：根部深绿/棕，尖端黄绿
-    vec3 baseColor  = vec3(0.22, 0.35, 0.10);
-    vec3 tipColor   = vec3(0.50, 0.80, 0.20);
+    vec3 baseColor, tipColor;
+
+    // 检测水下草：世界Y低于海平面(-2.0)时使用纹理
+    bool underwater = fragWorldPos.y < -2.0;
+    if (underwater) {
+        // 使用水下草地纹理采样作为基础色
+        vec3 texColor = texture(grassTexture, fragUV).rgb;
+        baseColor = texColor * 0.8;
+        tipColor  = texColor * 1.2;
+    } else {
+        // 原有程序化绿色渐变
+        baseColor = vec3(0.22, 0.35, 0.10);
+        tipColor  = vec3(0.50, 0.80, 0.20);
+    }
     vec3 heightColor = mix(baseColor, tipColor, fragHeight);
 
-    // 利用世界坐标生成微小的随机色调偏移 (±5%)
+    // 利用世界坐标生成微小的随机色调偏移
     vec3 floorPos = floor(fragWorldPos * 4.0);
     float h = fract(sin(dot(floorPos, vec3(12.9898, 78.233, 45.543))) * 43758.5453);
     float variation = h * 0.10 - 0.05;
     vec3 variedColor = heightColor + variation;
 
     // === 从 LightBuffer SSBO 获取光照数据 ===
-    // 环境光：从 SSBO 读取，与主场景完全一致
     vec3 result = variedColor * lightBuffer.ambientColor;
 
-    // 遍历所有光源（仅处理方向光，点/聚光对草影响可忽略）
     for (int i = 0; i < lightBuffer.lightCount; i++) {
         Light light = lightBuffer.lights[i];
         if (light.enabled == 0) continue;

@@ -45,6 +45,11 @@ inline constexpr const char* GRASS_VERT_SHADER = "shaders/grass.vert.spv";
 /** @brief 草地片段着色器 */
 inline constexpr const char* GRASS_FRAG_SHADER = "shaders/grass.frag.spv";
 
+/** @brief 水面顶点着色器 */
+inline constexpr const char* WATER_VERT_SHADER = "shaders/water.vert.spv";
+/** @brief 水面片段着色器 */
+inline constexpr const char* WATER_FRAG_SHADER = "shaders/water.frag.spv";
+
 /** @brief 体积云顶点着色器（全屏四边形） */
 inline constexpr const char* CLOUD_VERT_SHADER = "shaders/cloud.vert.spv";
 /** @brief 体积云片段着色器（Ray Marching） */
@@ -59,6 +64,12 @@ inline constexpr const char* SHADOW_VERT_SHADER = "shaders/shadow.vert.spv";
 inline constexpr const char* SHADOW_FRAG_SHADER = "shaders/shadow.frag.spv";
 
 // ==================== 纹理文件 ====================
+
+/** @brief 水下草地纹理 */
+inline constexpr const char* GRASS_WATER_TEXTURE = "assets/textures/grass_water/file_00000000cdfc71fbbd14f1c72ba024ce.png";
+
+/** @brief 海底砂石纹理（用于海洋地形区块） */
+inline constexpr const char* SEAFLOOR_TEXTURE = "assets/textures/grass_water/file_00000000cdfc71fbbd14f1c72ba024ce.png";
 
 // ==================== 模型文件 ====================
 

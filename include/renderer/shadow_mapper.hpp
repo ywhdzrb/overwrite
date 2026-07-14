@@ -99,6 +99,7 @@ public:
 
     VkRenderPass getRenderPass() const { return shadowRenderPass_; }
     VkPipeline getPipeline() const { return shadowPipeline_; }
+    VkPipeline getInstancedPipeline() const { return instancedShadowPipeline_; }
     VkPipelineLayout getPipelineLayout() const { return shadowPipelineLayout_; }
     uint32_t getMapSize() const { return mapSize_; }
     const glm::mat4& getLightVP() const { return lightVP_; }
@@ -135,6 +136,7 @@ private:
     void createRenderPass();
     void createFramebuffer();
     void createPipeline();
+    void createInstancedPipeline();
     void createUniformBuffer();
 
     std::shared_ptr<VulkanDevice> device_;
@@ -159,6 +161,7 @@ private:
     // 管线
     VkPipelineLayout shadowPipelineLayout_ = VK_NULL_HANDLE;
     VkPipeline shadowPipeline_ = VK_NULL_HANDLE;
+    VkPipeline instancedShadowPipeline_ = VK_NULL_HANDLE;
 
     // 阴影 uniform 缓冲（光源 VP + 参数），每帧独立以防帧并发撕裂
     VkBuffer shadowUniformBuffers_[MAX_SHADOW_FRAMES] = {};

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <vulkan/vulkan.h>
+#include <vk_mem_alloc.h>
 #include <memory>
 #include <vector>
 #include <string>
@@ -156,6 +157,13 @@ private:
 
     /// 树木实例信息的缓存，避免每次调用 getTreeInstances 时重复分配 vector
     mutable std::vector<TreeInstanceInfo> instanceCache_;
+
+    // 实例化阴影渲染缓冲
+    VkBuffer shadowInstBuf_ = VK_NULL_HANDLE;
+    VmaAllocation shadowInstAlloc_ = VK_NULL_HANDLE;
+    uint32_t shadowInstCapacity_ = 0;
+    void createShadowInstanceBuffer(uint32_t maxTrees);
+    void destroyShadowInstanceBuffer();
 };
 
 } // namespace owengine

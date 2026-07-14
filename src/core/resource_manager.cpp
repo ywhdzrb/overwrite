@@ -1,6 +1,5 @@
 #include "core/resource_manager.hpp"
 #include "renderer/gltf_model.hpp"
-#include "renderer/texture.hpp"
 #include "renderer/texture_loader.hpp"
 #include "utils/logger.hpp"
 #include <stdexcept>
@@ -86,40 +85,6 @@ void ResourceManager::createModelDescriptorSet(ModelHandle handle,
     Logger::info("为模型创建描述符集: " + handle.id);
 }
 
-// ========== 纹理管理 ==========
-
-TextureHandle ResourceManager::loadTexture(const std::string& id, const std::string& filePath) {
-    if (hasTexture(id)) {
-        Logger::warning("纹理已存在，返回已有实例: " + id);
-        return TextureHandle{id};
-    }
-    
-    try {
-        auto texture = textureLoader_->loadTexture(filePath);
-        textures_[id] = texture;
-        Logger::info("纹理加载成功: " + id + " <- " + filePath);
-        
-        return TextureHandle{id};
-    } catch (const std::exception& e) {
-        Logger::error(std::string("纹理加载失败: ") + e.what());
-        return TextureHandle{};
-    }
-}
-
-std::shared_ptr<Texture> ResourceManager::getTexture(TextureHandle handle) const {
-    if (!handle.valid()) return nullptr;
-    
-    auto it = textures_.find(handle.id);
-    if (it != textures_.end()) {
-        return it->second;
-    }
-    return nullptr;
-}
-
-bool ResourceManager::hasTexture(const std::string& id) const {
-    return textures_.find(id) != textures_.end();
-}
-
 // ========== 批量操作 ==========
 
 void ResourceManager::cleanupUnused() {
@@ -141,9 +106,6 @@ void ResourceManager::cleanupAll() {
     }
     models_.clear();
     modelDescriptorSets_.clear();
-    
-    // 清理所有纹理
-    textures_.clear();
     
     Logger::info("所有资源已清理");
 }

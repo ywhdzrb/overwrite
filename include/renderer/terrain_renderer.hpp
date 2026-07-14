@@ -97,8 +97,8 @@ enum class TerrainBiome : uint8_t {
 
 // 每个区块的固定缓冲大小（18×18 顶点，17×17 四边形 × 2 三角形 × 3 索引）
 // 多一行/列使相邻区块边界重叠 1 格，彻底消除裂缝
-constexpr VkDeviceSize CHUNK_VERTEX_BUFFER_SIZE = (18 * 18) * sizeof(TerrainVertex);
-constexpr VkDeviceSize CHUNK_INDEX_BUFFER_SIZE = (17 * 17 * 6) * sizeof(uint32_t);
+constexpr VkDeviceSize CHUNK_VERTEX_BUFFER_SIZE = (33 * 33) * sizeof(TerrainVertex);
+constexpr VkDeviceSize CHUNK_INDEX_BUFFER_SIZE = (32 * 32 * 6) * sizeof(uint32_t);
 
 // Vulkan 侧的已就绪区块（含 GPU 缓冲句柄，来自缓冲池）
 struct TerrainChunk {
@@ -137,7 +137,7 @@ public:
     void update(const glm::vec3& playerPos);
     float getHeight(float x, float z) const;
 
-    /** @brief 设置地形纹理描述符集（指向草地 BaseColor 纹理） */
+    /** @brief 设置地形纹理描述符集（binding=0 草地, binding=1 海底） */
     void setTexture(VkDescriptorSet descSet) { terrainTexDescSet_ = descSet; }
 
     /** @brief 从配置加载地形生成参数 */
@@ -208,7 +208,7 @@ private:
         void* indexMappedData = nullptr;
         bool inUse = false;
     };
-    static constexpr int BUFFER_POOL_SIZE = 512;  // 覆盖 renderRadius ≈ 314 区块 + 余量
+    static constexpr int BUFFER_POOL_SIZE = 640;  // 覆盖 generationRadius ≈ 531 区块 + 余量
     void initBufferPool();
     void cleanupBufferPool();
     int acquirePoolSlot();
@@ -233,7 +233,10 @@ private:
     // 异步生成队列：Phase 1 消费就绪项，Phase 2 用于去重
     std::vector<PendingChunk> pendingChunks_;
 
-    // 地形纹理描述符集（指向草地 BaseColor 纹理），绑定到 set=0 供 shader.frag 采样
+    // 玩家世界坐标，由 update() 设置，供 render() 做距离裁剪
+    glm::vec3 lastPlayerPos_{0.0f};
+
+    // 地形纹理描述符集（binding=0 草地 BaseColor, binding=1 海底砂石），绑定到 set=0 供 shader.frag 采样
     VkDescriptorSet terrainTexDescSet_ = VK_NULL_HANDLE;
     // 地形纹理世界空间平铺缩放：UV = worldPos / uvScale_
     float uvScale_ = 4.0f;

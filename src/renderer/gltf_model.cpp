@@ -1,5 +1,7 @@
 // GLTF 模型实现
 #include "renderer/gltf_model.hpp"
+#include "renderer/model_renderer.hpp"
+#include "utils/descriptor_helper.hpp"
 #include "utils/logger.hpp"
 #include <algorithm>
 #include <stdexcept>
@@ -180,38 +182,14 @@ void GLTFModel::createMeshDescriptorSets(VkDescriptorSetLayout descriptorSetLayo
     
     for (auto& meshData : meshes) {
         if (meshData.descriptorSet != VK_NULL_HANDLE) continue;
-        
         if (meshData.materialIndex >= materials.size()) continue;
         
         const auto& material = materials[meshData.materialIndex];
-        if (!material.useBaseColorTexture) continue;
+        if (!material.useBaseColorTexture || !material.baseColorTexture) continue;
         
-        VkDescriptorSetAllocateInfo allocInfo{};
-        allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-        allocInfo.descriptorPool = descriptorPool;
-        allocInfo.descriptorSetCount = 1;
-        allocInfo.pSetLayouts = &descriptorSetLayout;
-        
-        if (vkAllocateDescriptorSets(device->getDevice(), &allocInfo, &meshData.descriptorSet) != VK_SUCCESS) {
-            Logger::warning("无法为 mesh 分配描述符集");
-            continue;
-        }
-        
-        VkDescriptorImageInfo imageInfo{};
-        imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-        imageInfo.imageView = material.baseColorTexture->getImageView();
-        imageInfo.sampler = material.baseColorTexture->getSampler();
-        
-        VkWriteDescriptorSet descriptorWrite{};
-        descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        descriptorWrite.dstSet = meshData.descriptorSet;
-        descriptorWrite.dstBinding = 0;
-        descriptorWrite.dstArrayElement = 0;
-        descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-        descriptorWrite.descriptorCount = 1;
-        descriptorWrite.pImageInfo = &imageInfo;
-        
-        vkUpdateDescriptorSets(device->getDevice(), 1, &descriptorWrite, 0, nullptr);
+        meshData.descriptorSet = descriptor_helper::createTextureDescriptorSet(
+            device->getDevice(), pool, descriptorSetLayout,
+            material.baseColorTexture, material.baseColorTexture, "mesh_" + std::to_string(meshData.materialIndex));
     }
     
     Logger::info("为 " + std::to_string(meshes.size()) + " 个 mesh 创建描述符集");
@@ -293,23 +271,8 @@ void GLTFModel::renderNode(VkCommandBuffer commandBuffer,
         const auto& meshData = meshes[node.meshIndex];
         
         if (meshData.mesh) {
-            // 设置 push constants
-            struct PushConstants {
-                glm::mat4 model;
-                glm::mat4 view;
-                glm::mat4 proj;
-                glm::vec3 baseColor;
-                float metallic;
-                float roughness;
-                int hasTexture;
-                float _pad0;
-                float windTime;
-                float windStrength;  // x=time, y=windStrength
-                glm::vec3 normalScale;  // 逆缩放因子（CPU 计算，用于法线矩阵）
-            };
-            assert(sizeof(PushConstants) == 240 && "glTF PushConstants must be 240 bytes");
-
-            PushConstants pushConstants{};
+            // 使用 ModelRenderer 统一 PushConstants 定义
+            ModelRenderer::PushConstants pushConstants{};
             pushConstants.model = nodeMatrix;
             pushConstants.view = viewMatrix;
             pushConstants.proj = projectionMatrix;
@@ -349,7 +312,7 @@ void GLTFModel::renderNode(VkCommandBuffer commandBuffer,
 
             vkCmdPushConstants(commandBuffer, pipelineLayout,
                              VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
-                             0, sizeof(PushConstants), &pushConstants);
+                             0, sizeof(ModelRenderer::PushConstants), &pushConstants);
             
             // 绑定每个 mesh 独立的纹理描述符集
             if (meshData.descriptorSet != VK_NULL_HANDLE) {
@@ -366,6 +329,100 @@ void GLTFModel::renderNode(VkCommandBuffer commandBuffer,
     // 递归渲染子节点
     for (size_t childIndex : node.children) {
         renderNode(commandBuffer, pipelineLayout, viewMatrix, projectionMatrix, childIndex, nodeMatrix, windTime, windStrength);
+    }
+}
+
+/**
+ * @brief 递归处理实例化阴影渲染的单个节点
+ * @note 与 renderNode 不同，此方法不设置材质描述符和风场参数（阴影不需要），
+ *       使用实例缓冲传递每棵树的模型矩阵。
+ */
+/**
+ * @brief 检查节点名是否匹配某组前缀（用于识别树叶节点）
+ */
+static bool nodeNameMatchesPrefix(const std::string& name, const std::vector<std::string>& prefixes) {
+    if (name.empty() || prefixes.empty()) return false;
+    for (const auto& prefix : prefixes) {
+        if (name == prefix || (prefix.back() == '.' && name.find(prefix) == 0)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void GLTFModel::renderShadowInstancedNode(VkCommandBuffer commandBuffer,
+                                          VkPipelineLayout pipelineLayout,
+                                          const glm::mat4& lightView,
+                                          const glm::mat4& lightProj,
+                                          VkBuffer instanceBuffer,
+                                          uint32_t instanceCount,
+                                          VkDeviceSize instanceBufferOffset,
+                                          size_t nodeIndex,
+                                          const glm::mat4& parentMatrix,
+                                          ShadowLOD lod) {
+    if (nodeIndex >= nodes.size()) return;
+    const auto& node = nodes[nodeIndex];
+    glm::mat4 nodeMatrix = parentMatrix * node.transform;
+
+    // 判断当前节点是否应因 LOD 跳过
+    bool skipMesh = false;
+    if (lod == ShadowLOD::TrunkOnly) {
+        // TrunkOnly 模式跳过匹配树叶前缀的节点（仅保留树干主结构）
+        if (nodeNameMatchesPrefix(node.name, windNodePrefixes)) {
+            skipMesh = true;
+        }
+    }
+
+    // 如果节点有网格且未被 LOD 跳过，以节点变换为 model、光源矩阵为 view/proj 绘制所有实例
+    if (!skipMesh && node.meshIndex < meshes.size()) {
+        const auto& meshData = meshes[node.meshIndex];
+        if (meshData.mesh) {
+            // 使用 ModelRenderer 统一 PushConstants 定义
+            ModelRenderer::PushConstants pc{};
+            pc.model = nodeMatrix;
+            pc.view = lightView;
+            pc.proj = lightProj;
+            // 其余字段保持零值（阴影不需要材质/纹理/风场）
+
+            vkCmdPushConstants(commandBuffer, pipelineLayout,
+                             VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+                             0, sizeof(ModelRenderer::PushConstants), &pc);
+
+            // 实例化绘制：绑定顶点 + 实例缓冲，绘制 instanceCount 个实例
+            meshData.mesh->bindAndDrawInstanced(commandBuffer, instanceBuffer, instanceCount, instanceBufferOffset);
+        }
+    }
+
+    // 递归处理子节点（即使当前节点被 LOD 跳过，子节点仍可能含有需渲染的网格）
+    for (size_t childIndex : node.children) {
+        renderShadowInstancedNode(commandBuffer, pipelineLayout, lightView, lightProj,
+                                  instanceBuffer, instanceCount, instanceBufferOffset,
+                                  childIndex, nodeMatrix, lod);
+    }
+}
+
+void GLTFModel::renderShadowInstanced(VkCommandBuffer commandBuffer,
+                                      VkPipelineLayout pipelineLayout,
+                                      const glm::mat4& lightView,
+                                      const glm::mat4& lightProj,
+                                      VkBuffer instanceBuffer,
+                                      uint32_t instanceCount,
+                                      VkDeviceSize instanceBufferOffset,
+                                      ShadowLOD lod) {
+    // 遍历所有根节点
+    for (size_t i = 0; i < nodes.size(); ++i) {
+        bool isRoot = true;
+        for (const auto& node : nodes) {
+            if (std::find(node.children.begin(), node.children.end(), i) != node.children.end()) {
+                isRoot = false;
+                break;
+            }
+        }
+        if (isRoot) {
+            renderShadowInstancedNode(commandBuffer, pipelineLayout, lightView, lightProj,
+                                      instanceBuffer, instanceCount, instanceBufferOffset,
+                                      i, glm::mat4(1.0f), lod);
+        }
     }
 }
 

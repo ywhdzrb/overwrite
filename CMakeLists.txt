@@ -49,44 +49,7 @@ target_include_directories(nlohmann_json INTERFACE ${EXTERNAL_DIR}/nlohmann_json
 
 # ==================== ixwebsocket ====================
 set(IXWEBSOCKET_DIR ${EXTERNAL_DIR}/ixwebsocket/ixwebsocket)
-set(IXWEBSOCKET_SOURCES
-    ${IXWEBSOCKET_DIR}/IXWebSocket.cpp
-    ${IXWEBSOCKET_DIR}/IXWebSocketServer.cpp
-    ${IXWEBSOCKET_DIR}/IXWebSocketTransport.cpp
-    ${IXWEBSOCKET_DIR}/IXWebSocketHttpHeaders.cpp
-    ${IXWEBSOCKET_DIR}/IXWebSocketHandshake.cpp
-    ${IXWEBSOCKET_DIR}/IXWebSocketCloseConstants.cpp
-    ${IXWEBSOCKET_DIR}/IXWebSocketPerMessageDeflate.cpp
-    ${IXWEBSOCKET_DIR}/IXWebSocketPerMessageDeflateCodec.cpp
-    ${IXWEBSOCKET_DIR}/IXWebSocketPerMessageDeflateOptions.cpp
-    ${IXWEBSOCKET_DIR}/IXWebSocketProxyServer.cpp
-    ${IXWEBSOCKET_DIR}/IXSocket.cpp
-    ${IXWEBSOCKET_DIR}/IXSocketConnect.cpp
-    ${IXWEBSOCKET_DIR}/IXSocketFactory.cpp
-    ${IXWEBSOCKET_DIR}/IXSocketOpenSSL.cpp
-    ${IXWEBSOCKET_DIR}/IXSocketServer.cpp
-    ${IXWEBSOCKET_DIR}/IXSocketTLSOptions.cpp
-    ${IXWEBSOCKET_DIR}/IXUdpSocket.cpp
-    ${IXWEBSOCKET_DIR}/IXNetSystem.cpp
-    ${IXWEBSOCKET_DIR}/IXDNSLookup.cpp
-    ${IXWEBSOCKET_DIR}/IXUuid.cpp
-    ${IXWEBSOCKET_DIR}/IXSelectInterrupt.cpp
-    ${IXWEBSOCKET_DIR}/IXSelectInterruptPipe.cpp
-    ${IXWEBSOCKET_DIR}/IXSelectInterruptEvent.cpp
-    ${IXWEBSOCKET_DIR}/IXSelectInterruptFactory.cpp
-    ${IXWEBSOCKET_DIR}/IXStrCaseCompare.cpp
-    ${IXWEBSOCKET_DIR}/IXHttp.cpp
-    ${IXWEBSOCKET_DIR}/IXHttpClient.cpp
-    ${IXWEBSOCKET_DIR}/IXHttpServer.cpp
-    ${IXWEBSOCKET_DIR}/IXUrlParser.cpp
-    ${IXWEBSOCKET_DIR}/IXUserAgent.cpp
-    ${IXWEBSOCKET_DIR}/IXConnectionState.cpp
-    ${IXWEBSOCKET_DIR}/IXCancellationRequest.cpp
-    ${IXWEBSOCKET_DIR}/IXExponentialBackoff.cpp
-    ${IXWEBSOCKET_DIR}/IXSetThreadName.cpp
-    ${IXWEBSOCKET_DIR}/IXGzipCodec.cpp
-    ${IXWEBSOCKET_DIR}/IXGetFreePort.cpp
-)
+file(GLOB IXWEBSOCKET_SOURCES ${IXWEBSOCKET_DIR}/*.cpp)
 
 add_library(ixwebsocket STATIC ${IXWEBSOCKET_SOURCES})
 target_include_directories(ixwebsocket PUBLIC ${EXTERNAL_DIR}/ixwebsocket)
@@ -140,21 +103,15 @@ target_include_directories(vma PUBLIC
 target_link_libraries(vma PUBLIC Vulkan::Vulkan)
 
 # ==================== 共享库 (shared) ====================
+file(GLOB_RECURSE SHARED_SRC_SOURCES shared/src/*.cpp)
 set(OVERWRITE_SHARED_SOURCES
-    ${CMAKE_CURRENT_SOURCE_DIR}/shared/src/ecs/components.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/shared/src/ecs/entity_factory.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/shared/src/ecs/systems.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/shared/src/network/server_discovery.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/shared/src/terrain_query.cpp
+    ${SHARED_SRC_SOURCES}
     ${CMAKE_CURRENT_SOURCE_DIR}/src/utils/logger.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/utils/error_handler.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/core/lifecycle_manager.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/core/memory_manager.cpp
 )
 add_library(OverWriteShared STATIC ${OVERWRITE_SHARED_SOURCES})
 
 target_include_directories(OverWriteShared PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/shared/include
     ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
 
@@ -165,17 +122,12 @@ target_link_libraries(OverWriteShared PUBLIC
 )
 
 # ==================== 客户端库 (client) ====================
-set(OVERWRITE_CLIENT_SOURCES
-    ${CMAKE_CURRENT_SOURCE_DIR}/client/src/ecs/camera_controller_system.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/client/src/ecs/client_entity_factory.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/client/src/ecs/client_systems.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/client/src/network/network_system.cpp
-)
+file(GLOB_RECURSE OVERWRITE_CLIENT_SOURCES client/src/*.cpp)
 add_library(OverWriteClient STATIC ${OVERWRITE_CLIENT_SOURCES})
 
 target_include_directories(OverWriteClient PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/client/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/shared/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
 
 target_link_libraries(OverWriteClient PUBLIC
@@ -190,15 +142,13 @@ target_link_libraries(OverWriteClient PUBLIC
 )
 
 # ==================== 服务器库 (server) ====================
-set(OVERWRITE_SERVER_SOURCES
-    ${CMAKE_CURRENT_SOURCE_DIR}/server/src/server/server_world.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/server/src/server/websocket_server.cpp
-)
+file(GLOB_RECURSE OVERWRITE_SERVER_SOURCES server/src/*.cpp)
+list(FILTER OVERWRITE_SERVER_SOURCES EXCLUDE REGEX "server_main\\.cpp$")
 add_library(OverWriteServer STATIC ${OVERWRITE_SERVER_SOURCES})
 
 target_include_directories(OverWriteServer PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/server/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/shared/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
 
 target_link_libraries(OverWriteServer PUBLIC
@@ -211,58 +161,22 @@ target_link_libraries(OverWriteServer PUBLIC
 )
 
 # ==================== 客户端主程序 ====================
+file(GLOB CORE_SOURCES src/core/*.cpp)
+file(GLOB GAME_SESSION_SOURCES src/game_session/*.cpp)
+file(GLOB RENDERER_SOURCES src/renderer/*.cpp)
+file(GLOB UTILS_SOURCES src/utils/*.cpp)
+# 排除由 OverWriteShared 编译的文件，避免链接时重复定义
+list(REMOVE_ITEM UTILS_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/utils/logger.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/utils/error_handler.cpp
+)
+
 set(SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/core/audio_manager.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/core/camera.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/core/config_manager.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/core/entity_registry.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/core/input.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/core/light.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/core/light_manager.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/core/physics.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/core/resource_manager.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/core/scene_manager.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/core/task_manager.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/core/thread_manager.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/core/vulkan_command_buffer.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/core/vulkan_device.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/core/vulkan_framebuffer.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/core/vulkan_instance.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/core/vulkan_pipeline.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/core/vulkan_render_pass.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/core/vulkan_swapchain.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/core/vulkan_sync.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/game_session/game_session.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/game_session/game_session_update.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/game_session/game_session_network.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/game_session/game_session_helpers.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/game_session/resource_node_system.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/renderer/cloud_system.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/renderer/floor_renderer.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/renderer/fsr1_pass.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/renderer/gltf_model.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/renderer/grass_system.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/renderer/imgui_manager.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/renderer/mesh.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/renderer/model_cache.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/renderer/model.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/renderer/model_renderer.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/renderer/renderer.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/renderer/renderer_draw.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/renderer/renderer_setup.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/renderer/render_system.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/renderer/shader_manager.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/renderer/shadow_mapper.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/renderer/skybox_renderer.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/renderer/stone_system.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/renderer/terrain_renderer.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/renderer/text_renderer.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/renderer/texture.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/renderer/texture_loader.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/renderer/tree_system.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/utils/scene_config.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/utils/shader_compiler.cpp
+    ${CORE_SOURCES}
+    ${GAME_SESSION_SOURCES}
+    ${RENDERER_SOURCES}
+    ${UTILS_SOURCES}
 )
 
 # 创建客户端可执行文件
@@ -271,7 +185,6 @@ add_executable(${PROJECT_NAME} ${SOURCES})
 target_include_directories(${PROJECT_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/src
-    ${CMAKE_CURRENT_SOURCE_DIR}/shared/include
     ${CMAKE_CURRENT_SOURCE_DIR}/client/include
     ${EXTERNAL_DIR}
     ${EXTERNAL_DIR}/tinygltf
@@ -312,21 +225,14 @@ set_target_properties(OverWriteServerBin PROPERTIES
 )
 
 # 着色器编译规则
-set(SHADER_SOURCES
-    shaders/shader.vert
-    shaders/shader.frag
-    shaders/skybox.vert
-    shaders/skybox.frag
-    shaders/grass.vert
-    shaders/grass.frag
-    shaders/fsr1_easu.comp
-    shaders/fsr1_rcas.comp
-    shaders/cloud.vert
-    shaders/cloud.frag
-    shaders/cloud_composite.frag
-    shaders/shadow.vert
-    shaders/shadow.frag
+file(GLOB _SHADER_ABSOLUTE
+    shaders/*.vert shaders/*.frag shaders/*.comp
 )
+# GLOB 返回绝对路径，转为相对路径以便下游使用 ${CMAKE_CURRENT_SOURCE_DIR}/${shader_file}
+foreach(_abs ${_SHADER_ABSOLUTE})
+    file(RELATIVE_PATH _rel "${CMAKE_CURRENT_SOURCE_DIR}" "${_abs}")
+    list(APPEND SHADER_SOURCES "${_rel}")
+endforeach()
 
 foreach(shader_file ${SHADER_SOURCES})
     get_filename_component(shader_name ${shader_file} NAME_WE)

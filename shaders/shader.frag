@@ -20,8 +20,11 @@ layout(location = 3) in vec2 fragTexCoord;
 // 输出颜色
 layout(location = 0) out vec4 outColor;
 
-// 纹理采样器 (set = 0, binding = 0)
+// 纹理采样器 (set = 0, binding = 0) — 草地/默认纹理
 layout(set = 0, binding = 0) uniform sampler2D texSampler;
+
+// 纹理采样器 (set = 0, binding = 1) — 海底纹理，与 texSampler 通过 _pad0 混合
+layout(set = 0, binding = 1) uniform sampler2D texSampler2;
 
 // 光源类型枚举
 const int LIGHT_TYPE_DIRECTIONAL = 0;
@@ -129,12 +132,14 @@ float calcShadow(vec3 fragPosWorld) {
     float dither = (interleavedGradientNoise(gl_FragCoord.xy) - 0.5) * 0.0015;
     float bias = 0.004 + dither;
 
-    // 3x3 PCF：边缘锐利，同时保留足够采样消除单点锯齿
+    // 3x3 PCF 宽松跨度（2 纹素间距），等效覆盖 5×5 区域但仅 9 次采样
+    // 大跨度产生柔和阴影边缘，避免锐利锯齿
     vec2 texelSize = 1.0 / textureSize(shadowMap, 0);
     float shadow = 0.0;
+    float pcfRadius = 2.0;
     for (int x = -1; x <= 1; x++) {
         for (int y = -1; y <= 1; y++) {
-            vec2 offset = vec2(x, y) * texelSize;
+            vec2 offset = vec2(x, y) * texelSize * pcfRadius;
             float storedDepth = texture(shadowMap, pc.xy + offset).r;
             shadow += (pc.z - bias) > storedDepth ? 0.0 : 1.0;
         }
@@ -228,9 +233,23 @@ void main() {
 
     // 采样纹理或使用顶点颜色
     if (pushConstants.hasTexture == 1) {
+        // 世界空间 UV 采样
         vec4 texColor = texture(texSampler, fragTexCoord);
+
         albedo = texColor.rgb;
-        alpha = texColor.a;
+        alpha = texColor.a;  // 使用纹理 alpha 通道（树叶透明裁剪用）
+
+        // 基于片段世界高度逐像素计算海岸混合因子，消除区块中心取值导致的拼接纹
+        // seaLevel=-2.0, blendRange=2.0, 低于 seaLevel 逐步过渡到海底纹理
+        float seaLevel = -2.0;
+        float blendRange = 2.0;
+        float landBlend = smoothstep(seaLevel - blendRange, seaLevel + blendRange, fragPos.y);
+        float blendFactor = 1.0 - landBlend;
+        if (blendFactor > 0.001) {
+            vec4 texColor2 = texture(texSampler2, fragTexCoord);
+            albedo = mix(albedo, texColor2.rgb, blendFactor);
+            alpha = mix(alpha, texColor2.a, blendFactor);  // 双纹理混合时 alpha 也跟着过渡
+        }
     } else {
         albedo = fragColor;
     }

@@ -33,6 +33,15 @@ struct TerrainConfig {
     float continentBias = 0.3f;
 };
 
+/// 水面配置
+struct WaterConfig {
+    float waveAmplitude = 0.4f;
+    float waveFrequency = 0.05f;
+    float waveSpeed = 1.2f;
+    glm::vec3 color{0.05f, 0.15f, 0.25f};
+    float alpha = 0.85f;
+};
+
 /// 渲染器配置
 struct RendererConfig {
     float targetFPS = 60.0f;          // 目标帧率，用于帧时间同步
@@ -53,6 +62,7 @@ struct GameConfig {
     StoneConfig stone;
     GrassConfig grass;
     TerrainConfig terrain;
+    WaterConfig water;
     RendererConfig renderer;
 
     /** @brief 预处理 JSON 文本：移除 // 行注释和(斜杠* *斜杠)块注释 */
@@ -157,6 +167,20 @@ struct GameConfig {
                 cfg.terrain.coastBlendEnd      = tn.value("coast_blend_end",     cfg.terrain.coastBlendEnd);
                 cfg.terrain.oceanDepth         = tn.value("ocean_depth",         cfg.terrain.oceanDepth);
                 cfg.terrain.continentBias      = tn.value("continent_bias",      cfg.terrain.continentBias);
+            }
+
+            // 水面参数
+            auto& w = j["water"];
+            if (!w.is_null()) {
+                cfg.water.waveAmplitude = w.value("wave_amplitude", cfg.water.waveAmplitude);
+                cfg.water.waveFrequency = w.value("wave_frequency", cfg.water.waveFrequency);
+                cfg.water.waveSpeed     = w.value("wave_speed",     cfg.water.waveSpeed);
+                cfg.water.alpha         = w.value("alpha",          cfg.water.alpha);
+                if (w.contains("color_r") && w.contains("color_g") && w.contains("color_b")) {
+                    cfg.water.color = glm::vec3(w["color_r"].get<float>(),
+                                                w["color_g"].get<float>(),
+                                                w["color_b"].get<float>());
+                }
             }
 
             // 渲染器参数

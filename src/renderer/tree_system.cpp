@@ -49,6 +49,9 @@ void TreeSystem::init(const TreeConfig& cfg) {
         Logger::error("[TreeSystem] 共享模型加载失败");
     }
 
+    // 预分配实例化阴影缓冲（最多可容纳 config_.maxTotal 棵树）
+    createShadowInstanceBuffer(static_cast<uint32_t>(config_.maxTotal));
+
     generateTreesAtStartup(config_);
 }
 
@@ -186,17 +189,91 @@ void TreeSystem::render(VkCommandBuffer commandBuffer, VkPipelineLayout pipeline
 void TreeSystem::renderShadow(VkCommandBuffer commandBuffer, VkPipelineLayout pipelineLayout,
                                const glm::mat4& lightView, const glm::mat4& lightProj) const {
     if (!sharedTreeModel_) return;
-    // 阴影pass使用光源VP矩阵，跳过视锥体裁剪，用固定大半径距离裁剪
-    const float shadowDistance = config_.renderDistance;
+
+    // 阴影距离和 LOD 分档阈值
+    static constexpr float kShadowNear = 50.0f;   // 0~50m: Full LOD（全部 mesh）
+    static constexpr float kShadowMax  = 150.0f;  // 50~150m: TrunkOnly LOD（仅树干），超过则范围剔除
+
+    // 按距离分桶收集模型矩阵
+    std::vector<glm::mat4> nearModels;
+    std::vector<glm::mat4> farModels;
+    nearModels.reserve(trees_.size() / 4);
+    farModels.reserve(trees_.size() / 4);
+
     for (const auto& tree : trees_) {
         if (tree.id.empty() || !tree.active) continue;
-        if (glm::length(tree.position) > shadowDistance) continue;
+        float dist = glm::length(tree.position);
+        if (dist > kShadowMax) continue;          // 范围剔除
 
-        glm::mat4 modelMatrix = glm::translate(glm::mat4(1.0f), tree.position)
-                              * glm::rotate(glm::mat4(1.0f), glm::radians(tree.yaw), glm::vec3(0.0f, 1.0f, 0.0f))
-                              * glm::scale(glm::mat4(1.0f), glm::vec3(tree.scale));
+        glm::mat4 m = glm::translate(glm::mat4(1.0f), tree.position)
+                    * glm::rotate(glm::mat4(1.0f), glm::radians(tree.yaw), glm::vec3(0.0f, 1.0f, 0.0f))
+                    * glm::scale(glm::mat4(1.0f), glm::vec3(tree.scale));
 
-        sharedTreeModel_->render(commandBuffer, pipelineLayout, lightView, lightProj, modelMatrix);
+        if (dist < kShadowNear) nearModels.push_back(m);
+        else                    farModels.push_back(m);
+    }
+
+    // 一次性上传两个桶到缓冲的不同偏移位置（避免近桶数据被覆盖导致闪烁）
+    uint32_t nearCount = static_cast<uint32_t>(nearModels.size());
+    uint32_t farCount  = static_cast<uint32_t>(farModels.size());
+    VkDeviceSize nearBytes = nearCount * sizeof(glm::mat4);
+    VkDeviceSize farBytes  = farCount * sizeof(glm::mat4);
+
+    void* mapped = nullptr;
+    vmaMapMemory(device_->getAllocator(), shadowInstAlloc_, &mapped);
+    if (nearCount > 0) memcpy(mapped, nearModels.data(), static_cast<size_t>(nearBytes));
+    if (farCount  > 0) memcpy(static_cast<char*>(mapped) + nearBytes, farModels.data(), static_cast<size_t>(farBytes));
+    vmaUnmapMemory(device_->getAllocator(), shadowInstAlloc_);
+
+    // 近距桶（Full LOD，偏移 0）
+    if (nearCount > 0) {
+        sharedTreeModel_->renderShadowInstanced(commandBuffer, pipelineLayout,
+                                                lightView, lightProj,
+                                                shadowInstBuf_, nearCount, 0,
+                                                GLTFModel::ShadowLOD::Full);
+    }
+    // 远距桶（TrunkOnly LOD，偏移 nearBytes）
+    if (farCount > 0) {
+        sharedTreeModel_->renderShadowInstanced(commandBuffer, pipelineLayout,
+                                                lightView, lightProj,
+                                                shadowInstBuf_, farCount, nearBytes,
+                                                GLTFModel::ShadowLOD::TrunkOnly);
+    }
+}
+
+void TreeSystem::createShadowInstanceBuffer(uint32_t maxTrees) {
+    VkDeviceSize bufSize = static_cast<VkDeviceSize>(maxTrees) * sizeof(glm::mat4);
+    VkBufferCreateInfo bufCi{};
+    bufCi.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    bufCi.size = bufSize;
+    bufCi.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+    bufCi.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+    VmaAllocationCreateInfo allocCi{};
+    allocCi.usage = VMA_MEMORY_USAGE_AUTO_PREFER_HOST;
+    allocCi.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT
+                  | VMA_ALLOCATION_CREATE_MAPPED_BIT;
+
+    VmaAllocationInfo allocInfo;
+    VkResult _vr = vmaCreateBuffer(device_->getAllocator(), &bufCi, &allocCi,
+                                   &shadowInstBuf_, &shadowInstAlloc_, &allocInfo);
+    if (_vr != VK_SUCCESS) {
+        Logger::error("[TreeSystem] 创建实例化阴影缓冲失败");
+        shadowInstBuf_ = VK_NULL_HANDLE;
+        shadowInstAlloc_ = VK_NULL_HANDLE;
+        shadowInstCapacity_ = 0;
+        return;
+    }
+    shadowInstCapacity_ = maxTrees;
+    Logger::info("[TreeSystem] 实例化阴影缓冲创建完成: " + std::to_string(maxTrees) + " 棵");
+}
+
+void TreeSystem::destroyShadowInstanceBuffer() {
+    if (shadowInstBuf_ != VK_NULL_HANDLE) {
+        vmaDestroyBuffer(device_->getAllocator(), shadowInstBuf_, shadowInstAlloc_);
+        shadowInstBuf_ = VK_NULL_HANDLE;
+        shadowInstAlloc_ = VK_NULL_HANDLE;
+        shadowInstCapacity_ = 0;
     }
 }
 
@@ -216,6 +293,7 @@ std::vector<std::pair<glm::vec3, float>> TreeSystem::queryPositions(float x, flo
 }
 
 void TreeSystem::cleanup() {
+    destroyShadowInstanceBuffer();
     sharedTreeModel_.reset();
     if (sharedTreePool_ != VK_NULL_HANDLE) {
         vkDestroyDescriptorPool(device_->getDevice(), sharedTreePool_, nullptr);

@@ -13,6 +13,7 @@
 #include "renderer/texture.hpp"
 #include "utils/logger.hpp"
 #include "utils/asset_paths.hpp"
+#include "utils/descriptor_helper.hpp"
 #include "utils/vk_result.hpp"
 
 #include <nlohmann/json.hpp>
@@ -405,15 +406,21 @@ void Renderer::setMsaaSamples(VkSampleCountFlagBits samples) {
 // ============================================================
 
 void Renderer::createDescriptorSetLayouts() {
-    // 1. 创建纹理描述符集布局 (set = 0, binding = 0)
-    VkDescriptorSetLayoutBinding samplerLayoutBinding{};
-    samplerLayoutBinding.binding = 0;
-    samplerLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-    samplerLayoutBinding.descriptorCount = 1;
-    samplerLayoutBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-    samplerLayoutBinding.pImmutableSamplers = nullptr;
+    // 1. 创建纹理描述符集布局 (set = 0, binding = 0 = 草地/默认纹理, binding = 1 = 海底纹理)
+    VkDescriptorSetLayoutBinding samplerBindings[2]{};
+    samplerBindings[0].binding = 0;
+    samplerBindings[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    samplerBindings[0].descriptorCount = 1;
+    samplerBindings[0].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+    samplerBindings[0].pImmutableSamplers = nullptr;
 
-    std::array<VkDescriptorSetLayoutBinding, 1> textureBindings = {samplerLayoutBinding};
+    samplerBindings[1].binding = 1;
+    samplerBindings[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    samplerBindings[1].descriptorCount = 1;
+    samplerBindings[1].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+    samplerBindings[1].pImmutableSamplers = nullptr;
+
+    std::array<VkDescriptorSetLayoutBinding, 2> textureBindings = {samplerBindings[0], samplerBindings[1]};
 
     VkDescriptorSetLayoutCreateInfo textureLayoutInfo{};
     textureLayoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
@@ -450,7 +457,7 @@ void Renderer::createDescriptorPool(uint32_t maxSets, uint32_t descriptorCount) 
     std::array<VkDescriptorPoolSize, 3> poolSizes{};
 
     poolSizes[0].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-    poolSizes[0].descriptorCount = descriptorCount + 2;
+    poolSizes[0].descriptorCount = descriptorCount * 2 + 2;  // 双倍绑定数（binding=0 + binding=1）
 
     poolSizes[1].type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
     poolSizes[1].descriptorCount = 1;
@@ -496,16 +503,18 @@ void Renderer::createDescriptorSets() {
             imageInfo.imageView = texture->getImageView();
             imageInfo.sampler = texture->getSampler();
 
-            VkWriteDescriptorSet descriptorWrite{};
-            descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-            descriptorWrite.dstSet = descriptorSet;
-            descriptorWrite.dstBinding = 0;
-            descriptorWrite.dstArrayElement = 0;
-            descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-            descriptorWrite.descriptorCount = 1;
-            descriptorWrite.pImageInfo = &imageInfo;
+            VkWriteDescriptorSet descriptorWrites[2]{};
+            descriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            descriptorWrites[0].dstSet = descriptorSet;
+            descriptorWrites[0].dstBinding = 0;
+            descriptorWrites[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+            descriptorWrites[0].descriptorCount = 1;
+            descriptorWrites[0].pImageInfo = &imageInfo;
 
-            vkUpdateDescriptorSets(vulkanDevice_->getDevice(), 1, &descriptorWrite, 0, nullptr);
+            descriptorWrites[1] = descriptorWrites[0];
+            descriptorWrites[1].dstBinding = 1;
+
+            vkUpdateDescriptorSets(vulkanDevice_->getDevice(), 2, descriptorWrites, 0, nullptr);
             Logger::info("为 " + modelName + " 创建纹理描述符集");
         }
     };
@@ -523,6 +532,19 @@ void Renderer::createDescriptorSets() {
             throw std::runtime_error(std::string("failed to allocate default texture descriptor set! ") + vkResultToString(_vrTxtDS));
         }
         Logger::info("Default texture descriptor set allocated");
+    }
+
+    // 加载水下草地纹理
+    grassWaterTexture_ = textureLoader_->loadTexture(AssetPaths::GRASS_WATER_TEXTURE);
+    if (grassWaterTexture_) {
+        grassWaterDescriptorSet_ = descriptor_helper::createTextureDescriptorSet(
+            vulkanDevice_->getDevice(), descriptorPool_, textureDescriptorSetLayout_,
+            grassWaterTexture_, "grass_water");
+        if (grassWaterDescriptorSet_ != VK_NULL_HANDLE) {
+            Logger::info("水下草地纹理描述符集已创建");
+        }
+    } else {
+        Logger::warning("无法加载水下草地纹理");
     }
 
     // 2. 创建光源 storage buffer
@@ -800,42 +822,15 @@ VkDescriptorSet Renderer::createModelDescriptorSet(GLTFModel* model, const std::
     std::unique_lock<std::mutex> poolLock(descriptorPoolMutex_, std::defer_lock);
     if (pool == VK_NULL_HANDLE) poolLock.lock();
 
-    VkDescriptorSetAllocateInfo allocInfo{};
-    allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-    allocInfo.descriptorPool = targetPool;
-    allocInfo.descriptorSetCount = 1;
-    allocInfo.pSetLayouts = &textureDescriptorSetLayout_;
-
-    VkDescriptorSet descriptorSet;
-    if (vkAllocateDescriptorSets(vulkanDevice_->getDevice(), &allocInfo, &descriptorSet) != VK_SUCCESS) {
-        Logger::warning("无法为模型 " + modelId + " 分配纹理描述符集");
-        return VK_NULL_HANDLE;
-    }
+    std::shared_ptr<Texture> texture = model->getFirstTexture();
+    VkDescriptorSet descriptorSet = descriptor_helper::createTextureDescriptorSet(
+        vulkanDevice_->getDevice(), targetPool, textureDescriptorSetLayout_, texture, "model_" + modelId);
 
     if (pool == VK_NULL_HANDLE) poolLock.unlock();
 
-    std::shared_ptr<Texture> texture = model->getFirstTexture();
-    if (texture) {
-        VkDescriptorImageInfo imageInfo{};
-        imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-        imageInfo.imageView = texture->getImageView();
-        imageInfo.sampler = texture->getSampler();
-
-        VkWriteDescriptorSet descriptorWrite{};
-        descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        descriptorWrite.dstSet = descriptorSet;
-        descriptorWrite.dstBinding = 0;
-        descriptorWrite.dstArrayElement = 0;
-        descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-        descriptorWrite.descriptorCount = 1;
-        descriptorWrite.pImageInfo = &imageInfo;
-
-        vkUpdateDescriptorSets(vulkanDevice_->getDevice(), 1, &descriptorWrite, 0, nullptr);
-        Logger::info("为模型 " + modelId + " 创建纹理描述符集成功");
-    } else {
+    if (descriptorSet == VK_NULL_HANDLE && !texture) {
         Logger::warning("模型 " + modelId + " 没有纹理，使用默认");
     }
-
     return descriptorSet;
 }
 

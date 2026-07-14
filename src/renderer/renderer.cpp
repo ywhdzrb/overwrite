@@ -26,6 +26,7 @@
 #include "renderer/stone_system.hpp"
 #include "renderer/tree_system.hpp"
 #include "utils/asset_paths.hpp"
+#include "utils/descriptor_helper.hpp"
 #include "utils/logger.hpp"
 #include "utils/vk_result.hpp"
 
@@ -257,39 +258,23 @@ void Renderer::initVulkan() {
     createDescriptorSets();
 
     {
-        // 加载草地 BaseColor 纹理，为地形渲染创建专用描述符集
+        // 加载草地 + 海底纹理，为地形渲染创建组合描述符集
+        // binding=0: 草地，binding=1: 海底，片段着色器基于 fragPos.y 混合
         std::shared_ptr<Texture> grassTex = textureLoader_->loadTexture("assets/textures/grass/Poliigon_GrassPatchyGround_4585_BaseColor.jpg");
+        std::shared_ptr<Texture> seafloorTex = textureLoader_->loadTexture(AssetPaths::SEAFLOOR_TEXTURE);
+
         if (grassTex) {
-            VkDescriptorSetAllocateInfo allocInfo{};
-            allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-            allocInfo.descriptorPool = descriptorPool_;
-            allocInfo.descriptorSetCount = 1;
-            allocInfo.pSetLayouts = &textureDescriptorSetLayout_;
-
-            VkDescriptorSet terrainDescSet;
-            if (vkAllocateDescriptorSets(vulkanDevice_->getDevice(), &allocInfo, &terrainDescSet) == VK_SUCCESS) {
-                VkDescriptorImageInfo imageInfo{};
-                imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-                imageInfo.imageView = grassTex->getImageView();
-                imageInfo.sampler = grassTex->getSampler();
-
-                VkWriteDescriptorSet descriptorWrite{};
-                descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-                descriptorWrite.dstSet = terrainDescSet;
-                descriptorWrite.dstBinding = 0;
-                descriptorWrite.dstArrayElement = 0;
-                descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-                descriptorWrite.descriptorCount = 1;
-                descriptorWrite.pImageInfo = &imageInfo;
-
-                vkUpdateDescriptorSets(vulkanDevice_->getDevice(), 1, &descriptorWrite, 0, nullptr);
+            VkDescriptorSet terrainDescSet = descriptor_helper::createTextureDescriptorSet(
+                vulkanDevice_->getDevice(), descriptorPool_, textureDescriptorSetLayout_,
+                grassTex, seafloorTex, "terrain_grass_seafloor");
+            if (terrainDescSet != VK_NULL_HANDLE) {
                 terrainRenderer_->setTexture(terrainDescSet);
-                Logger::info("地形草地纹理已加载并绑定");
+                Logger::info("地形草地+海底组合纹理描述符集已加载并绑定");
             } else {
-                Logger::warning("无法为地形草地纹理分配描述符集");
+                Logger::warning("无法为地形纹理创建描述符集");
             }
         } else {
-            Logger::warning("地形草地纹理加载失败，地形和草将使用程序化颜色");
+            Logger::warning("地形草地纹理加载失败，地形将使用程序化颜色");
         }
     }
 
@@ -321,6 +306,17 @@ void Renderer::initVulkan() {
     if (auto* sunLight = lightManager_->getLightByName("sun")) {
         grassSystem_->setGlobalLightDir(sunLight->getDirection());
     }
+
+    // 初始化水面渲染器（在地形之后渲染，使用 seaLevel 高度）
+    waterRenderer_ = std::make_unique<WaterRenderer>(vulkanDevice_);
+    waterRenderer_->init(renderPass_->getRenderPass(), swapchain_->getExtent(),
+                         msaaSamples_, gameConfig_.terrain.seaLevel);
+    // 从 JSON 配置加载水面参数（波浪/颜色/透明度）
+    waterRenderer_->setWaveParams(gameConfig_.water.waveAmplitude,
+                                  gameConfig_.water.waveFrequency,
+                                  gameConfig_.water.waveSpeed);
+    waterRenderer_->setColor(gameConfig_.water.color,
+                             gameConfig_.water.alpha);
 
     // 初始化体积云系统（在所有不透明渲染系统之后，GameSession之前）
     // 云层位于 Y=80~120m 高空，透明度混合叠加
@@ -672,6 +668,16 @@ void Renderer::mainLoop() {
             }
         }
 
+        // === 更新水面（波浪动画 + 太阳方向） ===
+        if (waterRenderer_) {
+            glm::vec3 sunDir = glm::normalize(gameConfig_.renderer.sunDirection);
+            float sunIntensity = 1.0f;
+            if (auto* sunLight = lightManager_->getLightByName("sun")) {
+                sunIntensity = sunLight->getIntensity();
+            }
+            waterRenderer_->update(deltaTime, -sunDir, sunIntensity);
+        }
+
         // === 渲染帧 ===
         {
             auto t0 = std::chrono::high_resolution_clock::now();
@@ -774,6 +780,11 @@ void Renderer::recreateSwapchain() {
     // 重建草地管线（固定视口，需随交换链更新）
     if (grassSystem_) grassSystem_->rebuildPipeline();
 
+    // 重建水面管线（视口跟随交换链尺寸）
+    if (waterRenderer_) {
+        waterRenderer_->rebuildPipeline(renderPass_->getRenderPass(), renderExt, msaaSamples_);
+    }
+
     // 重建帧缓冲
     framebuffers_->recreate(swapchain_->getImageViews(), renderExt, colorImageView_);
     commandBuffers_->cleanup();
@@ -837,6 +848,9 @@ void Renderer::cleanup() {
     stoneSystem_.reset();
     // 清理草丛系统
     grassSystem_.reset();
+    // 清理水面渲染器
+    waterRenderer_.reset();
+
     // 清理体积云系统和合成资源
     cleanupCloudCompositeResources();
     cloudSystem_.reset();

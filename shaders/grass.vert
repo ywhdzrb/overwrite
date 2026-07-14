@@ -33,6 +33,7 @@ layout(push_constant) uniform PushConstants {
 // ---- 输出到片段着色器 ----
 layout(location = 0) out vec3 fragWorldPos;
 layout(location = 1) out float fragHeight;
+layout(location = 2) out vec2 fragUV;
 
 // 简单伪随机函数
 float hash(float x) {
@@ -138,4 +139,5 @@ void main() {
     // === 输出到片段着色器 ===
     fragWorldPos  = worldPos;
     fragHeight    = heightFrac;
+    fragUV        = inUV;
 }

@@ -409,13 +409,14 @@ glm::vec3 TerrainRenderer::getBiomeColor(TerrainBiome biome, float height, float
 //   2. 将 getHeight 调用从每顶点 9 次降至 1 次，减少 CPU 计算量约 89%
 //   3. 无 Vulkan 调用，返回 ChunkMesh 供主线程上传
 ChunkMesh TerrainRenderer::computeChunkMesh(int chunkX, int chunkZ) const {
-    const int segments = 16;
-    const int vertsPerEdge = segments + 1;
+    const int segments = 32;
+    const int vertsPerEdge = segments + 1;  // 33×33 顶点
     const float cellSize = chunkSize_ / static_cast<float>(segments);
     float startX = static_cast<float>(chunkX) * chunkSize_;
     float startZ = static_cast<float>(chunkZ) * chunkSize_;
 
-    const int cacheSize = vertsPerEdge + 3;
+    // 缓存多 2 行/列，为法线和坡度计算提供边界邻居值
+    const int cacheSize = vertsPerEdge + 3;  // 36
     std::vector<std::vector<float>> heightCache(cacheSize, std::vector<float>(cacheSize, 0.0f));
     for (int cz = 0; cz < cacheSize; ++cz) {
         for (int cx = 0; cx < cacheSize; ++cx) {
@@ -438,28 +439,18 @@ ChunkMesh TerrainRenderer::computeChunkMesh(int chunkX, int chunkZ) const {
             int cj = z + 1;
             float height = heightCache[cj][ci];
 
-            float nx = 0.0f, nz = 0.0f;
-            if (x > 0 && x < segments) {
-                nx = (heightCache[cj][ci - 1] - heightCache[cj][ci + 1]) / (2.0f * cellSize);
-            }
-            if (z > 0 && z < segments) {
-                nz = (heightCache[cj - 1][ci] - heightCache[cj + 1][ci]) / (2.0f * cellSize);
-            }
+            // 用高度缓存边界值计算法线，相邻区块在共享顶点处法线一致
+            float nx = (heightCache[cj][ci - 1] - heightCache[cj][ci + 1]) / (2.0f * cellSize);
+            float nz = (heightCache[cj - 1][ci] - heightCache[cj + 1][ci]) / (2.0f * cellSize);
             glm::vec3 normal = glm::normalize(glm::vec3(-nx, 1.0f, -nz));
 
-            float slope = 0.0f;
-            if (x > 0 && x < segments && z > 0 && z < segments) {
-                float dx = (heightCache[cj][ci + 1] - heightCache[cj][ci - 1]) / (2.0f * cellSize);
-                float dz = (heightCache[cj + 1][ci] - heightCache[cj - 1][ci]) / (2.0f * cellSize);
-                slope = std::sqrt(dx * dx + dz * dz);
-            }
+            // 坡度计算（使用缓存边界值）
+            float dx = (heightCache[cj][ci + 1] - heightCache[cj][ci - 1]) / (2.0f * cellSize);
+            float dz = (heightCache[cj + 1][ci] - heightCache[cj - 1][ci]) / (2.0f * cellSize);
+            float slope = std::sqrt(dx * dx + dz * dz);
 
             TerrainBiome biome = getBiome(wx, wz, height, slope);
             glm::vec3 color = getBiomeColor(biome, height, slope);
-            // 区块边界标红以便观察裂缝
-            if (x == 0 || x == segments || z == 0 || z == segments) {
-                color = glm::vec3(1.0f, 0.0f, 0.0f);
-            }
 
             mesh.vertices.push_back({
                 glm::vec3(wx, height, wz),
@@ -473,9 +464,9 @@ ChunkMesh TerrainRenderer::computeChunkMesh(int chunkX, int chunkZ) const {
     mesh.indices.reserve(segments * segments * 6);
     for (int z = 0; z < segments; ++z) {
         for (int x = 0; x < segments; ++x) {
-            uint32_t tl = static_cast<uint32_t>(z) * (segments + 1) + x;
+            uint32_t tl = static_cast<uint32_t>(z) * vertsPerEdge + x;
             uint32_t tr = tl + 1;
-            uint32_t bl = (static_cast<uint32_t>(z) + 1) * (segments + 1) + x;
+            uint32_t bl = (static_cast<uint32_t>(z) + 1) * vertsPerEdge + x;
             uint32_t br = bl + 1;
             mesh.indices.push_back(tl);
             mesh.indices.push_back(bl);
@@ -490,7 +481,7 @@ ChunkMesh TerrainRenderer::computeChunkMesh(int chunkX, int chunkZ) const {
 }
 
 ChunkMesh TerrainRenderer::generateFlatChunk(int chunkX, int chunkZ) const {
-    const int segments = 16;
+    const int segments = 32;
     const int vertsPerEdge = segments + 1;
     const float cellSize = chunkSize_ / static_cast<float>(segments);
     float startX = static_cast<float>(chunkX) * chunkSize_;
@@ -516,18 +507,9 @@ ChunkMesh TerrainRenderer::generateFlatChunk(int chunkX, int chunkZ) const {
         for (int x = 0; x < vertsPerEdge; ++x) {
             float wx = startX + static_cast<float>(x) * cellSize;
             float wz = startZ + static_cast<float>(z) * cellSize;
-            int ci = x + 1;
-            int cj = z + 1;
-            float height = heightCache[cj][ci];
             
-            // FLAT TEST: 所有高度 0，法线朝上
             glm::vec3 normal(0.0f, 1.0f, 0.0f);
-            
-            // 区块边界红色
             glm::vec3 color(0.2f, 0.5f, 0.2f);
-            if (x == 0 || x == segments || z == 0 || z == segments) {
-                color = glm::vec3(1.0f, 0.0f, 0.0f);
-            }
             
             mesh.vertices.push_back({
                 glm::vec3(wx, 0.0f, wz),
@@ -626,6 +608,7 @@ void TerrainRenderer::cleanupChunk(TerrainChunk& chunk) {
 //   maxChunksPerFrame = 4 将单帧负载从 ~314 次同步生成降低到 4 次异步启动，
 //   多数区块在后台线程中静默完成，不会阻塞渲染帧。初始场景约需 3-4 秒渐进加载完毕。
 void TerrainRenderer::update(const glm::vec3& playerPos) {
+    lastPlayerPos_ = playerPos;
     int playerChunkX = static_cast<int>(std::floor(playerPos.x / chunkSize_));
     int playerChunkZ = static_cast<int>(std::floor(playerPos.z / chunkSize_));
     
@@ -669,9 +652,27 @@ void TerrainRenderer::update(const glm::vec3& playerPos) {
         }
     }
     
-    // TEST: 同步生成所有区块（绕过线程池和异步）
+    // Phase 3: 按距离排序，每帧最多启动 maxChunksPerFrame_ 个异步任务
+    {
+        auto playerChunkFX = static_cast<float>(playerChunkX);
+        auto playerChunkFZ = static_cast<float>(playerChunkZ);
+        auto distSq = [&](const std::pair<int, int>& p) {
+            float dx = static_cast<float>(p.first) - playerChunkFX;
+            float dz = static_cast<float>(p.second) - playerChunkFZ;
+            return dx * dx + dz * dz;
+        };
+        size_t launchCount = std::min(static_cast<size_t>(maxChunksPerFrame_), candidates.size());
+        std::nth_element(candidates.begin(), candidates.begin() + static_cast<ptrdiff_t>(launchCount),
+                         candidates.end(),
+                         [&](const auto& a, const auto& b) { return distSq(a) < distSq(b); });
+        candidates.resize(launchCount);
+    }
     for (const auto& [cX, cZ] : candidates) {
-        generateChunk(cX, cZ);
+        auto future = threadPool_.enqueue(
+            [this, cX, cZ]() -> ChunkMesh {
+                return computeChunkMesh(cX, cZ);
+            });
+        pendingChunks_.push_back({cX, cZ, std::move(future)});
     }
     
     // Phase 4: Remove chunks outside render radius + margin
@@ -704,22 +705,30 @@ void TerrainRenderer::render(VkCommandBuffer commandBuffer, VkPipelineLayout pip
     pushConstants.baseColor = glm::vec3(1.0f);  // 顶点色已包含生物群落着色
     pushConstants.metallic = 0.0f;
     pushConstants.roughness = 0.5f;
-    pushConstants.hasTexture = 1;  // 使用草地贴图
+    pushConstants.hasTexture = 1;  // 使用双纹理混合
     pushConstants._pad0 = 0.0f;
     pushConstants.normalScale = glm::vec3(1.0f);
     
+    // 所有区块共享同一组 push constants
     vkCmdPushConstants(commandBuffer, pipelineLayout,
-                      VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(PushConstants), &pushConstants);
-    
-    // 绑定地形草地纹理描述符集
-    if (terrainTexDescSet_ != VK_NULL_HANDLE) {
-        vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                                pipelineLayout, 0, 1, &terrainTexDescSet_, 0, nullptr);
-    }
+                      VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+                      0, sizeof(PushConstants), &pushConstants);
     
     for (const auto& pair : chunks_) {
         const auto& chunk = pair.second;
         if (!chunk.isValid) continue;
+        
+        // 距离裁剪：只渲染 renderRadius_ 范围内的区块
+        float dx = static_cast<float>(pair.first.x) * chunkSize_ + chunkSize_ * 0.5f - lastPlayerPos_.x;
+        float dz = static_cast<float>(pair.first.z) * chunkSize_ + chunkSize_ * 0.5f - lastPlayerPos_.z;
+        float dist = std::sqrt(dx * dx + dz * dz);
+        if (dist > renderRadius_ * chunkSize_) continue;
+        
+        // 绑定地形纹理描述符集（binding=0 草地, binding=1 海底）
+        if (terrainTexDescSet_ != VK_NULL_HANDLE) {
+            vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                    pipelineLayout, 0, 1, &terrainTexDescSet_, 0, nullptr);
+        }
         
         VkBuffer vertexBuffers[] = {chunk.vertexBuffer};
         VkDeviceSize offsets[] = {0};
