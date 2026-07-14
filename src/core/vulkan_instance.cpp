@@ -71,6 +71,18 @@ void VulkanInstance::initialize(GLFWwindow* window) {
 }
 
 /**
+ * @brief 提前销毁表面
+ * 必须在 Vulkan 设备销毁前调用，断开 X11 显示连接，
+ * 防止 NVIDIA 驱动在 vkDestroyDevice 中触发 GLX 清理而崩溃
+ */
+void VulkanInstance::destroySurfaceEarly() {
+    if (surface_ != VK_NULL_HANDLE) {
+        vkDestroySurfaceKHR(instance_, surface_, nullptr);
+        surface_ = VK_NULL_HANDLE;
+    }
+}
+
+/**
  * @brief 清理 Vulkan 实例层级资源
  * 按创建顺序的逆序销毁：表面 → 调试信使 → 实例
  */

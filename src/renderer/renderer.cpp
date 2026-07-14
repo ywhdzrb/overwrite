@@ -27,6 +27,7 @@
 #include "renderer/tree_system.hpp"
 #include "utils/asset_paths.hpp"
 #include "utils/descriptor_helper.hpp"
+#include "utils/error_handler.hpp"
 #include "utils/logger.hpp"
 #include "utils/vk_result.hpp"
 
@@ -851,27 +852,43 @@ void Renderer::cleanup() {
     // 清理水面渲染器
     waterRenderer_.reset();
 
-    // 清理体积云系统和合成资源
+    // 提前清理 FSR1 管线（避免 NVIDIA 驱动清理顺序问题导致 SIGSEGV）
+    if (vulkanDevice_) {
+        vkDeviceWaitIdle(vulkanDevice_->getDevice());
+    }
+    Logger::info("[Renderer] 清理 FSR1 管线");
+    fsr1Pass_.reset();
+    Logger::info("[Renderer] 清理体积云系统和合成资源");
+
+    if (vulkanDevice_) {
+        vkDeviceWaitIdle(vulkanDevice_->getDevice());
+    }
     cleanupCloudCompositeResources();
     cloudSystem_.reset();
-    // 清理 FSR1 管线
-    fsr1Pass_.reset();
 
     // 阴影映射器由 LightManager 统一管理，在 lightManager_.reset() 时自动析构清理
     // 注意清理顺序：描述符池销毁前必须确保阴影描述符集不再使用
 
     // 清理着色器管理器（必须在 vulkanDevice_ 销毁前，缓存了 VkShaderModule）
+    if (vulkanDevice_) {
+        vkDeviceWaitIdle(vulkanDevice_->getDevice());
+    }
+    Logger::info("[Renderer] 清理着色器管理器");
     shaderManager_.reset();
+    Logger::info("[Renderer] 着色器管理器已清理");
 
     // 清理描述符集资源
+    Logger::info("[Renderer] 清理 Uniform 缓冲");
     if (lightUniformBuffer_ != VK_NULL_HANDLE) {
         vmaDestroyBuffer(vulkanDevice_->getAllocator(), lightUniformBuffer_, lightUniformBufferAllocation_);
         lightUniformBuffer_ = VK_NULL_HANDLE;
         lightUniformBufferAllocation_ = VK_NULL_HANDLE;
     }
+    Logger::info("[Renderer] 清理描述符池");
     if (descriptorPool_ != VK_NULL_HANDLE) {
         vkDestroyDescriptorPool(vulkanDevice_->getDevice(), descriptorPool_, nullptr);
     }
+    Logger::info("[Renderer] 清理描述符集布局");
     if (lightDescriptorSetLayout_ != VK_NULL_HANDLE) {
         vkDestroyDescriptorSetLayout(vulkanDevice_->getDevice(), lightDescriptorSetLayout_, nullptr);
     }
@@ -879,25 +896,46 @@ void Renderer::cleanup() {
         vkDestroyDescriptorSetLayout(vulkanDevice_->getDevice(), textureDescriptorSetLayout_, nullptr);
     }
     
+    Logger::info("[Renderer] 清理同步对象和命令缓冲");
     syncObjects_.reset();
     commandBuffers_.reset();
     
-    // 清理MSAA颜色资源
+    Logger::info("[Renderer] 清理 MSAA 颜色资源");
     cleanupColorResources();
     
+    Logger::info("[Renderer] 清理帧缓冲和管线");
     framebuffers_.reset();
     skyboxPipeline_.reset();
     graphicsPipeline_.reset();
     renderPass_.reset();
+    Logger::info("[Renderer] 清理交换链");
     swapchain_.reset();
-    vulkanDevice_.reset();
-    vulkanInstance_.reset();
-    
+
+    // NVIDIA 驱动 580.173.02 在 vkDestroyDevice 中触发 GLX/X11 清理导致崩溃
+    // 必须按：销毁表面 → 销毁窗口 → 关闭 X11 显示连接 → 销毁设备 的顺序操作
+    Logger::info("[Renderer] 清理表面和窗口");
+    if (vulkanInstance_) {
+        vulkanInstance_->destroySurfaceEarly();
+    }
     if (window_ != nullptr) {
         glfwDestroyWindow(window_);
+        window_ = nullptr;
     }
-    
+
+    // 在 Vulkan 设备销毁前关闭 X11 显示连接，阻止驱动触发 GLX 清理路径
     glfwTerminate();
+
+    // NVIDIA 580.173.02 驱动在 vkDestroyDevice 时触发 GLX 内部崩溃
+    // 使用 sigsetjmp 绕过：如果崩溃发生，siglongjmp 回到此处继续清理
+    Logger::info("[Renderer] 清理 Vulkan 设备和实例");
+    g_vulkanDeviceCleanupActive = 1;
+    if (sigsetjmp(g_vulkanDeviceCleanupJmpBuf, 1) == 0) {
+        vulkanDevice_.reset();
+    } else {
+        Logger::warning("[Renderer] vkDestroyDevice 被 NVIDIA 驱动崩溃绕过，由 OS 清理");
+    }
+    g_vulkanDeviceCleanupActive = 0;
+    vulkanInstance_.reset();
 }
 
 

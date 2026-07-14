@@ -14,9 +14,18 @@
  * 关键设计：仅在 OW_DEBUG 构建中启用断言，信号处理器在所有构建中生效
  */
 
+#include <csetjmp>
+#include <csignal>
 #include <string>
 
 namespace owengine {
+
+// ============================================================
+// Vulkan 设备关闭崩溃绕过的信号跳转上下文
+// 用于绕过 NVIDIA 580.173.02 在 vkDestroyDevice 时的 GLX 崩溃
+// ============================================================
+extern sigjmp_buf g_vulkanDeviceCleanupJmpBuf;
+extern volatile sig_atomic_t g_vulkanDeviceCleanupActive;
 
 /**
  * @brief 打印当前线程的堆栈跟踪

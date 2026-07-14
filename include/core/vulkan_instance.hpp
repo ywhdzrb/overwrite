@@ -46,6 +46,9 @@ public:
     void initialize(GLFWwindow* window);
     void cleanup();
 
+    /** @brief 提前销毁表面，在 Vulkan 设备销毁前调用以断开 X11 连接 */
+    void destroySurfaceEarly();
+
     [[nodiscard]] VkInstance getInstance() const noexcept { return instance_; }
     [[nodiscard]] VkPhysicalDevice getPhysicalDevice() const noexcept { return physicalDevice_; }
     [[nodiscard]] VkSurfaceKHR getSurface() const noexcept { return surface_; }

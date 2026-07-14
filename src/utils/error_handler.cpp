@@ -90,6 +90,10 @@ void printStacktrace(int max_depth) {
 // 信号处理器
 // ============================================================
 
+// Vulkan 设备关闭崩溃绕过的跳转上下文
+sigjmp_buf g_vulkanDeviceCleanupJmpBuf;
+volatile sig_atomic_t g_vulkanDeviceCleanupActive = 0;
+
 namespace {
 
 // 保存原始信号处理器（用于 restore，当前不实现恢复逻辑）
@@ -101,23 +105,23 @@ constexpr int NUM_SIGNALS = 5;
 // 可重入保护：信号处理函数中再次触发信号时直接终止，避免无限递归
 static volatile sig_atomic_t g_fatal_reentry_guard = 0;
 
-// 信号安全版本的堆栈打印 —— 仅使用 write() + backtrace() 两个 async-signal-safe 函数
+// 信号安全版本的堆栈打印 —— 使用 backtrace_symbols_fd() 直接输出符号名
+// backtrace_symbols_fd() 不分配堆内存，是 glibc 中 async-signal-safe 的函数
 static void signalSafePrintStacktrace(int fd) {
-    // 最大帧数，防止栈溢出
     void* buffer[48];
 
-    // backtrace() 本身是 glibc 中 async-signal-safe 的
     int frames = backtrace(buffer, 48);
     if (frames <= 0) return;
 
-    // 逐帧用 write() 输出（避免 backtrace_symbols 堆分配，后者不安全）
-    for (int i = 0; i < frames; i++) {
-        char line[128];
-        int n = snprintf(line, sizeof(line), "  #%d %p\n", i, buffer[i]);
-        if (n > 0) {
-            write(fd, line, (size_t)(n < (int)sizeof(line) ? n : sizeof(line)));
-        }
-    }
+    const char header[] = "===== Stack Trace (function+offset) =====\n";
+    write(fd, header, sizeof(header) - 1);
+
+    // backtrace_symbols_fd 将地址解析为 "binary(function+offset) [address]" 格式
+    // 每个 frame 一行，直接写入 fd （async-signal-safe）
+    backtrace_symbols_fd(buffer, frames, fd);
+
+    const char footer[] = "\n==========================================\n";
+    write(fd, footer, sizeof(footer) - 1);
 }
 
 /**
@@ -128,6 +132,13 @@ static void signalSafePrintStacktrace(int fd) {
  */
 void crashSignalHandler(int sig, siginfo_t* info, void* context) {
     (void)context;
+
+    // 如果在 Vulkan 设备销毁过程崩溃，使用 siglongjmp 跳过崩溃指令
+    // NVIDIA 580.173.02 驱动在 vkDestroyDevice 时触发 GLX 内部崩溃
+    if (g_vulkanDeviceCleanupActive) {
+        g_vulkanDeviceCleanupActive = 0;
+        siglongjmp(g_vulkanDeviceCleanupJmpBuf, 1);
+    }
 
     // 可重入保护
     if (g_fatal_reentry_guard) {
@@ -162,14 +173,8 @@ void crashSignalHandler(int sig, siginfo_t* info, void* context) {
         }
     }
 
-    // 信号安全堆栈打印（仅地址，不做 demangle）
-    {
-        const char msg[] = "\n===== Signal-Safe Stack Trace (addresses only) =====\n";
-        write(fd, msg, sizeof(msg) - 1);
-        signalSafePrintStacktrace(fd);
-        const char end[] = "===================================================\n";
-        write(fd, end, sizeof(end) - 1);
-    }
+    // 信号安全堆栈打印（backtrace_symbols_fd 输出，含函数名和偏移量）
+    signalSafePrintStacktrace(fd);
 
     // 终止进程
     _Exit(EXIT_FAILURE);

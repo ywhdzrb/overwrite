@@ -69,7 +69,7 @@ inline constexpr const char* SHADOW_FRAG_SHADER = "shaders/shadow.frag.spv";
 inline constexpr const char* GRASS_WATER_TEXTURE = "assets/textures/grass_water/file_00000000cdfc71fbbd14f1c72ba024ce.png";
 
 /** @brief 海底砂石纹理（用于海洋地形区块） */
-inline constexpr const char* SEAFLOOR_TEXTURE = "assets/textures/grass_water/file_00000000cdfc71fbbd14f1c72ba024ce.png";
+inline constexpr const char* SEAFLOOR_TEXTURE = "assets/textures/seafloor/seafloor_col.png";
 
 // ==================== 模型文件 ====================
 
