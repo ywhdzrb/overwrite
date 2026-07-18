@@ -1,27 +1,10 @@
 #pragma once
 
-/**
- * @file water_renderer.hpp
- * @brief 水面渲染器 — 程序化波浪动画 + 半透明水面
- *
- * 归属模块：renderer
- * 核心职责：在世界空间 seaLevel 高度渲染大型水面网格，
- *           顶点着色器做多层正弦波位移 + 法线扰动，
- *           片段着色器做菲涅尔反射/透射/高光。
- * 依赖关系：VulkanDevice、Camera
- * 关键设计：水面使用独立管线（alpha 混合启用），
- *           在 terrain 之后、透明物体之前渲染。
- *           网格是固定大小的平面，随玩家居中移动（类 TerrainRenderer 的区块思路），
- *           但此处简化：一张大网格覆盖可视范围 + 余量。
- */
-
 #include <memory>
 #include <vector>
-
 #include <vulkan/vulkan.h>
 #include <vk_mem_alloc.h>
 #include <glm/glm.hpp>
-
 #include "utils/asset_paths.hpp"
 
 namespace owengine {
@@ -30,10 +13,11 @@ class VulkanDevice;
 class Camera;
 
 /**
- * @brief 水面渲染器
+ * @brief 水面渲染器 — 高度场波动方程模拟 + 程序化波浪
  *
- * 管理水面网格的顶点/索引缓冲、管线、渲染。
- * 每一帧更新累计时间用于波浪动画。
+ * 核心使用 2D 波动方程计算交互涟漪：
+ *   ∂²h/∂t² = c²∇²h - damping·∂h/∂t
+ * 通过计算着色器每帧更新高度场，顶点着色器采样做位移和法线。
  */
 class WaterRenderer {
 public:
@@ -43,76 +27,56 @@ public:
     WaterRenderer(const WaterRenderer&) = delete;
     WaterRenderer& operator=(const WaterRenderer&) = delete;
 
-    /**
-     * @brief 初始化
-     * @param renderPass 渲染通道
-     * @param extent 渲染分辨率
-     * @param msaaSamples MSAA 采样数
-     * @param seaLevel 海平面高度（从 TerrainParams 获取）
-     */
     void init(VkRenderPass renderPass, VkExtent2D extent,
               VkSampleCountFlagBits msaaSamples, float seaLevel);
-
-    /** @brief 清理 Vulkan 资源 */
     void cleanup();
 
-    /**
-     * @brief 每帧更新
-     * @param deltaTime 帧间隔
-     * @param sunDirection 太阳方向
-     * @param sunIntensity 太阳强度
-     */
     void update(float deltaTime, const glm::vec3& sunDirection,
                 float sunIntensity);
 
-    /**
-     * @brief 渲染水面
-     * @param commandBuffer 命令缓冲
-     * @param viewMatrix 视图矩阵
-     * @param projectionMatrix 投影矩阵
-     * @param cameraPos 相机世界位置（用于网格跟随）
-     */
     void render(VkCommandBuffer commandBuffer,
                 const glm::mat4& viewMatrix,
                 const glm::mat4& projectionMatrix,
                 const glm::vec3& cameraPos);
 
-    /** @brief 设置波浪参数 */
     void setWaveParams(float amp, float freq, float speed) {
         waveAmp_ = amp; waveFreq_ = freq; waveSpeed_ = speed;
     }
-
-    /** @brief 设置水面颜色和透明度 */
     void setColor(const glm::vec3& color, float alpha) {
         waterColor_ = color; waterAlpha_ = alpha;
     }
-
-    /** @brief 是否已初始化 */
     bool isInitialized() const { return initialized_; }
-
-    /** @brief 重新创建管线（交换链重建时调用） */
     void rebuildPipeline(VkRenderPass renderPass, VkExtent2D extent,
                          VkSampleCountFlagBits msaaSamples);
-
-    /** @brief 获取海平面高度 */
     float getSeaLevel() const { return seaLevel_; }
+    void setInteractionPoint(const glm::vec3& worldPos, float strength = 1.0f, float radius = 8.0f) {
+        interactionPos_ = worldPos;
+        interactionStrength_ = strength;
+        interactionRadius_ = radius;
+    }
 
 private:
     void createGrid();
     void createPipeline(VkRenderPass renderPass, VkExtent2D extent,
                         VkSampleCountFlagBits msaaSamples);
 
+    void initWaveSim();
+    void cleanupWaveSim();
+    void dispatchWaveSim(VkCommandBuffer cmd, const glm::vec3& cameraPos);
+
     struct PushConstants {
         glm::mat4 model;               // 0-63
         glm::mat4 view;                // 64-127
         glm::mat4 proj;                // 128-191
-        glm::vec4 color;               // 192-207: 水面颜色 rgb + 透明度 a
-        glm::vec4 waveParams;          // 208-223: waveAmp, waveFreq, waveSpeed, time
-        glm::vec4 sunDir_intensity;    // 224-239: sunDir.xyz + intensity
+        glm::vec4 color;               // 192-207
+        glm::vec4 waveParams;          // 208-223
+        glm::vec4 sunDir_intensity;    // 224-239
+        glm::vec4 interaction;         // 240-255
     };
-    // 240 字节，与 TerrainRenderer::PushConstants 一致
-    // 注：部分 GPU 限制 maxPushConstantsSize=128，若遇兼容问题可将 model/view/proj
-    // 合并为 mvp，移除非必需字段，或改用 UBO
+
+    // 波动方程模拟常量
+    static constexpr int WAVE_TEX_SIZE = 256;
+    static constexpr float WAVE_COVERAGE = 128.0f;  // 覆盖世界范围(m)
 
     std::shared_ptr<VulkanDevice> device_;
     bool initialized_ = false;
@@ -124,9 +88,23 @@ private:
     VmaAllocation indexBufferAllocation_ = VK_NULL_HANDLE;
     uint32_t indexCount_ = 0;
 
-    // 管线
+    // 图形管线
     VkPipelineLayout pipelineLayout_ = VK_NULL_HANDLE;
     VkPipeline pipeline_ = VK_NULL_HANDLE;
+
+    // 波动方程计算管线
+    VkPipelineLayout wavePipeLayout_ = VK_NULL_HANDLE;
+    VkPipeline wavePipeline_ = VK_NULL_HANDLE;
+    VkDescriptorSetLayout waveDsLayout_ = VK_NULL_HANDLE;
+    VkDescriptorPool waveDsPool_ = VK_NULL_HANDLE;
+    VkDescriptorSet waveDescSets_[2] = {};
+    VkSampler waveSampler_ = VK_NULL_HANDLE;
+
+    // 高度场纹理（ping-pong: 0=prev, 1=curr）
+    VkImage waveImages_[2] = {};
+    VmaAllocation waveAllocs_[2] = {};
+    VkImageView waveViews_[2] = {};
+    int waveCurrIdx_ = 0;  // 当前帧作为"当前"的纹理索引
 
     // 参数
     float seaLevel_ = -2.0f;
@@ -137,13 +115,17 @@ private:
     glm::vec3 waterColor_{0.05f, 0.15f, 0.25f};
     float waterAlpha_ = 0.85f;
 
-    // 网格尺寸
-    static constexpr float GRID_SIZE = 500.0f;  // 总宽/深
-    static constexpr int GRID_SEGMENTS = 100;    // 分段数
+    static constexpr float GRID_SIZE = 500.0f;
+    static constexpr int GRID_SEGMENTS = 100;
 
-    // 太阳参数
     glm::vec3 sunDirection_{0.25f, 0.55f, 0.50f};
     float sunIntensity_ = 1.0f;
+
+    glm::vec3 interactionPos_{0.0f};
+    float interactionStrength_ = 0.3f;  // 默认为轻微涟漪
+    float interactionRadius_ = 8.0f;
+    float currentDt_ = 1.0f / 60.0f;
+    float damping_ = 0.015f;
 };
 
 } // namespace owengine

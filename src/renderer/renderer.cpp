@@ -446,9 +446,10 @@ void Renderer::mainLoop() {
             const auto& target = gameSession_->getHarvestTarget();
             if (target.valid) {
                 const char* resName = ecs::resourceTypeName(target.type);
+                const ImVec2 displaySize = ImGui::GetIO().DisplaySize;
                 ImGui::SetNextWindowPos(
-                    ImVec2(static_cast<float>(windowWidth_) * 0.5f - 80.0f,
-                           static_cast<float>(windowHeight_) * 0.5f + 20.0f),
+                    ImVec2(displaySize.x * 0.5f - 80.0f,
+                           displaySize.y * 0.5f + 20.0f),
                     ImGuiCond_Always);
                 ImGui::Begin("##harvestPrompt", nullptr,
                     ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize
@@ -468,9 +469,10 @@ void Renderer::mainLoop() {
                 if (reg && reg->valid(player)) {
                     auto* inv = reg->try_get<ecs::InventoryComponent>(player);
                     if (inv) {
-                        // 底部居中
-                        ImVec2 hotbarPos(static_cast<float>(windowWidth_) * 0.5f,
-                                        static_cast<float>(windowHeight_) - 50.0f);
+                        // 底部居中：使用 ImGui DisplaySize 确保与帧缓冲尺寸一致
+                        const ImVec2 displaySize = ImGui::GetIO().DisplaySize;
+                        ImVec2 hotbarPos(displaySize.x * 0.5f,
+                                        displaySize.y - 50.0f);
                         ImGui::SetNextWindowPos(hotbarPos, ImGuiCond_Always, ImVec2(0.5f, 0.5f));
                         ImGui::SetNextWindowBgAlpha(0.4f);
                         ImGui::Begin("##hudHotbar", nullptr,
@@ -669,7 +671,7 @@ void Renderer::mainLoop() {
             }
         }
 
-        // === 更新水面（波浪动画 + 太阳方向） ===
+        // === 更新水面（波浪动画 + 太阳方向 + 交互涟漪） ===
         if (waterRenderer_) {
             glm::vec3 sunDir = glm::normalize(gameConfig_.renderer.sunDirection);
             float sunIntensity = 1.0f;
@@ -677,6 +679,21 @@ void Renderer::mainLoop() {
                 sunIntensity = sunLight->getIntensity();
             }
             waterRenderer_->update(deltaTime, -sunDir, sunIntensity);
+
+            // 传递玩家位置作为水面交互点，在高度场投影位置产生涟漪
+            // 即使玩家在陆地上，涟漪也会出现在下方水面，形成视觉反馈
+            if (gameSession_) {
+                auto* ecs = gameSession_->getECSWorld();
+                if (ecs) {
+                    glm::vec3 playerPos = ecs->getPlayerPosition();
+                    // 将位置投影到海平面高度，保证涟漪始终注入水面
+                    playerPos.y = waterRenderer_->getSeaLevel();
+                    float heightDiff = std::abs(ecs->getPlayerPosition().y - waterRenderer_->getSeaLevel());
+                    // 玩家在水面附近时强度较大，在远处时产生微弱尾迹
+                    float strength = (heightDiff < 3.0f) ? 1.2f : 0.4f;
+                    waterRenderer_->setInteractionPoint(playerPos, strength);
+                }
+            }
         }
 
         // === 渲染帧 ===

@@ -1,0 +1,76 @@
+#version 450
+
+// 波动方程计算着色器
+// 求解 2D 波动方程: ∂h/∂t² = c²·∇²h - damping·∂h/∂t
+// 离散: h[t+1] = 2h[t] - h[t-1] + (c·dt)²·∇²h[t] - damp·(h[t] - h[t-1])
+// 注: waveSpeed 传入的是 c·dt，即有效传播系数
+
+layout(local_size_x = 16, local_size_y = 16) in;
+
+layout(set = 0, binding = 0) uniform sampler2D uHeightPrev;
+layout(set = 0, binding = 1) uniform sampler2D uHeightCurr;
+layout(set = 0, binding = 2) uniform writeonly image2D uHeightNext;
+
+layout(push_constant) uniform WaveParams {
+    float waveSpeed;        // c·dt (有效传播系数)
+    float damping;          // 阻尼系数
+    vec2  interactUV;       // 交互点 UV
+    float interactStrength; // 交互强度
+    float windStrength;     // 风驱动强度 (持续波动)
+    float texelSize;        // 1.0 / 纹理宽度
+} params;
+
+// 简单 hash 用于风噪声
+float hash21(vec2 p) {
+    p = fract(p * vec2(123.34, 456.21));
+    p += dot(p, p + 45.32);
+    return fract(p.x * p.y);
+}
+
+void main() {
+    ivec2 size = imageSize(uHeightNext);
+    ivec2 coord = ivec2(gl_GlobalInvocationID.xy);
+
+    if (coord.x >= size.x || coord.y >= size.y) return;
+
+    float hc = texelFetch(uHeightCurr, coord, 0).r;
+    float hp = texelFetch(uHeightPrev, coord, 0).r;
+
+    // 拉普拉斯算子 ∇²h（中心差分）
+    float left   = texelFetch(uHeightCurr, ivec2(max(coord.x - 1, 0), coord.y), 0).r;
+    float right  = texelFetch(uHeightCurr, ivec2(min(coord.x + 1, size.x - 1), coord.y), 0).r;
+    float down   = texelFetch(uHeightCurr, ivec2(coord.x, max(coord.y - 1, 0)), 0).r;
+    float up     = texelFetch(uHeightCurr, ivec2(coord.x, min(coord.y + 1, size.y - 1)), 0).r;
+    float laplacian = (left + right + down + up - 4.0 * hc);
+
+    // 波动方程离散更新
+    float c2dt2 = params.waveSpeed * params.waveSpeed;
+    float hNext = 2.0 * hc - hp + c2dt2 * laplacian;
+
+    // 阻尼: 速度相关能量耗散
+    float velocity = hc - hp;
+    hNext -= params.damping * velocity;
+
+    // 边界阻尼（吸收边界，防止反射）
+    vec2 ndc = vec2(coord) / vec2(size);
+    float edgeDist = min(min(ndc.x, 1.0 - ndc.x), min(ndc.y, 1.0 - ndc.y));
+    float edgeDamp = 1.0 - smoothstep(0.0, 0.08, edgeDist);
+    hNext *= (1.0 - edgeDamp * 0.95);
+
+    // 交互点注入扰动（玩家位置涟漪）
+    vec2 uv = (vec2(coord) + 0.5) * params.texelSize;
+    float dist = length(uv - params.interactUV);
+    if (dist < 0.04 && params.interactStrength > 0.01) {
+        float impulse = 0.5 * exp(-dist * dist * 800.0);
+        hNext += params.interactStrength * impulse;
+    }
+
+    // 风驱动（持续产生小波纹，让水面永远不静止）
+    float wind = params.windStrength;
+    if (wind > 0.001) {
+        float noise = hash21(vec2(coord) * 0.1 + vec2(3.7, 11.3));
+        hNext += (noise - 0.5) * wind * 0.02;
+    }
+
+    imageStore(uHeightNext, coord, vec4(hNext, 0.0, 0.0, 0.0));
+}
