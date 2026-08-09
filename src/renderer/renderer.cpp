@@ -60,6 +60,11 @@ void Renderer::run(bool skipInit) {
 
 // 初始化窗口
 void Renderer::initWindow() {
+    // 禁用 libdecor：规避 GLFW Wayland 后端在 Hyprland 等合成器下的
+    // framebuffer 尺寸错误（glfw/glfw#2789）——GLFW_RESIZABLE=false 时
+    // 窗口被错误收缩（如 2560x1440 被报告为 800x875），导致画面模糊/拉伸。
+    // glfwInitHint 必须在 glfwInit() 之前调用。
+    glfwInitHint(GLFW_WAYLAND_LIBDECOR, GLFW_WAYLAND_DISABLE_LIBDECOR);
     glfwInit();
     
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);

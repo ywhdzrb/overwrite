@@ -159,7 +159,7 @@ private:
     VmaAllocation colorImageAllocation_ = VK_NULL_HANDLE;
     VkImageView colorImageView_ = VK_NULL_HANDLE;
     VkFormat colorFormat_;
-    float fsrScale_ = 0.67f;
+    float fsrScale_ = 1.0f;  // FSR1 在该提交未完整接线，禁用（1.0 = 全分辨率直出）
 
     // ========== 帧时间（渲染侧） ==========
     double profDrawMs_ = 0.0, profFenceWaitMs_ = 0.0;
